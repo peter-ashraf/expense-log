@@ -1,0 +1,208 @@
+import * as db from './db.js';
+import { makeTransport } from './api.js';
+import { uid, monthKeyOf, round2 } from './util.js';
+
+// ---- state -----------------------------------------------------------------
+// snap  : last known server state (authoritative once synced)
+// queue : local changes not yet confirmed by the server (add / update / delete)
+// view(): snap + queue applied on top, so the UI is always instant and offline-capable.
+const S = {
+  cfg: null,
+  snap: { categories: { order: [], map: {} }, firstStart: 0, months: [], entries: [] },
+  queue: [],
+  settings: { currency: '' },
+  status: 'idle', // idle | syncing | synced | offline | error
+  error: '',
+  lastSync: 0,
+  rejected: [],
+};
+const subs = new Set();
+let transport = null;
+let cache = null;
+let syncing = false;
+let timer = null;
+
+export const getState = () => S;
+export const onChange = (fn) => { subs.add(fn); return () => subs.delete(fn); };
+function emit() { cache = null; subs.forEach((f) => f()); }
+
+async function persist() {
+  await Promise.all([db.set('snap', S.snap), db.set('queue', S.queue)]);
+}
+
+export async function init() {
+  S.cfg = (await db.get('cfg')) || null;
+  const snap = await db.get('snap');
+  if (snap) S.snap = snap;
+  S.queue = (await db.get('queue')) || [];
+  S.settings = Object.assign(S.settings, (await db.get('settings')) || {});
+  S.lastSync = (await db.get('lastSync')) || 0;
+  if (S.cfg) transport = makeTransport(S.cfg);
+  emit();
+}
+
+export async function connect(cfg) {
+  S.cfg = cfg;
+  S.snap = { categories: { order: [], map: {} }, firstStart: 0, months: [], entries: [] };
+  S.queue = [];
+  S.rejected = [];
+  await db.set('cfg', cfg);
+  await persist();
+  transport = makeTransport(cfg);
+  emit();
+  await sync();
+  if (S.status === 'error') {
+    const msg = S.error;
+    await disconnect();
+    throw new Error(msg);
+  }
+}
+
+export async function disconnect() {
+  await db.clearAll();
+  S.cfg = null;
+  S.snap = { categories: { order: [], map: {} }, firstStart: 0, months: [], entries: [] };
+  S.queue = [];
+  S.status = 'idle';
+  S.error = '';
+  S.lastSync = 0;
+  transport = null;
+  emit();
+}
+
+export async function saveSettings(patch) {
+  Object.assign(S.settings, patch);
+  await db.set('settings', S.settings);
+  emit();
+}
+
+// ---- mutations --------------------------------------------------------------
+export function addEntry(data) {
+  const id = uid();
+  enqueue({ type: 'add', id, data: clean(data) });
+  return id;
+}
+export function updateEntry(id, data) { enqueue({ type: 'update', id, data: clean(data) }); }
+export function deleteEntry(id) { enqueue({ type: 'delete', id }); }
+
+const clean = (d) => ({
+  date: d.date,
+  description: (d.description || '').trim(),
+  amount: round2(d.amount),
+  type: d.type,
+  category: d.category,
+  sub: d.sub,
+});
+
+function enqueue(op) {
+  op.opId = uid();
+  op.ts = Date.now();
+  const i = S.queue.findIndex((o) => o.id === op.id && o.type !== 'delete');
+  if (op.type === 'update') {
+    if (i >= 0) S.queue[i].data = op.data; // fold into pending add/update
+    else S.queue.push(op);
+  } else if (op.type === 'delete') {
+    if (i >= 0) {
+      const wasAdd = S.queue[i].type === 'add';
+      S.queue = S.queue.filter((o) => o.id !== op.id);
+      if (!wasAdd) S.queue.push(op);
+    } else if (!S.queue.some((o) => o.id === op.id && o.type === 'delete')) {
+      S.queue.push(op);
+    }
+  } else {
+    S.queue.push(op);
+  }
+  persist();
+  emit();
+  scheduleSync();
+}
+
+// ---- derived view -----------------------------------------------------------
+export function view() {
+  if (cache) return cache;
+  const map = new Map(S.snap.entries.map((e) => [e.id, e]));
+  const pending = new Set();
+  for (const o of S.queue) {
+    pending.add(o.id);
+    if (o.type === 'delete') map.delete(o.id);
+    else map.set(o.id, { id: o.id, ...o.data, amount: Number(o.data.amount) });
+  }
+  const by = {};
+  const keys = new Set(S.snap.months);
+  for (const e of map.values()) {
+    const k = monthKeyOf(e.date);
+    keys.add(k);
+    (by[k] = by[k] || { key: k, entries: [] }).entries.push(e);
+  }
+  const sorted = [...keys].sort();
+  const serverFirst = [...S.snap.months].sort()[0];
+  const months = {};
+  let prev = null;
+  sorted.forEach((k) => {
+    const m = by[k] || { key: k, entries: [] };
+    m.entries.sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+    let spent = 0;
+    let income = 0;
+    m.entries.forEach((e) => { if (e.type === 'Income') income += e.amount; else spent += e.amount; });
+    m.spent = round2(spent);
+    m.income = round2(income);
+    m.start = prev === null ? (serverFirst && k >= serverFirst ? S.snap.firstStart : 0) : prev;
+    m.available = round2(m.start - m.spent + m.income);
+    prev = m.available;
+    months[k] = m;
+  });
+  cache = { months: sorted, by: months, categories: S.snap.categories, pending };
+  return cache;
+}
+
+// ---- sync -------------------------------------------------------------------
+export function scheduleSync(ms = 500) {
+  clearTimeout(timer);
+  timer = setTimeout(() => sync(), ms);
+}
+
+export async function sync() {
+  if (!transport || syncing) return;
+  if (!navigator.onLine && !(S.cfg && S.cfg.demo)) {
+    S.status = 'offline';
+    emit();
+    return;
+  }
+  syncing = true;
+  S.status = 'syncing';
+  emit();
+  try {
+    const ops = S.queue.slice();
+    const r = ops.length ? await transport.call('push', { ops }) : await transport.call('pull', {});
+    const done = new Set([...(r.applied || []), ...(r.rejected || []).map((x) => x.opId)]);
+    if (r.rejected && r.rejected.length) S.rejected = r.rejected;
+    S.queue = S.queue.filter((o) => !done.has(o.opId));
+    S.snap = { categories: r.categories, firstStart: r.firstStart, months: r.months, entries: r.entries };
+    S.lastSync = Date.now();
+    S.status = 'synced';
+    S.error = '';
+    await db.set('lastSync', S.lastSync);
+  } catch (e) {
+    S.status = navigator.onLine ? 'error' : 'offline';
+    if (S.cfg && S.cfg.demo && localStorage.getItem('el_demo_offline') === '1') S.status = 'offline';
+    S.error = (e && e.message) || String(e);
+  } finally {
+    syncing = false;
+    await persist();
+    emit();
+    if (S.queue.length && S.status === 'synced') scheduleSync(300);
+  }
+}
+
+export function takeRejected() {
+  const r = S.rejected;
+  S.rejected = [];
+  return r;
+}
+
+export function exportCsv() {
+  const v = view();
+  const rows = [['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category']];
+  v.months.slice().reverse().forEach((k) => v.by[k].entries.forEach((e) => rows.push([e.date, e.description, e.amount, e.type, e.category, e.sub])));
+  return rows;
+}
