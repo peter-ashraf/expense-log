@@ -188,6 +188,21 @@ ok(rows[0].description.length > 0, 'the note keeps the original (Arabic) words')
   ok(sub('صيدلية بمية وعشرين') === 'Health>Pharmacy' && sub('كشف دكتور بخمسميه') === 'Health>Doctor Visits' && sub('هدوم بالف') === 'Shopping>Clothes', 'health and shopping: صيدلية, كشف دكتور, هدوم');
 }
 
+// ---- what iOS really returns for Egyptian Arabic (from a report on an iPhone): numbers half-converted to digits
+{
+  const heard = '‏اشتريت النهارده بالف واربع 105 لبن وحطيت بنزين بأربع 130 جنيه';
+  const r4 = run(heard);
+  ok(r4.length === 2 && r4[0].amount === 1405 && r4[1].amount === 430, 'iOS wording: "بألف واربع 105" is 1405 and "بأربع 130" is 430');
+  ok(r4[0].sub === 'Groceries' && r4[1].sub === 'Fuel' && r4.every((r) => r.ready && r.account === 'Credit Card'), 'iOS wording: milk is Groceries, fuel is Fuel, both ready on the credit card');
+  ok(r4[0].description === 'لبن' && r4[1].description === 'بنزين', 'iOS wording: notes are just the item (no verb, no direction marks)');
+  const nums = (t) => run(t).map((r) => r.amount).join(',');
+  ok(nums('قهوة بتلات 150') === '350', 'a unit followed by 1xx: تلات 150 = 350');
+  ok(nums('ايجار بالف 500') === '1500' && nums('ايجار بالف و 105') === '1105', 'a thousand followed by digits adds up: الف 500 = 1500, الف و 105 = 1105');
+  ok(nums('اشتريت لبن بخمسين وبنزين بأربع 130') === '50,430', 'a plain word price and an iOS-style price in one sentence');
+  ok(nums('قهوة 50 وتاكسي 80') === '50,80' && nums('قهوة بخمسين وتاكسي 80') === '50,80', 'ordinary digits next to number words are not merged');
+  ok(run('‏قهوة‏ بخمسين')[0].description === 'قهوة', 'invisible left/right marks never end up in a note');
+}
+
 // ---- helpers
 ok(parseDate('03/10/26', today) === '2026-10-03' && parseDate('2026-09-30', today) === '2026-09-30' && parseDate('31/12', today) === '2026-12-31' && parseDate('13/12/2025', today) === '2025-12-13', 'date formats');
 ok(parseDate('31/02/26', today) === null, 'an impossible date is rejected');

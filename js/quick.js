@@ -14,6 +14,7 @@ const STOP = new Set(['the', 'and', 'for', 'from', 'with', 'via', 'card', 'credi
 // ------------------------------------------------------------------ text helpers
 export function norm(s) {
   return String(s || '')
+    .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')        // invisible left/right marks around Arabic text
     .normalize('NFKD').replace(/[̀-ͯ]/g, '')            // accents
     .replace(/[ً-ٰٟـ]/g, '')                    // Arabic diacritics + tatweel
     .replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه')
@@ -245,6 +246,7 @@ const mkTok = (raw) => ({ raw, n: norm(raw) });
 
 function tokenize(line) {
   return String(line)
+    .replace(/[\u200e\u200f\u202a-\u202e\u2066-\u2069]/g, '')
     .replace(/([،,؛;])(?=\s|$)/g, ' $1 ')                 // a comma between phrases is a separator; one inside 1,250 is not
     .trim().split(/\s+/).filter(Boolean).map(mkTok);
 }
@@ -293,11 +295,22 @@ function arBase(n) {
 
 // Reads a run like "ميه وخمسين" (150) or "تلات تلاف وخمسميه" (3500). Numbers that don't follow the usual big-to-small order
 // ("خمسين وتمانين") are two separate prices.
+// iOS writes "أربعمية وتلاتين" as the word "اربع" followed by the digits 130 (it converted "مية وتلاتين" but left the 4 as a
+// word), so a small unit followed by 100-199 means unit x 100 + the rest: اربع 130 = 430, الف واربع 105 = 1405.
 function evalArabic(words) {
   const out = [];
   let total = 0, cur = 0, started = false, lastMag = 99, prevVal = 0;
   const flush = () => { if (started) out.push(total + cur); total = 0; cur = 0; started = false; lastMag = 99; prevVal = 0; };
   for (const w of words) {
+    if (typeof w === 'number') {                                   // digits from the speech engine
+      if (lastMag === 1 && prevVal >= 2 && prevVal <= 9 && w >= 100 && w < 200 && cur >= prevVal) {
+        cur = cur - prevVal + prevVal * 100 + (w - 100); lastMag = 3; prevVal = w; continue;
+      }
+      const m = w >= 100 ? 3 : w >= 10 ? 2 : 1;
+      if (started && m >= lastMag && !(lastMag === 1 && prevVal < 10 && m === 2)) flush();
+      cur += w; started = true; lastMag = m; prevVal = w;
+      continue;
+    }
     if (AR_K.has(w)) {
       if (started && lastMag === 4) flush();
       total += w === 'الفين' ? 2000 : (cur || 1) * 1000;
@@ -314,13 +327,17 @@ function evalArabic(words) {
   return out;
 }
 
+const isDigitGroup = (n) => /^\d{1,3}$/.test(n);
+
 function arabicRunAt(toks, i) {
   let j = i;
   const words = [];
   while (j < toks.length) {
     const b = arBase(toks[j].n);
     if (b) { words.push(b); j++; continue; }
-    if (toks[j].n === 'و' && words.length && j + 1 < toks.length && arBase(toks[j + 1].n)) { j++; continue; }
+    const afterWord = words.length && typeof words[words.length - 1] === 'string';
+    if (toks[j].n === 'و' && words.length && j + 1 < toks.length && (arBase(toks[j + 1].n) || (afterWord && isDigitGroup(toks[j + 1].n)))) { j++; continue; }
+    if (afterWord && isDigitGroup(toks[j].n)) { words.push(Number(toks[j].n)); j++; continue; }   // digits right after a number word belong to the same price
     break;
   }
   if (!words.length) return null;
@@ -406,7 +423,7 @@ export function defaultAccount(ctx) {
 const CONNECT = new Set(['و', 'وبعدين', 'بعدين', 'وكمان', 'كمان', 'وبرضه', 'برضه', 'ثم', 'وايضا', 'ايضا', 'وبعد', 'and', 'then', 'also', 'plus', '&', '،', ',', '؛', ';', 'والتاني', 'تاني']);
 const NOT_GLUED = new Set(['وقود', 'واي', 'وطنيه', 'واحد', 'واحده', 'والد', 'والده', 'وجبه', 'وجبات', 'ورق', 'وردي', 'ورده', 'وفر', 'وصله', 'وصلات', 'وزن', 'وقت', 'وكاله', 'ويفر', 'وي']);
 const CURRENCY_TOK = new Set(['egp', 'le', 'l.e', 'l.e.', 'جنيه', 'جنيها', 'جنية', 'جنيهات', 'ج', 'ج.م', 'pound', 'pounds', 'bucks', 'usd', 'eur', 'gbp', 'sar', 'aed']);
-const FILLER = new Set(['دفعت', 'صرفت', 'اشتريت', 'جبت', 'اخدت', 'حاسبت', 'عملت', 'كلت', 'شربت', 'ركبت', 'ملات', 'انا', 'بقي', 'يعني', 'تقريبا', 'حوالي', 'دفعنا', 'صرفنا', 'paid', 'spent', 'bought', 'buy', 'got', 'i', "i've", 'ive', 'my', 'was', 'cost', 'costs', 'for', 'on', 'at', 'in', 'the', 'a', 'an', 'to', 'في', 'علي', 'على', 'من', 'عشان', 'ل', 'ب', 'بتاع', 'عن', 'ده', 'دي', 'كله', 'كلهم', 'كلها', 'الكل', 'all', 'everything', 'both', 'مع', 'جوا']);
+const FILLER = new Set(['دفعت', 'صرفت', 'اشتريت', 'جبت', 'حطيت', 'حطيتلي', 'ضربت', 'عبيت', 'خدت', 'اخدت', 'حاسبت', 'عملت', 'كلت', 'شربت', 'ركبت', 'ملات', 'انا', 'بقي', 'يعني', 'تقريبا', 'حوالي', 'دفعنا', 'صرفنا', 'paid', 'spent', 'bought', 'buy', 'got', 'i', "i've", 'ive', 'my', 'was', 'cost', 'costs', 'for', 'on', 'at', 'in', 'the', 'a', 'an', 'to', 'في', 'علي', 'على', 'من', 'عشان', 'ل', 'ب', 'بتاع', 'عن', 'ده', 'دي', 'كله', 'كلهم', 'كلها', 'الكل', 'all', 'everything', 'both', 'مع', 'جوا']);
 const GLOBAL_ALL = new Set(['كله', 'كلهم', 'كلها', 'الكل', 'all', 'everything', 'both']);
 const DATE_TEXT = [
   [/(?:^| )(?:اول امبارح|اول من امس|قبل امس|day before yesterday|2 days ago|two days ago)(?= |$)/, -2],

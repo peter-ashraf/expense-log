@@ -25,7 +25,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.5.1';
+const APP_VERSION = '3.5.2';
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -1025,7 +1025,10 @@ function editQuickRow(i) {
 
 function quickHint(msg) { const h = $('#qHint'); if (h) h.textContent = msg; }
 
+let micWanted = false;         // the person has not tapped stop yet
+
 function stopMic() {
+  micWanted = false;
   if (rec) { try { rec.abort(); } catch (e) { /* ignore */ } rec = null; }
   const b = $('#qMic');
   if (b) { b.classList.remove('on'); b.lastChild.textContent = 'Speak'; }
@@ -1042,21 +1045,34 @@ const MIC_ERRORS = {
 function startMic() {
   if (!SpeechRec || !ui.quick) return;
   if (rec) { stopMic(); return; }
+  micWanted = true;
+  listenOnce();
+}
+
+// iPhone ends a session at the first pause even in "continuous" mode, so the next one starts by itself until you tap stop.
+function listenOnce() {
   const r = new SpeechRec();
   r.lang = store.getState().settings.voiceLang || 'ar-EG';
   r.interimResults = true;
   r.continuous = true;                                       // a long sentence with pauses stays open; tap again to stop
-  const base = ui.quick.text.trim() ? ui.quick.text.replace(/\s+$/, '') + '\n' : '';
+  const base = ui.quick.text.trim() ? ui.quick.text.replace(/\s+$/, '') + ' ' : '';   // a pause in the middle of a sentence keeps it one sentence
+  let gotAny = false;
   r.onresult = (ev) => {
+    gotAny = true;
     let t = '';
-    for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
+    for (let i = 0; i < ev.results.length; i++) t += (i ? ' ' : '') + ev.results[i][0].transcript.trim();
     ui.quick.text = base + t;
     const ta = $('#qText');
     if (ta) ta.value = ui.quick.text;
     updateQuickRows();
   };
   r.onerror = (ev) => { quickHint(MIC_ERRORS[ev.error] || 'Voice input stopped. You can type it instead.'); };
-  r.onend = () => { if (rec === r) stopMic(); };
+  r.onend = () => {
+    if (rec !== r) return;
+    rec = null;
+    if (micWanted && gotAny) { try { listenOnce(); return; } catch (e) { /* fall through and stop */ } }   // heard something and not stopped: carry on
+    stopMic();
+  };
   try {
     r.start();
     rec = r;

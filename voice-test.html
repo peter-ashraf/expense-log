@@ -174,24 +174,40 @@ document.querySelectorAll('#langs .chip').forEach((b) => b.addEventListener('cli
   log(`language set to ${lang}`);
 }));
 
-$('#mic').addEventListener('click', () => {
-  if (!SR) return;
-  if (rec) { log('tapped stop'); try { rec.stop(); } catch (e) { /* ignore */ } return; }
+let wanted = false;   // the person has not tapped stop yet
+function listen(base) {
   const r = new SR();
   r.lang = lang; r.interimResults = true; r.continuous = $('#cont').checked; r.maxAlternatives = 1;
+  let gotAny = false;
   ['audiostart', 'soundstart', 'speechstart', 'speechend', 'soundend', 'audioend', 'nomatch'].forEach((e) => r.addEventListener(e, () => log(`event: ${e}`)));
   r.onstart = () => { log(`event: start (lang ${r.lang}, continuous ${r.continuous})`); $('#mic').classList.add('on'); $('#mic').textContent = '… بسمعك · Listening, tap to stop'; };
   r.onresult = (ev) => {
+    gotAny = true;
     let heard = '', fin = false, conf = '';
     for (let i = 0; i < ev.results.length; i++) { heard += (i ? ' ' : '') + ev.results[i][0].transcript.trim(); if (ev.results[i].isFinal) { fin = true; conf = (ev.results[i][0].confidence || 0).toFixed(2); } }
+    heard = (base ? base + ' ' : '') + heard;
     $('#heard').textContent = heard;
+    lastHeard = heard;
     log(`result${fin ? ' (final, confidence ' + conf + ')' : ''}: “${heard}”`);
     show(heard);
   };
-  r.onerror = (ev) => { log(`ERROR: ${ev.error}${ev.message ? ' — ' + ev.message : ''}`); $('#heard').innerHTML = `<i>Error: ${ev.error}</i>`; };
-  r.onend = () => { log('event: end'); rec = null; $('#mic').classList.remove('on'); $('#mic').textContent = 'اضغط واتكلم · Tap and speak'; };
+  r.onerror = (ev) => { log(`ERROR: ${ev.error}${ev.message ? ' — ' + ev.message : ''}`); if (ev.error !== 'aborted' && ev.error !== 'no-speech') $('#heard').innerHTML = `<i>Error: ${ev.error}</i>`; };
+  r.onend = () => {
+    log('event: end');
+    rec = null;
+    // iPhone ends a session at the first pause, even in "continuous" mode: carry on by itself until stop is tapped
+    if (wanted && gotAny) { log('carrying on after the pause'); try { listen(lastHeard); return; } catch (e) { log(`restart failed: ${e.name}`); } }
+    wanted = false; $('#mic').classList.remove('on'); $('#mic').textContent = 'اضغط واتكلم · Tap and speak';
+  };
   try { r.start(); rec = r; log('start() called'); }
-  catch (e) { log(`start() threw: ${e.name}: ${e.message}`); $('#heard').innerHTML = `<i>Could not start: ${e.name}</i>`; rec = null; }
+  catch (e) { log(`start() threw: ${e.name}: ${e.message}`); $('#heard').innerHTML = `<i>Could not start: ${e.name}</i>`; rec = null; wanted = false; }
+}
+let lastHeard = '';
+$('#mic').addEventListener('click', () => {
+  if (!SR) return;
+  if (rec || wanted) { log('tapped stop'); wanted = false; try { if (rec) rec.stop(); } catch (e) { /* ignore */ } return; }
+  wanted = true; lastHeard = '';
+  listen('');
 });
 
 // ---- keyboard dictation
