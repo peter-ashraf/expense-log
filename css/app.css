@@ -151,7 +151,7 @@ body.onboard #topbar { display: none; }
 .hero-amt .cur { font-size: 22px; font-weight: 600; opacity: .8; margin-right: 6px; vertical-align: 6px; }
 .hero-sub { font-size: 13px; opacity: .75; }
 .hero-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 18px; }
-.mini { padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, .14); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+.mini { position: relative; text-align: left; color: inherit; font: inherit; width: 100%; cursor: pointer; transition: transform .15s; padding: 12px 14px; border-radius: 16px; background: rgba(255, 255, 255, .14); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   border: 1px solid rgba(255, 255, 255, .16); }
 .mini span { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; opacity: .85; }
 .mini b { display: block; font-size: 18px; font-weight: 700; margin-top: 3px; letter-spacing: -.01em; }
@@ -453,3 +453,58 @@ body.reloading #app { opacity: 0; transition: opacity .2s ease; }
 /* optional: turn the blur off (solid bars) if it ever interferes with the status bar */
 html.no-glass #topbar { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
 html.no-glass #tabbar { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
+
+/* hero tiles open the flip card */
+.mini:active { transform: scale(.96); }
+.mini::after { content: ""; position: absolute; right: 14px; top: 16px; width: 7px; height: 7px; border-right: 2px solid currentColor; border-top: 2px solid currentColor; transform: rotate(45deg); opacity: .55; }
+#app[data-flip="income"] .mini[data-kind="income"], #app[data-flip="spent"] .mini[data-kind="spent"] { visibility: hidden; }
+
+/* flip card (Income / Spent breakdown) */
+#flip { position: absolute; inset: 0; z-index: 35; pointer-events: none; perspective: 1500px; display: grid; place-items: center; }
+#flip.open { pointer-events: auto; }
+.flip-scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .42); opacity: 0; transition: opacity .45s ease; }
+#flip.shown .flip-scrim { opacity: 1; }
+.flip-card { position: relative; display: flex; flex-direction: column; width: min(372px, calc(100% - 28px)); max-height: calc(100% - 96px); transform-style: preserve-3d; will-change: transform; }
+.flip-face { -webkit-backface-visibility: hidden; backface-visibility: hidden; border-radius: 30px; }
+.flip-front { position: relative; flex: 1; min-height: 0; overflow-y: auto; scrollbar-width: none; background: var(--bg-2); border: 1px solid var(--line); padding: 18px 18px 20px; box-shadow: 0 34px 80px -24px rgba(0, 0, 0, .55); }
+.flip-front::-webkit-scrollbar { display: none; }
+.flip-back { position: absolute; inset: 0; transform: rotateY(180deg); border: 1px solid rgba(255, 255, 255, .25);
+  background: linear-gradient(135deg, var(--hero-a), var(--hero-b)); box-shadow: inset 0 1px 0 rgba(255, 255, 255, .25); }
+.flip-card.income .flip-back { background: linear-gradient(135deg, #0F8F63, #14B8A6); }
+.flip-card.spent .flip-back { background: linear-gradient(135deg, #9F2D4B, #E5484D); }
+.flip-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.flip-head h3 { font-size: 24px; font-weight: 760; letter-spacing: -.02em; }
+.flip-head small { color: var(--muted); font-size: 13px; font-weight: 600; }
+.flip-donut { margin: 10px auto 14px; }
+.flip-list { display: flex; flex-direction: column; }
+.flip-row { display: flex; align-items: center; gap: 10px; padding: 11px 2px; border-top: 1px solid var(--line); font-size: 15px; }
+.flip-row i { width: 12px; height: 12px; border-radius: 4px; background: var(--c); flex: none; }
+.flip-row .n { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }
+.flip-row b { font-weight: 720; font-variant-numeric: tabular-nums; }
+.flip-row em { font-style: normal; color: var(--muted); font-weight: 650; min-width: 38px; text-align: right; font-size: 13.5px; }
+
+/* ---------- app lock ---------- */
+#lock { display: none; position: absolute; inset: 0; z-index: 1000; background: var(--bg); align-items: center; justify-content: center; padding: 24px;
+  text-align: center; overscroll-behavior: none; touch-action: manipulation; -webkit-user-select: none; user-select: none; }
+html.locked #lock, html.cover #lock { display: flex; }
+html.locked #app, html.cover #app { visibility: hidden; }
+html.cover:not(.locked) #lock .lock-in > :not(.lock-logo) { visibility: hidden; }
+.lock-in { width: min(320px, 100%); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.lock-logo { width: 84px; height: 84px; border-radius: 26px; margin-bottom: 12px; box-shadow: 0 16px 34px -14px rgba(30, 30, 90, .5); }
+#lock h2 { font-size: 24px; font-weight: 760; letter-spacing: -.02em; margin: 0; }
+#lock p { color: var(--muted); margin: 0 0 8px; min-height: 22px; }
+.lock-bio { color: var(--accent); margin: 22px 0 10px; animation: pulse-soft 2.2s ease-in-out infinite; }
+@keyframes pulse-soft { 50% { opacity: .55; transform: scale(.94); } }
+.lock-reset { margin-top: 26px; color: var(--muted); font-size: 14px; font-weight: 600; padding: 10px 14px; border-radius: 12px; }
+.pin-dots { display: flex; gap: 16px; justify-content: center; margin: 14px 0 22px; }
+.pin-dots i { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--muted); transition: background .12s, transform .12s; }
+.pin-dots i.on { background: var(--text); border-color: var(--text); transform: scale(1.1); }
+.pin-dots.shake { animation: shake .35s; }
+.pin-pad { display: grid; grid-template-columns: repeat(3, 78px); gap: 14px; justify-content: center; }
+.pin-pad button { width: 78px; height: 78px; border-radius: 50%; font-size: 28px; font-weight: 500; background: var(--surface); border: 1px solid var(--line); transition: transform .08s, background .12s; }
+.pin-pad button:active { transform: scale(.92); background: var(--surface-2); }
+.seg.four { grid-template-columns: repeat(4, 1fr); margin-bottom: 0; }
+.seg.four button { font-size: 13.5px; }
+.seg.four button.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.row-btns { display: flex; gap: 8px; }
+.row-btns .btn { flex: 1; margin-top: 12px; }

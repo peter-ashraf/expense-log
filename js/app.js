@@ -3,6 +3,7 @@ import { icon, catHue } from './icons.js';
 import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 import { readCsvEntries, decodeText } from './csv.js';
+import * as lk from './lockui.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -150,8 +151,8 @@ function renderHome(view, m) {
       <div class="hero-amt" id="heroAmt">${heroHTML(m.available)}</div>
       <div class="hero-sub">Opened the month with ${esc(fmt(m.start))}</div>
       <div class="hero-row">
-        <div class="mini"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic up"')}Income</span><b>${esc(fmt(m.income))}</b></div>
-        <div class="mini"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic down"')}Spent</span><b>${esc(fmt(m.spent))}</b></div>
+        <button class="mini" data-act="flip" data-kind="income" aria-label="Show income breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic up"')}Income</span><b>${esc(fmt(m.income))}</b></button>
+        <button class="mini" data-act="flip" data-kind="spent" aria-label="Show spending breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic down"')}Spent</span><b>${esc(fmt(m.spent))}</b></button>
       </div>
       <div class="meter"><i style="width:${pct.toFixed(1)}%"></i></div>
       <div class="meter-cap">${Math.round(pct)}% of available funds spent</div>
@@ -208,19 +209,126 @@ function fillActivity() {
   }).join('');
 }
 
-function donut(parts, total) {
+function donut(parts, total, hueOf) {
   const r = 62;
   const c = 2 * Math.PI * r;
   let off = 0;
   const order = store.view().categories.order;
   const segs = parts.map(([name, amt]) => {
     const len = (amt / total) * c;
-    const s = `<circle r="${r}" cx="80" cy="80" fill="none" stroke="hsl(${catHue(name, order)} 70% 58%)" stroke-width="18"
+    const s = `<circle r="${r}" cx="80" cy="80" fill="none" stroke="hsl(${hueOf ? hueOf(name, parts) : catHue(name, order)} 70% 58%)" stroke-width="18"
       stroke-dasharray="${Math.max(0, len - 2).toFixed(2)} ${(c - Math.max(0, len - 2)).toFixed(2)}" stroke-dashoffset="${(-off).toFixed(2)}" transform="rotate(-90 80 80)" stroke-linecap="butt"/>`;
     off += len;
     return s;
   }).join('');
   return `<svg viewBox="0 0 160 160" class="donut"><circle r="${r}" cx="80" cy="80" fill="none" stroke="var(--track)" stroke-width="18"/>${segs}</svg>`;
+}
+
+// ---- flip card: Income / Spent breakdown --------------------------------------------------------
+let flipKind = null;
+let flipAnim = null;
+let flipSeq = 0; // each open/close gets a number; stale timers and animation callbacks from older ones are ignored
+
+function incomeSources(m) {
+  const map = new Map();
+  m.entries.forEach((e) => {
+    if (e.type !== 'Income') return;
+    const name = (e.description || '').trim() || 'Income';
+    const k = name.toLowerCase();
+    const cur = map.get(k) || { name, amt: 0 };
+    cur.amt += e.amount;
+    map.set(k, cur);
+  });
+  let list = [...map.values()].sort((a, b) => b.amt - a.amt);
+  if (list.length > 6) {
+    const rest = list.slice(5).reduce((n, x) => n + x.amt, 0);
+    list = list.slice(0, 5).concat([{ name: 'Other', amt: rest }]);
+  }
+  return list.map((x) => [x.name, x.amt]);
+}
+
+const INCOME_HUES = [152, 176, 198, 222, 262, 300];
+
+function flipMarkup(kind, m) {
+  const spent = kind === 'spent';
+  const parts = spent ? catTotals(m) : incomeSources(m);
+  const total = parts.reduce((n, p) => n + p[1], 0);
+  const order = store.view().categories.order;
+  const hueOf = spent ? (name) => catHue(name, order) : (name, list) => INCOME_HUES[list.findIndex((p) => p[0] === name) % INCOME_HUES.length];
+  const rows = parts.map(([name, amt]) => `<div class="flip-row" style="--c:hsl(${hueOf(name, parts)} 70% 58%)">
+      <i></i><span class="n">${esc(name)}</span><b>${esc(num(amt))}</b><em>${Math.round((amt / total) * 100)}%</em></div>`).join('');
+  return `<div class="flip-face flip-front">
+      <div class="flip-head">
+        <div><h3>${spent ? 'Spent' : 'Income'}</h3><small>${esc(keyLabel(m.key))} · ${spent ? 'by category' : 'by source'}</small></div>
+        <button class="close" data-act="flip-close" aria-label="Close">${icon('close', 20, 2.2)}</button>
+      </div>
+      ${parts.length ? `<div class="donut-box flip-donut">${donut(parts, total, hueOf)}<div class="donut-c"><small>Total</small><b>${esc(num0(total))}</b></div></div>
+        <div class="flip-list">${rows}</div>` : `<div class="empty-big small">${icon('chart', 32, 1.5)}<p>${spent ? 'No expenses' : 'No income'} in ${esc(keyLabel(m.key))}.</p></div>`}
+    </div>
+    <div class="flip-face flip-back" aria-hidden="true"></div>`;
+}
+
+// the transform that makes the card look like the tile it came from (position + size), flipped over
+function flipFrom(card, origin) {
+  const fr = card.getBoundingClientRect();
+  const or = origin.getBoundingClientRect();
+  const dx = or.left + or.width / 2 - (fr.left + fr.width / 2);
+  const dy = or.top + or.height / 2 - (fr.top + fr.height / 2);
+  return `translate(${dx}px, ${dy}px) scale(${(or.width / fr.width).toFixed(4)}, ${(or.height / fr.height).toFixed(4)}) rotateY(-180deg)`;
+}
+
+function openFlip(kind, origin) {
+  const m = activeMonth();
+  if (!m || flipKind) return;
+  const seq = ++flipSeq;
+  const root = $('#flip');
+  if (flipAnim) { flipAnim.cancel(); flipAnim = null; }
+  flipKind = kind;
+  root.innerHTML = `<div class="flip-scrim"></div><div class="flip-card ${kind}">${flipMarkup(kind, m)}</div>`;
+  root.className = 'open';
+  $('#app').setAttribute('data-flip', kind); // hides the tile so it looks like the tile itself turns into the card
+  const card = $('.flip-card', root);
+  haptic(8);
+  tweenTheme(1);
+  const canAnimate = !reduceMotion && !!card.animate;
+  const start = flipFrom(card, origin);
+  if (canAnimate) card.style.transform = start; // no flash before the animation starts
+  const go = () => {
+    if (seq !== flipSeq || !card.isConnected || root.classList.contains('shown')) return;
+    root.classList.add('shown');
+    card.style.transform = '';
+    if (!canAnimate) return;
+    flipAnim = card.animate([{ transform: start }, { transform: 'none' }], { duration: 680, easing: 'cubic-bezier(.2, .85, .25, 1)', fill: 'both' });
+  };
+  requestAnimationFrame(go);
+  setTimeout(go, 80);
+}
+
+function closeFlip() {
+  if (!flipKind) return;
+  const kind = flipKind;
+  flipKind = null;
+  const seq = ++flipSeq;
+  const root = $('#flip');
+  const card = $('.flip-card', root);
+  const origin = $(`.mini[data-kind="${kind}"]`);
+  tweenTheme(0);
+  root.classList.remove('shown');
+  const done = () => {
+    if (seq !== flipSeq) return; // a newer open/close took over
+    root.className = '';
+    root.innerHTML = '';
+    $('#app').removeAttribute('data-flip');
+    flipAnim = null;
+  };
+  if (!card || !origin || reduceMotion || !card.animate) { setTimeout(done, reduceMotion ? 0 : 300); return; }
+  if (flipAnim) flipAnim.cancel();
+  flipAnim = card.animate(
+    [{ transform: 'none' }, { transform: flipFrom(card, origin) }],
+    { duration: 560, easing: 'cubic-bezier(.55, .05, .2, 1)', fill: 'forwards' }
+  );
+  flipAnim.onfinish = done;
+  setTimeout(done, 900); // safety net if the animation clock is throttled
 }
 
 function renderInsights(view, m) {
@@ -264,6 +372,22 @@ function renderInsights(view, m) {
   </div>`;
 }
 
+function securityCard(st) {
+  const lock = st.settings.lock || { method: 'off', delay: 60 };
+  const on = lock.method === 'bio' || lock.method === 'pin';
+  const delays = [[0, 'Instantly'], [60, '1 min'], [300, '5 min'], [900, '15 min']];
+  const cur = lock.delay == null ? 60 : lock.delay;
+  return `<section class="card">
+      <div class="card-h"><h3>Security</h3><span class="badge ${on ? 'synced' : ''}">${on ? 'Lock on' : 'Off'}</span></div>
+      <div class="seg three" role="radiogroup" aria-label="App lock">${[['off', 'Off', 'unlock'], ['bio', 'Face ID', 'face'], ['pin', 'PIN', 'keypad']]
+        .map(([k, l, ic]) => `<button role="radio" aria-checked="${lock.method === k}" class="${lock.method === k ? 'on' : ''}" data-act="lock-method" data-v="${k}">${icon(ic, 18)}${l}</button>`).join('')}</div>
+      ${on ? `<div class="lbl">Lock when I’ve been away for</div>
+        <div class="seg four">${delays.map(([sec, l]) => `<button class="${cur === sec ? 'on' : ''}" data-act="lock-delay" data-v="${sec}">${l}</button>`).join('')}</div>
+        <div class="row-btns"><button class="btn ghost" data-act="lock-now">${icon('lock', 18)}Lock now</button>${lock.method === 'pin' ? '<button class="btn ghost" data-act="pin-change">Change PIN</button>' : ''}</div>` : ''}
+      <p class="muted sm" style="margin-top:10px">${lock.method === 'bio' ? 'Uses Face ID or Touch ID through your phone’s passkey. ' : ''}This keeps others out of the app. It doesn’t encrypt the data on your phone.</p>
+    </section>`;
+}
+
 function renderSettings(view) {
   const st = store.getState();
   const n = st.queue.length;
@@ -287,6 +411,7 @@ function renderSettings(view) {
       <label class="switch block"><input type="checkbox" id="glassSwitch" ${st.settings.glass === false ? '' : 'checked'}><span>Glass bars <small class="muted">(blurred top bar and tab bar)</small></span></label>
       <button class="btn ghost" data-act="refresh-view">Status bar not matching? Refresh</button>
     </section>
+    ${securityCard(st)}
     <section class="card">
       <div class="card-h"><h3>Preferences</h3></div>
       <label class="field"><span>Currency symbol</span><input id="curInput" maxlength="4" placeholder="e.g. $, €, EGP" value="${esc(st.settings.currency)}" autocomplete="off"></label>
@@ -303,7 +428,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v2.2</p>
+    <p class="muted center sm">Credit Card Expenses · v2.4</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -654,6 +779,7 @@ function closeSheet() {
     layer.innerHTML = '';
     document.body.classList.remove('noscroll');
     sheetClosing = false;
+    if (pinAskResolve) { const r = pinAskResolve; pinAskResolve = null; r(null); }
   }, reduceMotion ? 0 : 480);
 }
 
@@ -901,6 +1027,29 @@ function closeMonthMenu() {
   setTimeout(() => { if (!ui.menuOpen) { root.className = ''; root.innerHTML = ''; } }, reduceMotion ? 0 : 220);
 }
 
+// ---- app lock: PIN sheets and actions ------------------------------------------------------------
+let pinAskResolve = null;
+
+function askPin() {
+  return new Promise((resolve) => {
+    pinAskResolve = resolve;
+    present('Enter your PIN', '', `<p class="muted pad">Confirm it’s you to continue.</p>
+      <label class="field"><input id="pinAsk" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" placeholder="PIN"></label>`,
+      'small', '<button class="btn primary big" data-act="pin-ask-ok">Continue</button>');
+    setTimeout(() => { const i = $('#pinAsk'); if (i) i.focus(); }, 350);
+  });
+}
+
+function pinSetupSheet(then) {
+  present(then === 'change' ? 'Change PIN' : 'Set a PIN', '', `<p class="muted pad">Choose 4 to 8 digits. You’ll type it to open the app.</p>
+    <label class="field"><span>New PIN</span><input id="pinA" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" placeholder="••••"></label>
+    <label class="field"><span>Repeat PIN</span><input id="pinB" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="8" autocomplete="off" placeholder="••••"></label>`,
+    'small', '<button class="btn primary big" data-act="pin-save">Save PIN</button>');
+  setTimeout(() => { const i = $('#pinA'); if (i) i.focus(); }, 350);
+}
+
+const lockCfg = () => store.getState().settings.lock || { method: 'off', delay: 60 };
+
 // ---- Import (Excel or CSV) ---------------------------------------------------------------------
 async function readImportFile(file) {
   try {
@@ -1082,6 +1231,55 @@ document.addEventListener('click', async (ev) => {
     case 'type': ui.form.type = el.dataset.t; ui.adding = null; haptic(6); refreshForm(); break;
     case 'cat': ui.form.category = el.dataset.v; ui.form.sub = ''; if (ui.adding === 'sub') ui.adding = null; haptic(6); refreshForm(); break;
     case 'sub': ui.form.sub = el.dataset.v; haptic(6); refreshForm(); break;
+    case 'lock-method': {
+      const want = el.dataset.v;
+      const cur = lockCfg().method;
+      if (want === cur) break;
+      try {
+        if (want === 'off') {
+          await lk.verifyOwner(askPin);
+          await lk.disableLock();
+          toast('Lock turned off', 'ok');
+        } else if (want === 'bio') {
+          if (cur === 'pin') await lk.verifyOwner(askPin);
+          await lk.enableBio(lockCfg().delay);
+          toast('Face ID lock is on', 'ok');
+        } else if (want === 'pin') {
+          if (cur === 'bio') await lk.verifyOwner(askPin);
+          pinSetupSheet('set');
+        }
+      } catch (err) {
+        toast(err && err.name === 'NotAllowedError' ? 'Cancelled' : (err.message || 'Could not change the lock'), 'err');
+      }
+      break;
+    }
+    case 'lock-delay': store.saveSettings({ lock: { ...lockCfg(), delay: Number(el.dataset.v) } }); haptic(6); break;
+    case 'lock-now': lk.lockApp(); break;
+    case 'pin-change':
+      try { await lk.verifyOwner(askPin); pinSetupSheet('change'); } catch (err) { toast(err.message || 'Wrong PIN', 'err'); }
+      break;
+    case 'pin-ask-ok': {
+      const v = ($('#pinAsk') || {}).value || '';
+      const r = pinAskResolve; pinAskResolve = null;
+      closeSheet();
+      if (r) r(v);
+      break;
+    }
+    case 'pin-save': {
+      const a = ($('#pinA') || {}).value || '';
+      const b = ($('#pinB') || {}).value || '';
+      if (!/^\d{4,8}$/.test(a)) { toast('Use 4 to 8 digits.', 'err'); shake(); break; }
+      if (a !== b) { toast('The two PINs don’t match.', 'err'); shake(); break; }
+      try {
+        await lk.enablePin(a, lockCfg().delay);
+        closeSheet();
+        toast('PIN lock is on', 'ok');
+        haptic(12);
+      } catch (err) { toast(err.message || 'Could not save the PIN', 'err'); }
+      break;
+    }
+    case 'flip': openFlip(el.dataset.kind, el); break;
+    case 'flip-close': closeFlip(); break;
     case 'refresh-view': refreshView(); break;
     case 'theme': {
       const mode = el.dataset.v;
@@ -1170,7 +1368,7 @@ document.addEventListener('click', async (ev) => {
       if (confirm('Permanently clear the recently deleted list on this device?')) { store.clearTrash(); closeSheet(); }
       break;
     case 'disconnect':
-      if (confirm('Remove the local copy and disconnect this device? Unsynced changes will be lost.')) { await store.disconnect(); render(); }
+      if (confirm('Remove the local copy and disconnect this device? Unsynced changes will be lost.')) { try { localStorage.removeItem('el_lock'); } catch (e) { /* ignore */ } await store.disconnect(); render(); }
       break;
     case 'demo':
       try { await store.connect({ demo: true }); toast('Demo loaded', 'ok'); } catch (e) { toast(e.message, 'err'); }
@@ -1193,7 +1391,7 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape') { if (ui.menuOpen) closeMonthMenu(); else if ($('#layer').classList.contains('open')) closeSheet(); }
+  if (e.key === 'Escape') { if (flipKind) closeFlip(); else if (ui.menuOpen) closeMonthMenu(); else if ($('#layer').classList.contains('open')) closeSheet(); }
   const typing = document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName) && document.activeElement.type !== 'date';
   if (ui.form && !typing && /^[0-9.]$/.test(e.key)) pressKey(e.key);
   if (ui.form && !typing && e.key === 'Backspace') pressKey('del');
@@ -1248,6 +1446,7 @@ store.onChange(() => {
 $('#view').addEventListener('scroll', () => $('#topbar').classList.toggle('scrolled', $('#view').scrollTop > 4), { passive: true });
 window.addEventListener('online', () => store.sync());
 document.addEventListener('visibilitychange', () => {
+  lk.onVisibility();
   paintTheme(themeNow); // the phone's appearance may have changed while the app was away
   if (document.visibilityState === 'visible') setTimeout(() => store.sync(), 700); // give a sleeping mobile connection a moment to wake
 });
@@ -1258,6 +1457,12 @@ setInterval(() => { if (document.visibilityState === 'visible') store.sync(); },
   await store.init();
   applyTheme(store.getState().settings.theme || 'system');
   document.documentElement.classList.toggle('no-glass', store.getState().settings.glass === false);
+  lk.initLock({
+    getLock: lockCfg,
+    setLock: (p) => store.saveSettings({ lock: { ...lockCfg(), ...p } }),
+    haptic,
+    onReset: async () => { try { localStorage.removeItem('el_lock'); } catch (e) { /* ignore */ } await store.disconnect(); location.reload(); },
+  });
   try {
     const r = JSON.parse(sessionStorage.getItem('el_resume') || 'null');
     sessionStorage.removeItem('el_resume');
