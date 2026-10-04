@@ -7,7 +7,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const ui = { tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false };
+const ui = { tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '' };
 
 // ---------------------------------------------------------------- helpers
 const cur = () => store.getState().settings.currency || '';
@@ -291,7 +291,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Expense Log · v1.2</p>
+    <p class="muted center sm">Expense Log · v1.3</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -361,6 +361,37 @@ function openSheet(id) {
     e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : '', body, 'compact', foot);
   $('#fDate').addEventListener('change', (ev) => { ui.form.date = ev.target.value; refreshForm(); });
   $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; });
+  ui.adding = null;
+  ui.newName = '';
+  $('#fCatWrap').addEventListener('input', (ev) => { if (ev.target.id === 'newName') ui.newName = ev.target.value; });
+  $('#fCatWrap').addEventListener('keydown', (ev) => {
+    if (ev.target.id !== 'newName') return;
+    if (ev.key === 'Enter') { ev.preventDefault(); confirmNew(); }
+    if (ev.key === 'Escape') { ev.stopPropagation(); ui.adding = null; refreshForm(); }
+  });
+  refreshForm();
+}
+
+function confirmNew() {
+  const f = ui.form;
+  if (!f || !ui.adding) return;
+  const v = store.view();
+  const kind = ui.adding;
+  const err = kind === 'cat'
+    ? store.nameError(ui.newName, v.categories.order, ['Income', 'Categories'])
+    : store.nameError(ui.newName, v.categories.map[f.category] || []);
+  if (err) { toast(err, 'err'); shake(); return; }
+  if (kind === 'cat') {
+    f.category = store.addCategory(ui.newName);
+    f.sub = '';
+    toast('Category added', 'ok');
+  } else {
+    f.sub = store.addSub(f.category, ui.newName);
+    toast('Sub-category added', 'ok');
+  }
+  haptic(10);
+  ui.adding = null;
+  ui.newName = '';
   refreshForm();
 }
 
@@ -510,11 +541,19 @@ function refreshForm() {
   const isExp = f.type === 'Expense';
   $('#fCatWrap').style.display = isExp ? '' : 'none';
   if (isExp) {
-    setChips('#fCats', v.categories.order.map((n) => `<button class="chip cat ${f.category === n ? 'on' : ''}" style="${hueStyle(n)}" data-act="cat" data-v="${esc(n)}">${icon(n, 16)}${esc(n)}</button>`).join(''));
+    const newField = (kind) => `<span class="chip-input"><input id="newName" maxlength="30" autocomplete="off" autocapitalize="words" enterkeyhint="done" placeholder="${kind === 'cat' ? 'New category' : 'New sub-category'}" value="${esc(ui.newName)}"><button class="ok" data-act="new-ok" aria-label="Add">${icon('check', 16, 2.6)}</button><button data-act="new-cancel" aria-label="Cancel">${icon('close', 16, 2.4)}</button></span>`;
+    setChips('#fCats', ui.adding === 'cat' ? newField('cat')
+      : v.categories.order.map((n) => `<button class="chip cat ${f.category === n ? 'on' : ''}" style="${hueStyle(n)}" data-act="cat" data-v="${esc(n)}">${icon(n, 16)}${esc(n)}</button>`).join('')
+        + `<button class="chip add" data-act="new-cat">${icon('plus', 14, 2.4)}New</button>`);
     const subs = v.categories.map[f.category] || [];
-    setChips('#fSubs', subs.length
-      ? subs.map((n) => `<button class="chip ${f.sub === n ? 'on' : ''}" data-act="sub" data-v="${esc(n)}">${esc(n)}</button>`).join('')
-      : '<span class="hint">Pick a category first</span>');
+    setChips('#fSubs', !f.category ? '<span class="hint">Pick a category first</span>'
+      : ui.adding === 'sub' ? newField('sub')
+      : subs.map((n) => `<button class="chip ${f.sub === n ? 'on' : ''}" data-act="sub" data-v="${esc(n)}">${esc(n)}</button>`).join('')
+        + `<button class="chip add" data-act="new-sub">${icon('plus', 14, 2.4)}New</button>`);
+    if (ui.adding) {
+      const inp = $('#newName');
+      if (inp && document.activeElement !== inp) { inp.focus(); inp.scrollIntoView({ inline: 'nearest', block: 'nearest' }); }
+    }
   }
   $('#fDateLbl').textContent = dayLabel(f.date) === 'Today' || dayLabel(f.date) === 'Yesterday' ? dayLabel(f.date) : dateLong(f.date);
 }
@@ -659,9 +698,13 @@ document.addEventListener('click', async (ev) => {
       });
       break;
     case 'key': pressKey(el.dataset.k); break;
-    case 'type': ui.form.type = el.dataset.t; haptic(6); refreshForm(); break;
-    case 'cat': ui.form.category = el.dataset.v; ui.form.sub = ''; haptic(6); refreshForm(); break;
+    case 'type': ui.form.type = el.dataset.t; ui.adding = null; haptic(6); refreshForm(); break;
+    case 'cat': ui.form.category = el.dataset.v; ui.form.sub = ''; if (ui.adding === 'sub') ui.adding = null; haptic(6); refreshForm(); break;
     case 'sub': ui.form.sub = el.dataset.v; haptic(6); refreshForm(); break;
+    case 'new-cat': ui.adding = 'cat'; ui.newName = ''; refreshForm(); break;
+    case 'new-sub': ui.adding = 'sub'; ui.newName = ''; refreshForm(); break;
+    case 'new-cancel': ui.adding = null; ui.newName = ''; refreshForm(); break;
+    case 'new-ok': confirmNew(); break;
     case 'save': saveForm(); break;
     case 'delete': {
       if (!ui.armedDelete) {
@@ -733,8 +776,9 @@ document.addEventListener('click', async (ev) => {
 
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape' && $('#layer').classList.contains('open')) closeSheet();
-  if (ui.form && /^[0-9.]$/.test(e.key) && document.activeElement && document.activeElement.id !== 'fDesc') pressKey(e.key);
-  if (ui.form && e.key === 'Backspace' && document.activeElement && document.activeElement.id !== 'fDesc') pressKey('del');
+  const typing = document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName) && document.activeElement.type !== 'date';
+  if (ui.form && !typing && /^[0-9.]$/.test(e.key)) pressKey(e.key);
+  if (ui.form && !typing && e.key === 'Backspace') pressKey('del');
 });
 
 // ---------------------------------------------------------------- boot

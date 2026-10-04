@@ -93,6 +93,8 @@ function push_(ops) {
 
 function applyOp_(op) {
   if (!op || !op.id) throw new Error('Bad operation.');
+  if (op.type === 'addCategory') return addCategory_(op.name);
+  if (op.type === 'addSub') return addSub_(op.category, op.name);
   var loc = findById_(op.id);
   if (op.type === 'delete') {
     if (loc) loc.sheet.deleteRow(loc.row);
@@ -261,7 +263,10 @@ function setupAfterImport() {
 
 // ------------------------------------------------------------------ rows
 
+var _catsCache = null;   // one Categories read per request
+
 function readCategories_() {
+  if (_catsCache) return _catsCache;
   var sh = SpreadsheetApp.getActive().getSheetByName('Categories');
   var lastCol = sh.getLastColumn();
   var lastRow = sh.getLastRow();
@@ -278,7 +283,65 @@ function readCategories_() {
     cats[name] = subs;
     order.push(name);
   }
-  return { map: cats, order: order };
+  _catsCache = { map: cats, order: order };
+  return _catsCache;
+}
+
+// ---- adding categories / sub-categories (written into the Categories sheet, same layout as the Excel file)
+
+function cleanName_(n) {
+  n = String(n || '').replace(/\s+/g, ' ').trim();
+  if (!n) throw new Error('Name cannot be empty.');
+  if (n.length > 30) throw new Error('Name is too long (30 characters max).');
+  return n;
+}
+
+function copyFormat_(from, to) {
+  try { from.copyTo(to, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false); } catch (e) { /* cosmetic only */ }
+}
+
+function lastFilledRow_(sh, col) {
+  var n = sh.getLastRow();
+  if (n < 1) return 0;
+  var vals = sh.getRange(1, col, n, 1).getValues();
+  for (var i = vals.length - 1; i >= 0; i--) if (String(vals[i][0]).trim() !== '') return i + 1;
+  return 0;
+}
+
+function addCategory_(name) {
+  name = cleanName_(name);
+  var low = name.toLowerCase();
+  if (low === 'income' || low === 'categories') throw new Error('"' + name + '" is reserved.');
+  var cats = readCategories_();
+  for (var i = 0; i < cats.order.length; i++) if (cats.order[i].toLowerCase() === low) return;   // already there (retry-safe)
+  var sh = SpreadsheetApp.getActive().getSheetByName('Categories');
+  var lastCol = sh.getLastColumn();
+  var col = lastCol + 1;                                   // new column after the last one (Income stays in place)
+  sh.getRange(1, col).setValue(name);
+  copyFormat_(sh.getRange(1, lastCol), sh.getRange(1, col));
+  var listRow = lastFilledRow_(sh, 1) + 1;                 // also list it in column A, like the Excel CategoryList
+  sh.getRange(listRow, 1).setValue(name);
+  if (listRow > 2) copyFormat_(sh.getRange(listRow - 1, 1), sh.getRange(listRow, 1));
+  _catsCache = null;
+}
+
+function addSub_(category, name) {
+  name = cleanName_(name);
+  var cats = readCategories_();
+  if (!cats.map[category]) throw new Error('Unknown category "' + category + '".');
+  var low = name.toLowerCase();
+  var subs = cats.map[category];
+  for (var i = 0; i < subs.length; i++) if (subs[i].toLowerCase() === low) return;   // already there (retry-safe)
+  var sh = SpreadsheetApp.getActive().getSheetByName('Categories');
+  var lastCol = sh.getLastColumn();
+  var head = sh.getRange(1, 1, 1, lastCol).getValues()[0];
+  var col = -1;
+  for (var c = 1; c < head.length; c++) if (String(head[c]).trim() === category) { col = c + 1; break; }
+  if (col < 0) throw new Error('Unknown category "' + category + '".');
+  var row = lastFilledRow_(sh, col) + 1;
+  sh.getRange(row, col).setValue(name);
+  if (row > 2) copyFormat_(sh.getRange(row - 1, col), sh.getRange(row, col));
+  _catsCache = null;
 }
 
 function fmtDate_(v) {

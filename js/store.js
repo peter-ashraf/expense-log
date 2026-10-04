@@ -160,12 +160,49 @@ function enqueue(op) {
   scheduleSync();
 }
 
+// ---- categories ----------------------------------------------------------------
+// Server list + categories / sub-categories added on this device that have not synced yet.
+function mergedCategories() {
+  const order = S.snap.categories.order.slice();
+  const map = {};
+  for (const k of Object.keys(S.snap.categories.map)) map[k] = S.snap.categories.map[k].slice();
+  const has = (list, n) => list.some((x) => x.toLowerCase() === n.toLowerCase());
+  for (const o of S.queue) {
+    if (o.type === 'addCategory' && !has(order, o.name)) { order.push(o.name); map[o.name] = []; }
+    else if (o.type === 'addSub' && map[o.category] && !has(map[o.category], o.name)) map[o.category].push(o.name);
+  }
+  return { order, map };
+}
+
+// Returns an error message, or '' when the name is fine.
+export function nameError(name, existing, reserved = []) {
+  const n = String(name || '').replace(/\s+/g, ' ').trim();
+  if (!n) return 'Type a name first.';
+  if (n.length > 30) return 'Keep it under 30 characters.';
+  if (reserved.some((r) => r.toLowerCase() === n.toLowerCase())) return `"${n}" is reserved.`;
+  if (existing.some((x) => x.toLowerCase() === n.toLowerCase())) return `"${n}" already exists.`;
+  return '';
+}
+
+export function addCategory(name) {
+  const n = String(name).replace(/\s+/g, ' ').trim();
+  enqueue({ type: 'addCategory', id: uid(), name: n });
+  return n;
+}
+
+export function addSub(category, name) {
+  const n = String(name).replace(/\s+/g, ' ').trim();
+  enqueue({ type: 'addSub', id: uid(), category, name: n });
+  return n;
+}
+
 // ---- derived view -----------------------------------------------------------
 export function view() {
   if (cache) return cache;
   const map = new Map(S.snap.entries.map((e) => [e.id, e]));
   const pending = new Set();
   for (const o of S.queue) {
+    if (o.type === 'addCategory' || o.type === 'addSub') continue;
     pending.add(o.id);
     if (o.type === 'delete') map.delete(o.id);
     else map.set(o.id, { id: o.id, ...o.data, amount: Number(o.data.amount) });
@@ -194,7 +231,7 @@ export function view() {
     prev = m.available;
     months[k] = m;
   });
-  cache = { months: sorted, by: months, categories: S.snap.categories, pending };
+  cache = { months: sorted, by: months, categories: mergedCategories(), pending };
   return cache;
 }
 

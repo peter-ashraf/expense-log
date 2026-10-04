@@ -157,5 +157,31 @@ ok(dates.every((d, i) => i === 0 || dates[i - 1] <= d), 'sheet rows sorted by da
 const byId = call('pull').entries.find((e) => e.id === 'x4');
 ok(byId && byId.description === 'fine', 'ID travels with its row after sorting');
 
+
+// ---- dynamic categories / sub-categories
+r = call('push', { ops: [{ opId: 'c1', type: 'addCategory', id: 'c-1', name: '  Pets   &  Care ' }] });
+ok(r.applied.join() === 'c1' && r.categories.order.join() === 'Bills,Food,Pets & Care', 'new category appended after the others, name tidied');
+const catsSheet = ss.getSheetByName('Categories');
+ok(catsSheet.get(1, 5) === 'Pets & Care' && catsSheet.get(1, 4) === 'Income', 'written as a new column after Income (Income column untouched)');
+ok(catsSheet.get(2, 1) === 'Pets & Care', 'also listed in column A like the Excel CategoryList');
+r = call('push', { ops: [{ opId: 'c2', type: 'addCategory', id: 'c-2', name: 'pets & care' }] });
+ok(r.applied.join() === 'c2' && r.categories.order.length === 3, 'adding an existing category again is a harmless no-op (retry-safe)');
+r = call('push', { ops: [{ opId: 'c3', type: 'addCategory', id: 'c-3', name: 'Income' }, { opId: 'c4', type: 'addCategory', id: 'c-4', name: '   ' }] });
+ok(r.rejected.length === 2, 'reserved and empty names are rejected');
+r = call('push', { ops: [{ opId: 's1', type: 'addSub', id: 's-1', category: 'Pets & Care', name: 'Vet' }, { opId: 's2', type: 'addSub', id: 's-2', category: 'Food', name: 'Takeaway' }] });
+ok(r.categories.map['Pets & Care'].join() === 'Vet' && r.categories.map.Food.join() === 'Groceries,Coffee,Takeaway', 'sub-categories added under the right columns');
+r = call('push', { ops: [{ opId: 's3', type: 'addSub', id: 's-3', category: 'Food', name: 'takeaway' }, { opId: 's4', type: 'addSub', id: 's-4', category: 'Nope', name: 'x' }] });
+ok(r.applied.join() === 's3' && r.rejected.length === 1 && r.categories.map.Food.length === 3, 'duplicate sub is a no-op; unknown category rejected');
+r = call('push', { ops: [{ opId: 'e1', type: 'add', id: 'pet-1', data: { date: '2026-09-22', description: 'Check-up', amount: 120, type: 'Expense', category: 'Pets & Care', sub: 'Vet' } }] });
+ok(r.applied.join() === 'e1', 'an entry can use a category created moments ago');
+r = call('push', { ops: [
+  { opId: 'n1', type: 'addCategory', id: 'n-1', name: 'Gifts' },
+  { opId: 'n2', type: 'addSub', id: 'n-2', category: 'Gifts', name: 'Birthday' },
+  { opId: 'n3', type: 'add', id: 'gift-1', data: { date: '2026-09-23', description: 'Cake', amount: 60, type: 'Expense', category: 'Gifts', sub: 'Birthday' } }] });
+ok(r.applied.length === 3 && r.entries.some((e) => e.id === 'gift-1'), 'category + sub + entry created offline sync in one batch');
+// legacy rows whose sub-category repeats the category name
+r = call('push', { ops: [{ opId: 'l1', type: 'add', id: 'leg-1', data: { date: '2026-09-24', description: 'Old style', amount: 5, type: 'Expense', category: 'Food', sub: 'Food' } }] });
+ok(r.applied.join() === 'l1', 'legacy "category = sub-category" rows are still accepted');
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

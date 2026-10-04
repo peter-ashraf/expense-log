@@ -69,7 +69,7 @@ function seed() {
     entries.push(e(k + '-14', 'Headphones', 899, 'Expense', 'Shopping', 'Electronics'));
     entries.push(e(k + '-18', 'Fuel', 310, 'Expense', 'Transport', 'Fuel'));
   });
-  return { firstStart: 150000, months: [mk(2), mk(1), mk(0)], entries };
+  return { firstStart: 150000, months: [mk(2), mk(1), mk(0)], entries, cats: JSON.parse(JSON.stringify(CATS)) };
 }
 
 function demoTransport() {
@@ -81,7 +81,7 @@ function demoTransport() {
   };
   const payload = (s) => ({
     ok: true,
-    categories: { order: Object.keys(CATS), map: CATS },
+    categories: { order: Object.keys(s.cats || CATS), map: s.cats || CATS },
     firstStart: s.firstStart,
     months: s.months.slice().sort(),
     entries: s.entries,
@@ -95,9 +95,16 @@ function demoTransport() {
       const applied = [];
       const rejected = [];
       if (action === 'push') {
+        if (!s.cats) s.cats = JSON.parse(JSON.stringify(CATS));
         for (const op of body.ops || []) {
           try {
-            if (op.type === 'delete') {
+            if (op.type === 'addCategory') {
+              if (!op.name || !op.name.trim()) throw new Error('Name cannot be empty.');
+              if (!Object.keys(s.cats).some((k) => k.toLowerCase() === op.name.toLowerCase())) s.cats[op.name] = [];
+            } else if (op.type === 'addSub') {
+              if (!s.cats[op.category]) throw new Error('Unknown category "' + op.category + '".');
+              if (!s.cats[op.category].some((k) => k.toLowerCase() === op.name.toLowerCase())) s.cats[op.category].push(op.name);
+            } else if (op.type === 'delete') {
               s.entries = s.entries.filter((x) => x.id !== op.id);
             } else {
               const d = op.data;
