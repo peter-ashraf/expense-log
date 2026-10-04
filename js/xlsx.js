@@ -376,6 +376,18 @@ function parseSheetCells(xml, shared) {
 
 const MONTH_RX = { jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6, jul: 7, aug: 8, sep: 9, sept: 9, oct: 10, nov: 11, dec: 12 };
 
+export function matchCategory(categories, name) {
+  const n = String(name || '').trim().toLowerCase();
+  if (!n || !categories || !categories.map) return null;
+  return Object.keys(categories.map).find((k) => k.toLowerCase() === n) || null;
+}
+
+export function matchSub(list, name) {
+  const n = String(name || '').trim().toLowerCase();
+  if (!n || !list) return null;
+  return list.find((x) => x.toLowerCase() === n) || null;
+}
+
 export function toIsoDate(v) {
   if (typeof v === 'number' && isFinite(v)) {
     const d = new Date(Date.UTC(1899, 11, 30) + Math.round(v) * 86400000);
@@ -430,7 +442,7 @@ export async function parseWorkbook(buffer, categories) {
     for (const r of sorted) {
       const c = rows.get(r);
       if (c.A === undefined && c.C === undefined) continue;
-      const bad = (reason) => skipped.push({ sheet: sh.name, row: r, reason });
+      const bad = (reason, fix) => skipped.push({ sheet: sh.name, row: r, reason, ...(fix ? { fix } : {}) });
       const date = toIsoDate(c.A);
       if (!date) { bad('unreadable date'); continue; }
       let amount = c.C;
@@ -443,12 +455,16 @@ export async function parseWorkbook(buffer, categories) {
       let category = 'Income';
       let sub = 'Income';
       if (type === 'Expense') {
-        category = String(c.E || '').trim();
-        sub = String(c.F || '').trim();
-        const subs = categories && categories.map ? categories.map[category] : null;
-        if (!subs) { bad(`unknown category "${category}"`); continue; }
+        const typedCat = String(c.E || '').trim();
+        const typedSub = String(c.F || '').trim();
+        const base = { date, description: String(c.B || '').trim(), amount, type, sheet: sh.name, row: r };
+        const canon = matchCategory(categories, typedCat);
+        if (!canon) { bad(`unknown category "${typedCat}"`, { ...base, category: typedCat, sub: typedSub }); continue; }
+        const canonSub = matchSub(categories.map[canon], typedSub) || (typedSub.toLowerCase() === canon.toLowerCase() ? canon : null);
         // older rows sometimes repeat the category as the sub-category; keep those
-        if (!subs.includes(sub) && sub !== category) { bad(`unknown sub-category "${sub}" under ${category}`); continue; }
+        if (!canonSub) { bad(`unknown sub-category "${typedSub}" under ${canon}`, { ...base, category: canon, sub: typedSub }); continue; }
+        category = canon;
+        sub = canonSub;
       }
       entries.push({ date, description: String(c.B || '').trim(), amount, type, category, sub, sheet: sh.name, row: r });
     }

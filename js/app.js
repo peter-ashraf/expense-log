@@ -2,6 +2,7 @@ import * as store from './store.js';
 import { icon, catHue } from './icons.js';
 import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
+import { readCsvEntries, decodeText } from './csv.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -278,6 +279,12 @@ function renderSettings(view) {
       <button class="btn" data-act="sync">${icon('cloud', 18)}Sync now</button>
     </section>
     <section class="card">
+      <div class="card-h"><h3>Appearance</h3></div>
+      <div class="seg three" role="radiogroup" aria-label="Theme">${[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['system', 'System', 'device']]
+        .map(([k, l, ic]) => `<button role="radio" aria-checked="${(st.settings.theme || 'system') === k}" class="${(st.settings.theme || 'system') === k ? 'on' : ''}" data-act="theme" data-v="${k}">${icon(ic, 18)}${l}</button>`).join('')}</div>
+      <p class="muted sm" style="margin-top:10px">System follows your phone’s light/dark setting automatically.</p>
+    </section>
+    <section class="card">
       <div class="card-h"><h3>Preferences</h3></div>
       <label class="field"><span>Currency symbol</span><input id="curInput" maxlength="4" placeholder="e.g. $, €, EGP" value="${esc(st.settings.currency)}" autocomplete="off"></label>
       <p class="muted sm">Shown next to amounts. Doesn’t change your data.</p>
@@ -287,12 +294,13 @@ function renderSettings(view) {
       <button class="btn ghost" data-act="export-xlsx">${icon('download', 18)}Export to Excel (.xlsx)</button>
       <button class="btn ghost" data-act="import-xlsx">${icon('download', 18).replace('class="ic"', 'class="ic flip"')}Import from Excel</button>
       <button class="btn ghost" data-act="export">${icon('download', 18)}Export as CSV</button>
+      <button class="btn ghost" data-act="import-csv">${icon('file', 18)}Import from CSV</button>
       <button class="btn ghost" data-act="trash">${icon('trash', 18)}Recently deleted${st.trash.length ? ` (${st.trash.length})` : ''}</button>
       ${demo ? `<label class="switch"><input type="checkbox" id="offSim" ${localStorage.getItem('el_demo_offline') === '1' ? 'checked' : ''}><span>Simulate offline (demo)</span></label>` : ''}
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v1.7</p>
+    <p class="muted center sm">Credit Card Expenses · v1.8</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -460,7 +468,8 @@ let sheetClosing = false;
 
 // The system status bar takes its colour from <meta name="theme-color">; keep it in step with the dimmed backdrop.
 const themeMetas = $$('meta[name="theme-color"]');
-const themeOriginal = themeMetas.map((m) => m.content);
+const systemThemeColors = themeMetas.map((m) => m.content); // the media-based defaults from index.html
+let themeOriginal = systemThemeColors.slice();
 let themeNow = 0;
 let themeRaf = 0;
 const SCRIM_ALPHA = 0.42;
@@ -490,6 +499,20 @@ function tweenTheme(target) {
   };
   themeRaf = requestAnimationFrame(step);
   setTimeout(() => { if (Math.abs(themeNow - target) > 0.01) paintTheme(target); }, dur + 80); // if frames are throttled
+}
+
+// ---- appearance: light / dark / follow the phone -----------------------------------------------
+const THEME_BG = { light: '#F4F5FA', dark: '#0A0B10' };
+
+function applyTheme(mode) {
+  const root = document.documentElement;
+  if (mode === 'light' || mode === 'dark') { root.setAttribute('data-theme', mode); root.style.colorScheme = mode; }
+  else { root.removeAttribute('data-theme'); root.style.colorScheme = ''; mode = 'system'; }
+  try { localStorage.setItem('el_theme', mode); } catch (e) { /* private mode */ }
+  themeOriginal = mode === 'system' ? systemThemeColors.slice() : themeMetas.map(() => THEME_BG[mode]);
+  const cs = $('meta[name="color-scheme"]');
+  if (cs) cs.content = mode === 'system' ? 'light dark' : mode;
+  paintTheme(themeNow); // re-tint the status bar for the new base colour (keeps any open-sheet dimming)
 }
 
 function setProgress(p) {
@@ -853,34 +876,109 @@ function closeMonthMenu() {
   setTimeout(() => { if (!ui.menuOpen) { root.className = ''; root.innerHTML = ''; } }, reduceMotion ? 0 : 220);
 }
 
-// ---- Excel import ----------------------------------------------------------------------------
+// ---- Import (Excel or CSV) ---------------------------------------------------------------------
 async function readImportFile(file) {
   try {
     toast('Reading ' + file.name + '…');
-    const res = await parseWorkbook(await file.arrayBuffer(), store.view().categories);
-    const v = store.view();
-    const keyOf = (e) => [e.date, e.description, Number(e.amount).toFixed(2), e.type, e.category, e.sub].join('|');
-    const have = new Map();
-    v.months.forEach((k) => v.by[k].entries.forEach((e) => have.set(keyOf(e), (have.get(keyOf(e)) || 0) + 1)));
-    const fresh = [];
-    let dupes = 0;
-    for (const e of res.entries) {
-      const k = keyOf(e);
-      if (have.get(k)) { have.set(k, have.get(k) - 1); dupes++; } else fresh.push(e);
-    }
-    ui.importData = { fresh, dupes, skipped: res.skipped, found: res.entries.length, sheets: res.sheets, name: file.name };
+    const buf = await file.arrayBuffer();
+    const head = new Uint8Array(buf.slice(0, 2));
+    const isZip = head[0] === 0x50 && head[1] === 0x4b; // "PK": an .xlsx / .xlsm
+    const cats = store.view().categories;
+    const res = isZip ? await parseWorkbook(buf, cats) : readCsvEntries(decodeText(buf), cats);
+    const kind = isZip ? 'Excel' : 'CSV';
+    ui.importData = { name: file.name, kind, res, create: false, notes: res.notes || [] };
+    computeImportPlan();
     $('#toast').className = '';
-    openImportPreview();
+    renderImportPreview();
   } catch (err) {
     toast(err.message || 'Could not read that file', 'err');
   }
 }
 
-function openImportPreview() {
+// Works out what an import would do right now: new rows, duplicates, skipped rows, and (optionally) the new
+// categories / sub-categories it would create.
+function computeImportPlan() {
+  const d = ui.importData;
+  const v = store.view();
+  const keyOf = (e) => [e.date, e.description, Number(e.amount).toFixed(2), e.type, e.category, e.sub].join('|');
+  const have = new Map();
+  v.months.forEach((k) => v.by[k].entries.forEach((e) => have.set(keyOf(e), (have.get(keyOf(e)) || 0) + 1)));
+
+  const candidates = d.res.entries.slice();
+  const skipped = [];
+  const rescued = [];
+  let fixable = 0;
+  for (const sk of d.res.skipped) {
+    if (!sk.fix) { skipped.push(sk); continue; }
+    const e = sk.fix;
+    const catOk = !store.nameError(e.category, [], ['Income', 'Categories']);
+    const subOk = !e.sub || !store.nameError(e.sub, []);
+    if (catOk && subOk) {
+      fixable++;
+      if (d.create) { candidates.push(e); rescued.push(e); continue; }
+    }
+    skipped.push(sk);
+  }
+
+  // new categories needed (case-insensitive, first spelling wins)
+  const lc = (x) => String(x).toLowerCase();
+  const existing = new Map(v.categories.order.map((c) => [lc(c), c]));
+  const newCats = new Map();   // lower -> { name, subs: Map(lower -> name) }
+  const canonicalCat = new Map();
+  const fresh = [];
+  let dupes = 0;
+  for (const e0 of candidates) {
+    const e = { ...e0 };
+    if (e.type === 'Expense') {
+      const cl = lc(e.category);
+      const known = existing.get(cl);
+      if (known) {
+        e.category = known;
+        const subs = v.categories.map[known];
+        const hit = subs.find((x) => lc(x) === lc(e.sub));
+        if (hit) e.sub = hit;
+        else if (!e.sub || lc(e.sub) === cl) e.sub = known;
+        else {
+          const nc = newCats.get(cl) || { name: known, subs: new Map(), existing: true };
+          newCats.set(cl, nc);
+          if (!nc.subs.has(lc(e.sub))) nc.subs.set(lc(e.sub), e.sub);
+          e.sub = nc.subs.get(lc(e.sub));
+        }
+      } else {
+        const nc = newCats.get(cl) || { name: e.category, subs: new Map(), existing: false };
+        newCats.set(cl, nc);
+        e.category = nc.name;
+        if (!e.sub) e.sub = e.category;
+        else {
+          if (!nc.subs.has(lc(e.sub))) nc.subs.set(lc(e.sub), e.sub);
+          e.sub = nc.subs.get(lc(e.sub));
+        }
+      }
+    }
+    const k = keyOf(e);
+    if (have.get(k)) { have.set(k, have.get(k) - 1); dupes++; } else fresh.push(e);
+  }
+  d.fresh = fresh;
+  d.dupes = dupes;
+  d.skipped = skipped;
+  d.fixable = fixable;
+  d.rescued = rescued.length;
+  d.newCats = [...newCats.values()].filter((c) => !c.existing || c.subs.size);
+  d.newCatCount = d.newCats.filter((c) => !c.existing).length;
+  d.newSubCount = d.newCats.reduce((n, c) => n + c.subs.size, 0);
+}
+
+function renderImportPreview() {
   const d = ui.importData;
   const byMonth = {};
   d.fresh.forEach((e) => { const k = e.date.slice(0, 7); byMonth[k] = (byMonth[k] || 0) + 1; });
   const months = Object.keys(byMonth).sort();
+  const createLine = d.fixable
+    ? `<label class="switch block"><input type="checkbox" id="createMissing" ${d.create ? 'checked' : ''}><span>Create the missing categories and sub-categories from this file <small class="muted">(${d.fixable} row${d.fixable === 1 ? '' : 's'} use names the app doesn’t have yet)</small></span></label>`
+    : '';
+  const planLine = d.create && (d.newCatCount || d.newSubCount)
+    ? `<p class="muted sm">Will add ${d.newCatCount ? `${d.newCatCount} categor${d.newCatCount === 1 ? 'y' : 'ies'}` : ''}${d.newCatCount && d.newSubCount ? ' and ' : ''}${d.newSubCount ? `${d.newSubCount} sub-categor${d.newSubCount === 1 ? 'y' : 'ies'}` : ''}: ${esc(d.newCats.map((c) => c.name + (c.subs.size ? ' (' + [...c.subs.values()].join(', ') + ')' : '')).join('; '))}.</p>`
+    : '';
   const body = `<div class="imp">
       <p class="imp-file">${esc(d.name)}</p>
       <div class="imp-stats">
@@ -888,11 +986,20 @@ function openImportPreview() {
         <div><b>${d.dupes}</b><span>already here</span></div>
         <div><b>${d.skipped.length}</b><span>skipped</span></div>
       </div>
+      ${d.notes.map((n) => `<p class="note-line sm">${esc(n)}</p>`).join('')}
+      ${createLine}${planLine}
       ${months.length ? `<div class="lbl">Will be added</div>${months.map((k) => `<div class="kv"><span>${esc(keyLabel(k))}</span><b>${byMonth[k]}</b></div>`).join('')}` : '<p class="muted pad">Nothing new to add — everything in this file is already in the app.</p>'}
       ${d.skipped.length ? `<div class="lbl">Skipped rows</div>${d.skipped.slice(0, 6).map((x) => `<p class="warn sm">${esc(x.sheet)} row ${x.row}: ${esc(x.reason)}</p>`).join('')}${d.skipped.length > 6 ? `<p class="muted sm">…and ${d.skipped.length - 6} more</p>` : ''}` : ''}
       <p class="muted sm">Duplicates are detected by date, description, amount and category, so importing the same file twice is safe.</p>
     </div>`;
-  present('Import from Excel', '', body, 'compact', `<button class="btn primary big" data-act="do-import" ${d.fresh.length ? '' : 'disabled'}>${d.fresh.length ? `Import ${d.fresh.length} transaction${d.fresh.length === 1 ? '' : 's'}` : 'Nothing to import'}</button>`);
+  const foot = `<button class="btn primary big" data-act="do-import" ${d.fresh.length ? '' : 'disabled'}>${d.fresh.length ? `Import ${d.fresh.length} transaction${d.fresh.length === 1 ? '' : 's'}` : 'Nothing to import'}</button>`;
+  const open = $('.sheet');
+  if (open && $('.imp', open)) { // update in place (e.g. after toggling the option)
+    $('.sheet-body', open).innerHTML = body;
+    $('.sheet-foot', open).innerHTML = foot;
+  } else {
+    present(`Import from ${d.kind}`, '', body, 'compact', foot);
+  }
 }
 
 // ---- Recently deleted ------------------------------------------------------------------------
@@ -950,6 +1057,13 @@ document.addEventListener('click', async (ev) => {
     case 'type': ui.form.type = el.dataset.t; ui.adding = null; haptic(6); refreshForm(); break;
     case 'cat': ui.form.category = el.dataset.v; ui.form.sub = ''; if (ui.adding === 'sub') ui.adding = null; haptic(6); refreshForm(); break;
     case 'sub': ui.form.sub = el.dataset.v; haptic(6); refreshForm(); break;
+    case 'theme': {
+      const mode = el.dataset.v;
+      store.saveSettings({ theme: mode });
+      applyTheme(mode);
+      haptic(8);
+      break;
+    }
     case 'new-cat': ui.adding = 'cat'; ui.newName = ''; refreshForm(); break;
     case 'new-sub': ui.adding = 'sub'; ui.newName = ''; refreshForm(); break;
     case 'new-cancel': ui.adding = null; ui.newName = ''; refreshForm(); break;
@@ -992,10 +1106,13 @@ document.addEventListener('click', async (ev) => {
       } catch (err) { toast('Could not create the Excel file: ' + (err.message || err), 'err'); }
       break;
     }
-    case 'import-xlsx': {
+    case 'import-xlsx':
+    case 'import-csv': {
       const input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12';
+      input.accept = act === 'import-csv'
+        ? '.csv,.txt,text/csv,text/plain'
+        : '.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12';
       input.addEventListener('change', () => { if (input.files && input.files[0]) readImportFile(input.files[0]); });
       input.click();
       break;
@@ -1003,6 +1120,12 @@ document.addEventListener('click', async (ev) => {
     case 'do-import': {
       const d = ui.importData;
       if (!d || !d.fresh.length) { closeSheet(); break; }
+      if (d.create) {
+        for (const c of d.newCats) {
+          if (!c.existing) store.addCategory(c.name);
+          for (const sub of c.subs.values()) store.addSub(c.name, sub);
+        }
+      }
       store.addMany(d.fresh);
       ui.importData = null;
       haptic(14);
@@ -1027,6 +1150,14 @@ document.addEventListener('click', async (ev) => {
       try { await store.connect({ demo: true }); toast('Demo loaded', 'ok'); } catch (e) { toast(e.message, 'err'); }
       break;
     default:
+  }
+});
+
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'createMissing' && ui.importData) {
+    ui.importData.create = e.target.checked;
+    computeImportPlan();
+    renderImportPreview();
   }
 });
 
@@ -1092,6 +1223,7 @@ setInterval(() => { if (document.visibilityState === 'visible') store.sync(); },
 
 (async function boot() {
   await store.init();
+  applyTheme(store.getState().settings.theme || 'system');
   // One-tap setup link: …/#u=<api url>&k=<key>
   if (location.hash.length > 1) {
     const p = new URLSearchParams(location.hash.slice(1));

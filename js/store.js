@@ -10,7 +10,7 @@ const S = {
   cfg: null,
   snap: { categories: { order: [], map: {} }, firstStart: 0, months: [], entries: [] },
   queue: [],
-  settings: { currency: '' },
+  settings: { currency: '', theme: 'system' },
   status: 'idle', // idle | syncing | synced | offline | error
   error: '',
   lastSync: 0,

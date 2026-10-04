@@ -25,7 +25,7 @@
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
     --bg: #0A0B10;
     --bg-2: #0F1118;
     --surface: #14161F;
@@ -47,6 +47,28 @@
     --hero-c: #9333EA;
     color-scheme: dark;
   }
+}
+:root[data-theme="dark"] {
+  --bg: #0A0B10;
+  --bg-2: #0F1118;
+  --surface: #14161F;
+  --surface-2: #1A1D29;
+  --line: rgba(255, 255, 255, .08);
+  --text: #F2F3F8;
+  --muted: #8D93A8;
+  --track: #232636;
+  --accent: #7C7CFF;
+  --accent-2: #A78BFA;
+  --pos: #3DDC97;
+  --neg: #FF6B78;
+  --warn: #F5B544;
+  --shadow: 0 1px 0 rgba(255, 255, 255, .03) inset, 0 10px 30px rgba(0, 0, 0, .35);
+  --glass: rgba(20, 22, 31, .78);
+  --scrim: rgba(0, 0, 0, .6);
+  --hero-a: #4338CA;
+  --hero-b: #6D28D9;
+  --hero-c: #9333EA;
+  color-scheme: dark;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -147,7 +169,8 @@ body.onboard #topbar { display: none; }
 .row + .row { border-top: 1px solid var(--line); border-radius: 0; }
 .bubble { width: 42px; height: 42px; border-radius: 14px; display: grid; place-items: center; flex: none;
   color: hsl(var(--h, 250) 75% 52%); background: hsl(var(--h, 250) 80% 55% / .14); }
-@media (prefers-color-scheme: dark) { .bubble { color: hsl(var(--h, 250) 85% 72%); background: hsl(var(--h, 250) 80% 60% / .16); } }
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .bubble { color: hsl(var(--h, 250) 85% 72%); background: hsl(var(--h, 250) 80% 60% / .16); } }
+:root[data-theme="dark"] .bubble { color: hsl(var(--h, 250) 85% 72%); background: hsl(var(--h, 250) 80% 60% / .16); }
 .bubble.sm { width: 32px; height: 32px; border-radius: 11px; }
 .row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .row-t { font-weight: 620; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
@@ -409,3 +432,12 @@ body.onboard #view { padding: 0 16px 24px; }
 .cal-day.sel::after { background: #fff; }
 .cal-quick { display: flex; justify-content: center; margin-top: 14px; }
 .cal-quick .chip { color: var(--accent); }
+
+/* appearance switcher + CSV bits */
+.seg.three { grid-template-columns: repeat(3, 1fr); margin-bottom: 0; }
+.seg.three button { display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14.5px; }
+.seg.three button.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.switch.block { margin: 14px 0 4px; align-items: flex-start; line-height: 1.35; }
+.switch.block input { margin-top: 2px; flex: none; }
+
+.note-line { margin: 8px 0; padding: 8px 10px; border-radius: 12px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
