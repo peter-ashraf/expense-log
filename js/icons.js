@@ -25,6 +25,7 @@ const P = {
   cloud: 'M7 18a4 4 0 0 1-.6-8A6 6 0 0 1 18 11a3.5 3.5 0 0 1-.5 7z',
   calendar: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
   backspace: 'M9 5h11v14H9l-6-7zM12.5 9.5l5 5M17.5 9.5l-5 5',
+  close: 'M6 6l12 12M18 6L6 18',
   download: 'M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14',
 };
 

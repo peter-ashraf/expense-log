@@ -333,15 +333,7 @@ function openSheet(id) {
     ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description }
     : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '' };
   ui.armedDelete = false;
-  const layer = $('#layer');
-  layer.innerHTML = `<div class="scrim" data-act="close"></div>
-    <div class="sheet" role="dialog" aria-modal="true">
-      <div class="grab"></div>
-      <div class="sheet-h">
-        <h2>${e ? 'Edit transaction' : 'New transaction'}</h2>
-        ${e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : ''}
-      </div>
-      <div class="seg" id="fType"></div>
+  const body = `<div class="seg" id="fType"></div>
       <div class="amt" id="fAmt"></div>
       <div class="keypad" id="keypad">${KEYS.map((k) => `<button data-act="key" data-k="${k}" aria-label="${k === 'del' ? 'Delete digit' : k}">${k === 'del' ? icon('backspace', 22) : k}</button>`).join('')}</div>
       <div id="fCatWrap"><div class="lbl">Category</div><div class="chips wrap" id="fCats"></div>
@@ -350,22 +342,152 @@ function openSheet(id) {
         <label class="date-pill">${icon('calendar', 18)}<span id="fDateLbl"></span><input type="date" id="fDate" value="${esc(ui.form.date)}"></label>
         <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label>
       </div>
-      <button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>
-    </div>`;
-  layer.className = 'open';
-  document.body.classList.add('noscroll');
+      <button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>`;
+  present(e ? 'Edit transaction' : 'New transaction',
+    e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : '', body);
   $('#fDate').addEventListener('change', (ev) => { ui.form.date = ev.target.value; refreshForm(); });
   $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; });
   refreshForm();
-  requestAnimationFrame(() => $('.sheet').classList.add('in'));
+}
+
+// ---- iOS-style sheet presentation ------------------------------------------------------------
+// Opens with a spring slide-up while the app behind scales back; dragging follows the finger
+// (from the header, or from anywhere once the content is scrolled to the top); a flick or a long
+// pull dismisses it, a short pull springs back.
+let sheetClosing = false;
+
+function setProgress(p) { $('#app').style.setProperty('--p', String(Math.max(0, Math.min(1, p)))); }
+
+function present(title, headExtra, body, cls = '') {
+  const layer = $('#layer');
+  sheetClosing = false;
+  layer.className = 'open';
+  layer.innerHTML = `<div class="scrim" data-act="close"></div>
+    <div class="sheet ${cls}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
+      <div class="drag"><div class="grab"></div>
+        <div class="sheet-h">
+          <button class="close" data-act="close" aria-label="Close">${icon('close', 20, 2.2)}</button>
+          <h2>${esc(title)}</h2>
+          <div class="hbtns">${headExtra}</div>
+        </div>
+      </div>
+      <div class="sheet-body">${body}</div>
+    </div>`;
+  document.body.classList.add('noscroll');
+  const sheet = $('.sheet');
+  const scrim = $('.scrim');
+  sheet.style.transform = 'translateY(110%)';
+  void sheet.offsetHeight; // commit the starting position
+  let started = false;
+  const go = () => {
+    if (started || !sheet.isConnected) return;
+    started = true;
+    sheet.classList.add('animating');
+    sheet.style.transform = 'translateY(0)';
+    scrim.style.opacity = '1';
+    setProgress(1);
+  };
+  requestAnimationFrame(go);
+  setTimeout(go, 60); // fallback if the browser delays animation frames
+  attachDrag(sheet, scrim);
+}
+
+function attachDrag(sheet, scrim) {
+  const app = $('#app');
+  const handle = $('.drag', sheet);
+  const body = $('.sheet-body', sheet);
+  let startY = 0;
+  let dy = 0;
+  let vel = 0;
+  let lastY = 0;
+  let lastT = 0;
+  let active = false;
+
+  const begin = (y) => {
+    active = true;
+    startY = lastY = y;
+    lastT = performance.now();
+    dy = 0;
+    vel = 0;
+    app.classList.add('dragging');
+    sheet.classList.remove('animating');
+  };
+  const move = (y) => {
+    dy = y - startY;
+    const now = performance.now();
+    vel = (y - lastY) / Math.max(1, now - lastT); // px per ms, positive = downward
+    lastY = y;
+    lastT = now;
+    const ty = dy >= 0 ? dy : -Math.sqrt(-dy) * 3; // rubber-band when pulled upward
+    sheet.style.transform = `translateY(${ty}px)`;
+    const p = 1 - Math.max(0, dy) / (sheet.offsetHeight || 1);
+    scrim.style.opacity = String(Math.max(0, p));
+    setProgress(p);
+  };
+  const end = () => {
+    if (!active) return;
+    active = false;
+    app.classList.remove('dragging');
+    if (dy > (sheet.offsetHeight || 1) * 0.25 || vel > 0.5) { closeSheet(); return; }
+    sheet.classList.add('animating'); // spring back
+    sheet.style.transform = 'translateY(0)';
+    scrim.style.opacity = '1';
+    setProgress(1);
+    haptic(6);
+  };
+
+  // 1) the header / grabber: pointer drag (touch-action: none)
+  handle.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
+    try { handle.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or already released */ }
+    begin(e.clientY);
+  });
+  handle.addEventListener('pointermove', (e) => { if (active) move(e.clientY); });
+  handle.addEventListener('pointerup', end);
+  handle.addEventListener('pointercancel', end);
+
+  // 2) the content: once scrolled to the very top, pulling down drags the whole sheet
+  let t0 = 0;
+  let tracking = false;
+  let pulling = false;
+  body.addEventListener('touchstart', (e) => {
+    t0 = e.touches[0].clientY;
+    tracking = body.scrollTop <= 0;
+    pulling = false;
+  }, { passive: true });
+  body.addEventListener('touchmove', (e) => {
+    const y = e.touches[0].clientY;
+    if (!pulling) {
+      if (!(tracking && body.scrollTop <= 0 && y - t0 > 6)) return;
+      pulling = true;
+      begin(y);
+    }
+    e.preventDefault(); // we own the gesture now; stop the page from scrolling/bouncing
+    move(y);
+  }, { passive: false });
+  const touchDone = () => { if (pulling) { pulling = false; end(); } tracking = false; };
+  body.addEventListener('touchend', touchDone);
+  body.addEventListener('touchcancel', touchDone);
 }
 
 function closeSheet() {
-  const s = $('.sheet');
-  if (s) s.classList.remove('in');
-  $('#layer').classList.add('closing');
-  setTimeout(() => { $('#layer').className = ''; $('#layer').innerHTML = ''; document.body.classList.remove('noscroll'); }, reduceMotion ? 0 : 240);
+  const sheet = $('.sheet');
+  const layer = $('#layer');
+  if (!sheet || sheetClosing) return;
+  sheetClosing = true;
+  const scrim = $('.scrim');
+  $('#app').classList.remove('dragging');
+  sheet.classList.add('animating');
+  sheet.style.transform = 'translateY(110%)';
+  if (scrim) scrim.style.opacity = '0';
+  setProgress(0);
   ui.form = null;
+  setTimeout(() => {
+    layer.className = '';
+    layer.innerHTML = '';
+    document.body.classList.remove('noscroll');
+    sheetClosing = false;
+  }, reduceMotion ? 0 : 480);
 }
 
 function fmtTyped(s) {
@@ -410,6 +532,7 @@ function pressKey(k) {
 
 function shake() {
   const s = $('.sheet');
+  if (!s) return;
   s.classList.remove('shake');
   void s.offsetWidth;
   s.classList.add('shake');
@@ -439,12 +562,7 @@ function saveForm() {
 
 function openMonths() {
   const v = store.view();
-  $('#layer').innerHTML = `<div class="scrim" data-act="close"></div><div class="sheet small">
-    <div class="grab"></div><div class="sheet-h"><h2>Choose month</h2></div>
-    <div class="mlist">${v.months.slice().reverse().map((k) => `<button class="mrow ${k === ui.month ? 'on' : ''}" data-act="pick-month" data-key="${k}"><span>${esc(keyLabel(k))}</span><b>${esc(fmt(v.by[k].available))}</b>${k === ui.month ? icon('check', 18, 2.4) : ''}</button>`).join('')}</div></div>`;
-  $('#layer').className = 'open';
-  document.body.classList.add('noscroll');
-  requestAnimationFrame(() => $('.sheet').classList.add('in'));
+  present('Choose month', '', `<div class="mlist">${v.months.slice().reverse().map((k) => `<button class="mrow ${k === ui.month ? 'on' : ''}" data-act="pick-month" data-key="${k}"><span>${esc(keyLabel(k))}</span><b>${esc(fmt(v.by[k].available))}</b>${k === ui.month ? icon('check', 18, 2.4) : ''}</button>`).join('')}</div>`, 'small');
 }
 
 // ---------------------------------------------------------------- events
@@ -484,8 +602,9 @@ document.addEventListener('click', async (ev) => {
       if (!ui.armedDelete) {
         ui.armedDelete = true;
         el.classList.add('armed');
-        el.innerHTML = 'Tap again to delete';
-        setTimeout(() => { ui.armedDelete = false; if (el.isConnected) { el.classList.remove('armed'); el.innerHTML = icon('trash', 20); } }, 3000);
+        toast('Tap the red button again to delete');
+        haptic(12);
+        setTimeout(() => { ui.armedDelete = false; if (el.isConnected) el.classList.remove('armed'); }, 3000);
       } else {
         store.deleteEntry(ui.form.id);
         haptic(18);
@@ -521,6 +640,20 @@ document.addEventListener('keydown', (e) => {
 });
 
 // ---------------------------------------------------------------- boot
+function fitApp() {
+  const app = $('#app');
+  let h = window.innerHeight;
+  const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  if (standalone && window.innerHeight > window.innerWidth) {
+    const full = Math.max(screen.width, screen.height);
+    if (full - h > 0 && full - h <= 100) h = full; // the page view stops short of the bottom safe area
+  }
+  app.style.height = h + 'px';
+}
+fitApp();
+window.addEventListener('resize', fitApp);
+window.addEventListener('orientationchange', () => setTimeout(fitApp, 250));
+
 let lastStatusKey = '';
 function render() {
   const st = store.getState();
@@ -563,5 +696,12 @@ setInterval(() => { if (document.visibilityState === 'visible') store.sync(); },
   }
   render();
   store.sync();
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    const had = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (had && !reloaded) { reloaded = true; location.reload(); }
+    });
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
 })();
