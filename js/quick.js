@@ -78,30 +78,31 @@ const KW = [
   { re: /\bsubscription\b|\bmembership\b|اشتراك/, cat: 'Subscriptions', subs: ['Other Services'], vague: true },
 
   { re: /\b(vodafone|orange|etisalat|telecom egypt|recharge|top ?up|airtime)\b|\bmobile (bill|credit|balance)\b|فودافون|اورنج|اتصالات|شحن|رصيد|كارت شحن/, cat: 'Bills', subs: ['Mobile'] },
-  { re: /\b(internet|wifi|wi-fi|adsl|fiber|tedata|te data)\b|انترنت|الانترنت|واي ?فاي/, cat: 'Bills', subs: ['Internet'] },
-  { re: /\b(electric|electricity|power bill)\b|كهرباء|الكهرباء/, cat: 'Bills', subs: ['Electricity'] },
+  { re: /\b(internet|wifi|wi-fi|adsl|fiber|tedata|te data)\b|انترنت|الانترنت|واي ?فاي|راوتر|(?:^| )(?:ال)?نت(?= |$)|فاتوره النت/, cat: 'Bills', subs: ['Internet'] },
+  { re: /\b(electric|electricity|power bill)\b|كهرباء|الكهرباء|كهربا|النور|فاتوره النور/, cat: 'Bills', subs: ['Electricity'] },
   { re: /\bwater (bill|company)\b|\bwater\b|مياه|ميه/, cat: 'Bills', subs: ['Water'] },
   { re: /\blandline\b|تليفون ارضي|خط ارضي/, cat: 'Bills', subs: ['Landline'] },
   { re: /\bbill payment\b|\bbill\b|\binvoice\b|فاتوره|فواتير/, cat: 'Bills', subs: ['Mobile'], vague: true },
 
-  { re: /\b(coffee|cafe|starbucks|costa|cilantro|espresso|latte|cappuccino|tim hortons|brewing)\b|قهوه|كافيه|ستاربكس|نسكافيه/, cat: 'Food', subs: ['Coffee'] },
-  { re: /\b(carrefour|spinneys|hyper ?one|kazyon|seoudi|metro market|gourmet|supermarket|grocer\w*|groceries|vegetables?|fruits?|bakery|milk|bread|eggs|cheese)\b|سوبر ?ماركت|ماركت|كارفور|خضار|فاكهه|عيش|لبن|بقاله|هايبر|بقال|جبنه|بيض/, cat: 'Food', subs: ['Groceries'] },
-  { re: /\b(restaurant|dinner|lunch|breakfast|pizza|burger|kfc|mcdonalds?|mc ?donald'?s|hardees?|shawarma|koshary|kushari|talabat|elmenus|mrsool|sushi|cook ?door|food|meal|snack|ice cream)\b|مطعم|غدا|عشا|فطار|بيتزا|برجر|شاورما|كشري|طلبات|اكل/, cat: 'Food', subs: ['Dining Out'] },
+  { re: /\b(coffee|cafe|starbucks|costa|cilantro|espresso|latte|cappuccino|tim hortons|brewing)\b|قهوه|كافيه|ستاربكس|نسكافيه|شاي|عصير|كابتشينو|لاتيه|ينسون|سحلب/, cat: 'Food', subs: ['Coffee'] },
+  { re: /\b(carrefour|spinneys|hyper ?one|kazyon|seoudi|metro market|gourmet|supermarket|grocer\w*|groceries|vegetables?|fruits?|bakery|milk|bread|eggs|cheese)\b|سوبر ?ماركت|ماركت|كارفور|خضار|فاكهه|عيش|لبن|بقاله|لحمه|فراخ|سمك|مكرونه|زيت|فول|اولاد رجب|خير زمان|سعودي|هايبر|بقال|جبنه|بيض/, cat: 'Food', subs: ['Groceries'] },
+  { re: /\b(restaurant|dinner|lunch|breakfast|pizza|burger|kfc|mcdonalds?|mc ?donald'?s|hardees?|shawarma|koshary|kushari|talabat|elmenus|mrsool|sushi|cook ?door|food|meal|snack|ice cream)\b|مطعم|غدا|عشا|فطار|بيتزا|برجر|شاورما|كشري|طلبات|اكل|سندوتش|ساندوتش|كباب|كفته|حلويات|بقشيش|طعميه|مشويات|فرخه|حلو/, cat: 'Food', subs: ['Dining Out'] },
 
   { re: /\b(fuel|petrol|gasoline|gas station|benzine|mobil|shell|totalenergies|wataniya|misr petroleum|chillout|cairo oil|coop petrol|petrotrade|emarat misr)\b|بنزين|بنزينه|وقود|موبيل|وطنيه|سولار/, cat: 'Transport', subs: ['Fuel'] },
   { re: /\b(taxi|uber|careem|indrive|indriver|swvl|cab|ride)\b|تاكسي|اوبر|كريم|انسايد/, cat: 'Transport', subs: ['Taxi'] },
-  { re: /\b(metro|subway|bus|microbus|train|tram|parking|toll|ticket)\b|مترو|اتوبيس|ميكروباص|قطر|موقف|جراج|بوابه/, cat: 'Transport', subs: ['Public Transit'] },
+  { re: /\b(metro|subway|bus|microbus|train|tram|parking|toll|ticket)\b|مترو|اتوبيس|ميكروباص|قطر|موقف|جراج|بوابه|توك ?توك|تكتك|مواصلات|ترام|ركوبه|سوبر ?جيت|اتوبيس/, cat: 'Transport', subs: ['Public Transit'] },
 
-  { re: /\b(clothes|clothing|shirt|shoes|sneakers|zara|h&m|defacto|lc waikiki|nike|adidas|jacket|jeans|dress|trousers)\b|هدوم|ملابس|حذاء|جزمه|قميص|بنطلون/, cat: 'Shopping', subs: ['Clothes'] },
+  { re: /\b(clothes|clothing|shirt|shoes|sneakers|zara|h&m|defacto|lc waikiki|nike|adidas|jacket|jeans|dress|trousers)\b|هدوم|ملابس|حذاء|جزمه|قميص|بنطلون|لبس|شنطه|بدله|فستان|تيشيرت|شراب/, cat: 'Shopping', subs: ['Clothes'] },
   { re: /\b(phone|laptop|charger|headphones|earbuds|airpods|keyboard|mouse|monitor|tv|electronics|b\.?tech|raya|2b|samsung|apple store|noon electronics)\b|موبايل|لابتوب|شاحن|سماعه|شاشه/, cat: 'Shopping', subs: ['Electronics'] },
   { re: /\b(ikea|household|furniture|detergent|cleaning|kitchen|bedding|towels?)\b|منظفات|عفش|مطبخ|مفروشات/, cat: 'Shopping', subs: ['Household'] },
   { re: /\b(amazon|noon|jumia|aliexpress|shein|temu|ebay|souq|marketpl\w*|marketplace)\b|امازون|نون|جوميا/, cat: 'Shopping', subs: ['Household', 'Electronics', 'Clothes'], vague: true },
 
-  { re: /\b(cinema|movie|movies|vox|imax|playstation|ps5|steam|xbox|game|games|concert|theatre|theater)\b|سينما|فيلم|العاب|لعبه/, cat: 'Entertainment', subs: ['Cinema', 'Games'] },
-  { re: /\b(pharmacy|pharma|medicine|vitamins?|ezaby|el ezaby|seif|rushdy|dawaa)\b|صيدليه|دواء|علاج|عزبي|سيف/, cat: 'Health', subs: ['Pharmacy'] },
-  { re: /\b(doctor|clinic|hospital|dentist|dental|lab|x-?ray|checkup|check-up)\b|دكتور|عياده|مستشفي|دكتوره|تحاليل|اشعه/, cat: 'Health', subs: ['Doctor Visits'] },
+  { re: /\b(cinema|movie|movies|vox|imax|playstation|ps5|steam|xbox|game|games|concert|theatre|theater)\b|سينما|فيلم|العاب|لعبه|مسرح|حفله|بلايستيشن/, cat: 'Entertainment', subs: ['Cinema', 'Games'] },
+  { re: /\b(pharmacy|pharma|medicine|vitamins?|ezaby|el ezaby|seif|rushdy|dawaa)\b|صيدليه|دواء|دوا|علاج|عزبي|سيف|فيتامين/, cat: 'Health', subs: ['Pharmacy'] },
+  { re: /\b(doctor|clinic|hospital|dentist|dental|lab|x-?ray|checkup|check-up)\b|دكتور|عياده|مستشفي|دكتوره|تحاليل|اشعه|كشف|اسنان|نظاره|نظارات/, cat: 'Health', subs: ['Doctor Visits'] },
   { re: /\b(gym|fitness|crossfit|yoga)\b|جيم|نادي/, cat: 'Health', subs: ['Gym'] },
-  { re: /\b(course|udemy|coursera|book|books|tuition|school|university|lesson)\b|كورس|كتاب|كتب|مدرسه|جامعه|دروس|درس/, cat: 'Education', subs: ['Courses', 'Books', 'Tuition'] },
+  { re: /\b(barber|haircut|salon|gift|donation|charity)\b|حلاق|كوافير|صالون|صدقه|زكاه|هديه|عيديه|تبرع/, cat: 'Miscellaneous', subs: ['Other'] },
+  { re: /\b(course|udemy|coursera|book|books|tuition|school|university|lesson)\b|كورس|كتاب|كتب|مدرسه|جامعه|دروس|درس|مصروفات|مصاريف المدرسه|ملازم|سنتر/, cat: 'Education', subs: ['Courses', 'Books', 'Tuition'] },
   { re: /\b(flight|airline|egyptair|hotel|booking\.com|airbnb|tour|visa fee|airport)\b|طيران|فندق|رحله|سفر|مطار/, cat: 'Travel', subs: ['Flights', 'Hotels', 'Tours'] },
 ];
 
@@ -190,24 +191,6 @@ function decide(text, ctx, h) {
 // can't be mistaken for the price; anything from eleven up, or with tens / hundreds / thousands, is converted.
 const W_UNITS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
 const W_TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
-const W_ANY = Object.keys(W_UNITS).concat(Object.keys(W_TENS), ['hundred', 'thousand']).join('|');
-const W_RUN = new RegExp('\\b(?:a\\s+)?(?:(?:' + W_ANY + ')\\b(?:[\\s-]+and)?[\\s-]*)+(?<![\\s-])', 'g');
-
-export function wordsToDigits(text) {
-  return String(text).replace(W_RUN, (run) => {
-    const words = run.toLowerCase().split(/[\s-]+/).filter((w) => w && w !== 'and' && w !== 'a');
-    if (!words.length) return run;
-    let total = 0, cur = 0, big = false;
-    for (const w of words) {
-      if (w in W_UNITS) cur += W_UNITS[w];
-      else if (w in W_TENS) { cur += W_TENS[w]; big = true; }
-      else if (w === 'hundred') { cur = (cur || 1) * 100; big = true; }
-      else if (w === 'thousand') { total += (cur || 1) * 1000; cur = 0; big = true; }
-    }
-    const n = total + cur;
-    return big || n > 10 ? ` ${n} ` : run;
-  });
-}
 
 // ------------------------------------------------------------------ accounts
 function pickAccount(text, ctx, source) {
@@ -256,47 +239,301 @@ function parseSms(chunk, ctx, h) {
   return row;
 }
 
-// ------------------------------------------------------------------ free text ("coffee 45", "taxi 80 cash", "قهوة ٤٥ امبارح")
-function parseText(line, ctx, h) {
-  let t = wordsToDigits(norm(line));
-  let date = ctx.today;
-  // explicit date first, so its digits are not mistaken for the amount
-  const dm = /(\d{4}-\d{1,2}-\d{1,2})|(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)|(\d{1,2}\.\d{1,2}\.\d{2,4})/.exec(t);
-  if (dm) { const d = parseDate(dm[0], ctx.today); if (d) { date = d; t = t.replace(dm[0], ' '); } }
-  for (const [re, off] of WHEN) if (re.test(t)) { date = shiftIso(ctx.today, off); t = t.replace(re, ' '); break; }
+// ------------------------------------------------------------------ spoken / typed text: tokens, number words, several purchases in one sentence
+// A token keeps the person's own spelling (raw, used for the note) next to a normalised form (n, used to recognise things).
+const mkTok = (raw) => ({ raw, n: norm(raw) });
 
-  const num = /(\d[\d,]*(?:\.\d+)?)\s*(k|الف)?(?![\d])/.exec(t.replace(new RegExp('(^|\\s)' + CUR.replace('\\.', '\\.') + '(?=\\s|$)', 'gi'), ' '));
-  if (!num) return null;
-  let amount = Number(num[1].replace(/,/g, ''));
-  if (num[2]) amount *= 1000;
+function tokenize(line) {
+  return String(line)
+    .replace(/([،,؛;])(?=\s|$)/g, ' $1 ')                 // a comma between phrases is a separator; one inside 1,250 is not
+    .trim().split(/\s+/).filter(Boolean).map(mkTok);
+}
+
+// ---- English number words (what an English speech engine may return)
+const isEnNum = (w) => w in W_UNITS || w in W_TENS || w === 'hundred' || w === 'thousand';
+
+function evalEnglish(words) {
+  let total = 0, cur = 0, big = false;
+  for (const w of words) {
+    if (w in W_UNITS) cur += W_UNITS[w];
+    else if (w in W_TENS) { cur += W_TENS[w]; big = true; }
+    else if (w === 'hundred') { cur = (cur || 1) * 100; big = true; }
+    else if (w === 'thousand') { total += (cur || 1) * 1000; cur = 0; big = true; }
+  }
+  return { value: total + cur, big };
+}
+
+function englishRunAt(toks, i) {
+  let j = i;
+  if (toks[j].n === 'a' && j + 1 < toks.length && (toks[j + 1].n === 'hundred' || toks[j + 1].n === 'thousand')) j++;
+  const words = [];
+  while (j < toks.length) {
+    const w = toks[j].n;
+    if (isEnNum(w)) { words.push(w); j++; }
+    else if (w === 'and' && words.length && j + 1 < toks.length && isEnNum(toks[j + 1].n)) j++;
+    else break;
+  }
+  if (!words.length) return null;
+  const { value, big } = evalEnglish(words);
+  return { end: j, numbers: [value], convert: big || value > 10 };
+}
+
+// ---- Egyptian / Arabic number words (spellings as they are after norm())
+const AR_UNIT = { واحد: 1, واحده: 1, اتنين: 2, اثنين: 2, تنين: 2, ثنين: 2, تلاته: 3, ثلاثه: 3, تلات: 3, ثلاث: 3, اربعه: 4, اربع: 4, خمسه: 5, خمس: 5, سته: 6, ست: 6, سبعه: 7, سبع: 7, تمانيه: 8, ثمانيه: 8, تمان: 8, ثمان: 8, تسعه: 9, تسع: 9, عشره: 10, عشر: 10 };
+const AR_TEEN = { احداشر: 11, حداشر: 11, اتناشر: 12, اطناشر: 12, تلتاشر: 13, تلاتاشر: 13, اربعتاشر: 14, خمستاشر: 15, ستاشر: 16, سبعتاشر: 17, تمنتاشر: 18, تمانتاشر: 18, تسعتاشر: 19 };
+const AR_TENS = { عشرين: 20, عشرون: 20, تلاتين: 30, ثلاثين: 30, ثلاثون: 30, اربعين: 40, اربعون: 40, خمسين: 50, خمسون: 50, ستين: 60, ستون: 60, سبعين: 70, سبعون: 70, تمانين: 80, ثمانين: 80, ثمانون: 80, تسعين: 90, تسعون: 90 };
+const AR_HUND = { ميه: 100, مايه: 100, مائه: 100, مئه: 100, ميت: 100, ميتين: 200, مئتين: 200, متين: 200, مائتين: 200, تلتميه: 300, تلاتميه: 300, ثلاثميه: 300, ثلاثمائه: 300, تلتمائه: 300, ربعميه: 400, اربعميه: 400, اربعمائه: 400, خمسميه: 500, خمسمائه: 500, ستميه: 600, ستمائه: 600, سبعميه: 700, سبعمائه: 700, تمنميه: 800, تمانميه: 800, ثمانميه: 800, ثمانمائه: 800, تسعميه: 900, تسعمائه: 900 };
+const AR_K = new Set(['الف', 'الفا', 'الفين', 'الاف', 'تلاف']);
+const isArNum = (w) => w in AR_UNIT || w in AR_TEEN || w in AR_TENS || w in AR_HUND || AR_K.has(w);
+function arBase(n) {
+  if (isArNum(n)) return n;
+  const m = /^[بلوف](.+)$/.exec(n);                                    // بخمسين، وخمسين، لتمانين
+  return m && isArNum(m[1]) ? m[1] : null;
+}
+
+// Reads a run like "ميه وخمسين" (150) or "تلات تلاف وخمسميه" (3500). Numbers that don't follow the usual big-to-small order
+// ("خمسين وتمانين") are two separate prices.
+function evalArabic(words) {
+  const out = [];
+  let total = 0, cur = 0, started = false, lastMag = 99, prevVal = 0;
+  const flush = () => { if (started) out.push(total + cur); total = 0; cur = 0; started = false; lastMag = 99; prevVal = 0; };
+  for (const w of words) {
+    if (AR_K.has(w)) {
+      if (started && lastMag === 4) flush();
+      total += w === 'الفين' ? 2000 : (cur || 1) * 1000;
+      cur = 0; started = true; lastMag = 4; prevVal = 1000;
+      continue;
+    }
+    const v = AR_UNIT[w] ?? AR_TEEN[w] ?? AR_TENS[w] ?? AR_HUND[w];
+    const mag = w in AR_HUND ? 3 : w in AR_TENS ? 2 : 1;
+    const unitThenTens = lastMag === 1 && prevVal < 10 && mag === 2;
+    if (started && mag >= lastMag && !unitThenTens) flush();
+    cur += v; started = true; lastMag = mag; prevVal = v;
+  }
+  flush();
+  return out;
+}
+
+function arabicRunAt(toks, i) {
+  let j = i;
+  const words = [];
+  while (j < toks.length) {
+    const b = arBase(toks[j].n);
+    if (b) { words.push(b); j++; continue; }
+    if (toks[j].n === 'و' && words.length && j + 1 < toks.length && arBase(toks[j + 1].n)) { j++; continue; }
+    break;
+  }
+  if (!words.length) return null;
+  const numbers = evalArabic(words);
+  return { end: j, numbers, convert: numbers.length > 1 || numbers[0] > 10 };   // a lone 1-10 is a quantity ("اتنين قهوة")
+}
+
+// Turns number words into digit tokens; leaves quantities such as "two coffees" alone.
+function convertNumbers(tokens) {
+  const toks = [];
+  for (const t of tokens) {
+    const m = /^([a-z]+)-([a-z]+)$/.exec(t.n);
+    if (m && isEnNum(m[1]) && isEnNum(m[2])) toks.push(mkTok(m[1]), mkTok(m[2])); else toks.push(t);
+  }
+  const out = [];
+  for (let i = 0; i < toks.length;) {
+    const run = englishRunAt(toks, i) || arabicRunAt(toks, i);
+    if (run && run.convert) { run.numbers.forEach((v) => out.push(mkTok(String(v)))); i = run.end; continue; }
+    if (run) { for (let k = i; k < run.end; k++) out.push(toks[k]); i = run.end; continue; }
+    out.push(toks[i]); i++;
+  }
+  // "2 الف" / "2 thousand" written with digits
+  const merged = [];
+  for (let i = 0; i < out.length; i++) {
+    if (/^\d+(\.\d+)?$/.test(out[i].n) && i + 1 < out.length && (out[i + 1].n === 'الف' || out[i + 1].n === 'الاف')) { merged.push(mkTok(String(Number(out[i].n) * 1000))); i++; }
+    else merged.push(out[i]);
+  }
+  return merged;
+}
+
+export function wordsToDigits(text) {
+  return convertNumbers(tokenize(text)).map((t) => t.raw).join(' ');
+}
+
+// ---- recognising which account / wallet was mentioned
+const TRANSLIT = { vodafone: 'فودافون', orange: 'اورنج', etisalat: 'اتصالات', cash: 'كاش', visa: 'فيزا', credit: 'كريدت', card: 'كارت', instapay: 'انستاباي', fawry: 'فوري', we: 'وي', wallet: 'محفظه', bank: 'بنك', travel: 'سفر', mastercard: 'ماستر' };
+const TYPE_ALIASES = {
+  cash: ['cash', 'كاش', 'نقدي', 'نقدا', 'كاش ماني', 'من جيبي'],
+  card: ['credit card', 'card', 'visa', 'mastercard', 'كارت', 'الكارت', 'فيزا', 'كريدت', 'ماستر', 'بطاقه', 'البطاقه'],
+};
+
+function accountAliases(a) {
+  const base = norm(a.name).trim();
+  const named = new Set([base]);
+  const tr = base.split(/\s+/).map((w) => TRANSLIT[w] || w).join(' ');
+  named.add(tr);
+  return { named: [...named].filter((x) => x.length >= 2), byType: TYPE_ALIASES[a.type === 'cash' ? 'cash' : 'card'] };
+}
+
+const matchesWord = (tok, alias) => tok === alias || tok === 'ال' + alias || tok === 'بال' + alias || tok === 'ب' + alias || tok === 'و' + alias || tok === 'وال' + alias || tok === 'لل' + alias || tok === 'من' + alias;
+const FROM_PREP = new Set(['من', 'ب', 'في', 'علي', 'على', 'by', 'from', 'with', 'using', 'via', 'on', 'in', 'through', 'عن', 'بواسطه']);
+
+// finds account mentions in a token list: [{ start, end, account, specific }]
+function findAccounts(toks, ctx) {
+  const live = (ctx.accounts || []).filter((a) => !a.archived);
+  const found = [];
+  const tryAlias = (alias, a, specific) => {
+    const parts = alias.split(/\s+/);
+    for (let i = 0; i + parts.length <= toks.length; i++) {
+      if (parts.every((p, k) => matchesWord(toks[i + k].n, p))) {
+        let start = i;
+        if (start > 0 && FROM_PREP.has(toks[start - 1].n)) start--;
+        found.push({ start, end: i + parts.length, account: a.name, specific, len: parts.length });
+      }
+    }
+  };
+  live.forEach((a) => { const al = accountAliases(a); al.named.forEach((x) => tryAlias(x, a, true)); });
+  const firstOf = (type) => live.find((a) => a.type === type);
+  ['cash', 'card'].forEach((type) => { const a = firstOf(type); if (a) TYPE_ALIASES[type].forEach((x) => tryAlias(x, a, false)); });
+  // overlapping hits: prefer the longer / named alias
+  found.sort((x, y) => (y.len - x.len) || (Number(y.specific) - Number(x.specific)) || (x.start - y.start));
+  const kept = [];
+  for (const f of found) if (!kept.some((k) => f.start < k.end && k.start < f.end)) kept.push(f);
+  return kept.sort((x, y) => x.start - y.start);
+}
+
+export function defaultAccount(ctx) {
+  const live = (ctx.accounts || []).filter((a) => !a.archived);
+  return (live.find((a) => a.type === 'card') || live[0] || {}).name || '';
+}
+
+// ---- splitting one sentence into several purchases
+const CONNECT = new Set(['و', 'وبعدين', 'بعدين', 'وكمان', 'كمان', 'وبرضه', 'برضه', 'ثم', 'وايضا', 'ايضا', 'وبعد', 'and', 'then', 'also', 'plus', '&', '،', ',', '؛', ';', 'والتاني', 'تاني']);
+const NOT_GLUED = new Set(['وقود', 'واي', 'وطنيه', 'واحد', 'واحده', 'والد', 'والده', 'وجبه', 'وجبات', 'ورق', 'وردي', 'ورده', 'وفر', 'وصله', 'وصلات', 'وزن', 'وقت', 'وكاله', 'ويفر', 'وي']);
+const CURRENCY_TOK = new Set(['egp', 'le', 'l.e', 'l.e.', 'جنيه', 'جنيها', 'جنية', 'جنيهات', 'ج', 'ج.م', 'pound', 'pounds', 'bucks', 'usd', 'eur', 'gbp', 'sar', 'aed']);
+const FILLER = new Set(['دفعت', 'صرفت', 'اشتريت', 'جبت', 'اخدت', 'حاسبت', 'عملت', 'كلت', 'شربت', 'ركبت', 'ملات', 'انا', 'بقي', 'يعني', 'تقريبا', 'حوالي', 'دفعنا', 'صرفنا', 'paid', 'spent', 'bought', 'buy', 'got', 'i', "i've", 'ive', 'my', 'was', 'cost', 'costs', 'for', 'on', 'at', 'in', 'the', 'a', 'an', 'to', 'في', 'علي', 'على', 'من', 'عشان', 'ل', 'ب', 'بتاع', 'عن', 'ده', 'دي', 'كله', 'كلهم', 'كلها', 'الكل', 'all', 'everything', 'both', 'مع', 'جوا']);
+const GLOBAL_ALL = new Set(['كله', 'كلهم', 'كلها', 'الكل', 'all', 'everything', 'both']);
+const DATE_TEXT = [
+  [/(?:^| )(?:اول امبارح|اول من امس|قبل امس|day before yesterday|2 days ago|two days ago)(?= |$)/, -2],
+  [/(?:^| )(?:yesterday|امبارح|مبارح|امس)(?= |$)/, -1],
+  [/(?:^| )(?:today|tonight|this morning|just now|النهارده|النهارده|انهارده|اليوم|دلوقتي)(?= |$)/, 0],
+];
+const DATE_NUM = /(?:^| )((?:\d{4}-\d{1,2}-\d{1,2})|(?:\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)|(?:\d{1,2}\.\d{1,2}\.\d{2,4}))(?= |$)/;
+const PRICE = /^\d[\d,]*(?:\.\d+)?k?$/i;
+
+// removes the part of the token list that a pattern matches in the joined normalised text; returns { toks, m }
+function takeMatch(toks, re) {
+  const joined = toks.map((t) => t.n).join(' ');
+  const m = re.exec(joined);
+  if (!m) return { toks, m: null };
+  const s = m.index + (m[0].startsWith(' ') ? 1 : 0), e = m.index + m[0].length;
+  const out = [];
+  let pos = 0;
+  toks.forEach((t) => { const a = pos, b = pos + t.n.length; pos = b + 1; if (!(a < e && s < b)) out.push(t); });
+  return { toks: out, m };
+}
+
+const isMoney = (t) => PRICE.test(t.n) && !/\//.test(t.n);
+
+// Indexes of tokens that are prices. A small whole number right before a word, with another price still to come, is a
+// quantity ("2 قهوة 50", "two coffees 45"), not a price.
+function priceAnchors(toks) {
+  const idx = [];
+  toks.forEach((t, i) => { if (isMoney(t)) idx.push(i); });
+  return idx.filter((i, k) => {
+    const v = Number(toks[i].n.replace(/,/g, ''));
+    const next = toks[i + 1];
+    const laterPrice = idx.slice(k + 1).length > 0;
+    const quantity = Number.isInteger(v) && v <= 10 && laterPrice && next && !CURRENCY_TOK.has(next.n) && !CONNECT.has(next.n) && !isMoney(next);
+    return !quantity;
+  });
+}
+
+const isGlued = (t) => t.n.length > 2 && t.n[0] === 'و' && !NOT_GLUED.has(t.n) && !isMoney(t);
+const isConnector = (t) => CONNECT.has(t.n);
+
+function splitPurchases(toks, ctx) {
+  const anchors = priceAnchors(toks);
+  if (anchors.length <= 1) return [toks];
+  const acc = findAccounts(toks, ctx);
+  const inAcc = (i) => acc.some((a) => i >= a.start && i < a.end);
+  // does the sentence start with the item ("قهوة بخمسين") or with the price ("دفعت خمسين في القهوة")?
+  const lead = toks.slice(0, anchors[0]).filter((t, i) => !FILLER.has(t.n) && !CONNECT.has(t.n) && !CURRENCY_TOK.has(t.n) && !inAcc(i) && !DATE_TEXT.some(([re]) => re.test(t.n)) && t.n.length > 1);
+  const itemFirst = lead.length > 0;
+  const cuts = [];                                           // [index where the next purchase starts, replacement token or null]
+  for (let k = 0; k + 1 < anchors.length; k++) {
+    const a = anchors[k], b = anchors[k + 1];
+    let j = a + 1;
+    while (j < b && (CURRENCY_TOK.has(toks[j].n) || inAcc(j))) j++;      // "50 جنيه من الكاش" stays with the first purchase
+    let cut = null;
+    for (let x = b - 1; x >= j; x--) {
+      if (isConnector(toks[x])) { cut = [x + 1, null]; break; }
+      if (isGlued(toks[x])) { cut = [x, mkTok(toks[x].raw.replace(/^و/, ''))]; break; }
+    }
+    if (!cut) cut = [itemFirst ? j : b, null];
+    cuts.push(cut);
+  }
+  const chunks = [];
+  let from = 0;
+  cuts.forEach(([at, repl]) => {
+    chunks.push(toks.slice(from, at - (repl ? 0 : 0)));
+    from = at;
+    if (repl) { toks = toks.slice(); toks[at] = repl; }
+  });
+  chunks.push(toks.slice(from));
+  return chunks.map((c) => c.filter((t, i) => !(CONNECT.has(t.n) && (i === 0 || i === c.length - 1)))).filter((c) => c.some(isMoney));
+}
+
+function capitalise(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : ''; }
+
+function parseChunk(ctoks, ctx, h, g) {
+  let toks = ctoks;
+  // date: this purchase's own words win, otherwise the one said at the start of the sentence
+  let date = g.date;
+  const own = takeMatch(toks, DATE_NUM);
+  if (own.m) { const d = parseDate(own.m[1], ctx.today); if (d) { date = d; toks = own.toks; } }
+  for (const [re, off] of DATE_TEXT) { const r = takeMatch(toks, re); if (r.m) { date = shiftIso(ctx.today, off); toks = r.toks; break; } }
+
+  const anchorIdx = priceAnchors(toks)[0] ?? toks.findIndex(isMoney);
+  if (anchorIdx < 0) return null;
+  const at = toks[anchorIdx].n.replace(/,/g, '');
+  const amount = Math.round(Number(at.replace(/k$/i, '')) * (/k$/i.test(at) ? 1000 : 1) * 100) / 100;
   if (!(amount > 0)) return null;
-  const rest = (t.slice(0, num.index) + ' ' + t.slice(num.index + num[0].length))
-    .replace(new RegExp('(^|\\s)' + CUR + '(?=\\s|$)', 'gi'), ' ')
-    .replace(/\b(spent|paid|bought|buy|for|on|at|in|the|a|an|i|my|ive|i've|was|cost|costs)\b/g, ' ')
-    .replace(/(^|\s)(صرفت|دفعت|اشتريت|على|في|من|عشان)(?=\s|$)/g, ' ')
-    .replace(/\s+/g, ' ').trim();
-  const isIncome = INCOME_RE.test(t);
-  const description = rest ? rest.charAt(0).toUpperCase() + rest.slice(1) : '';
-  const row = { source: 'text', raw: line.trim(), type: isIncome ? 'Income' : 'Expense', amount, currency: 'EGP', date, time: '', description, account: pickAccount(line, ctx, 'text') };
+
+  // account / wallet mentioned for this purchase
+  const accs = findAccounts(toks, ctx);
+  const acc = accs[0];
+  const drop = new Set([anchorIdx]);
+  accs.forEach((a) => { for (let i = a.start; i < a.end; i++) drop.add(i); });
+  let currency = 'EGP';
+  toks.forEach((t, i) => {
+    if (CURRENCY_TOK.has(t.n)) { drop.add(i); if (/^(usd|eur|gbp|sar|aed)$/.test(t.n)) currency = t.n.toUpperCase(); }
+  });
+  const kept = toks.filter((t, i) => !drop.has(i));
+  const words = kept.filter((t) => !FILLER.has(t.n) && !CONNECT.has(t.n));
+  const noteRaw = words.map((t) => t.raw).join(' ').replace(/[،,؛;.]+$/g, '').trim();
+  const nText = words.map((t) => t.n).join(' ');
+  const whole = toks.map((t) => t.n).join(' ');
+  const isIncome = INCOME_RE.test(whole);
+
+  const row = {
+    source: 'text', raw: toks.map((t) => t.raw).join(' '), type: isIncome ? 'Income' : 'Expense', amount, currency, date, time: '',
+    description: capitalise(noteRaw), account: acc ? acc.account : (g.account || defaultAccount(ctx)),
+  };
   if (isIncome) { Object.assign(row, { category: 'Income', sub: 'Income', confidence: 'high', why: 'money coming in' }); return row; }
-  // keep the person's own wording (original script) for the note; use the normalised text only to recognise it
-  Object.assign(row, decide(rest || t, ctx, h));
-  row.description = originalNote(line, rest);
+  Object.assign(row, decide(nText || whole, ctx, h));
   return row;
 }
 
-// the note the user would expect to see: their own words minus the number, currency, date and account words
-function originalNote(line, rest) {
-  let s = wordsToDigits(String(line))
-    .replace(/[٠-٩۰-۹]/g, (d) => String(d.charCodeAt(0) >= 0x06F0 ? d.charCodeAt(0) - 0x06F0 : d.charCodeAt(0) - 0x0660))
-    .replace(/(\d{4}-\d{1,2}-\d{1,2})|(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)|(\d{1,2}\.\d{1,2}\.\d{2,4})/g, ' ')
-    .replace(/\d[\d,]*(?:\.\d+)?\s*(?:k|الف)?/i, ' ')
-    .replace(new RegExp('(^|\\s)' + CUR + '(?=\\s|$)', 'gi'), ' ')
-    .replace(/\b(today|yesterday|tonight|cash|spent|paid|bought|for|on|at|the|my)\b/gi, ' ')
-    .replace(/(^|\s)(النهارده|النهاردة|اليوم|امبارح|أمس|امس|مبارح|كاش|نقدي|صرفت|دفعت|اشتريت|على)(?=\s|$)/g, ' ')
-    .replace(/[,،.]+\s*$/g, '').replace(/\s+/g, ' ').trim();
-  if (!s) s = rest;
-  return s ? s.charAt(0).toUpperCase() + s.slice(1) : '';
+// One typed or spoken line -> one or more purchases.
+function parseUtterance(line, ctx, h) {
+  const toks = convertNumbers(tokenize(line));
+  if (!toks.some(isMoney)) return [];
+  // said once for the whole sentence: the day before the first price, and "all of it from cash"
+  const firstPrice = priceAnchors(toks)[0] ?? toks.findIndex(isMoney);
+  const preamble = toks.slice(0, Math.max(0, firstPrice));
+  let date = ctx.today;
+  let pre = takeMatch(preamble, DATE_NUM);
+  if (pre.m) { const d = parseDate(pre.m[1], ctx.today); if (d) date = d; }
+  for (const [re, off] of DATE_TEXT) { const r = takeMatch(preamble, re); if (r.m) { date = shiftIso(ctx.today, off); break; } }
+  const global = { date, account: '' };
+  if (toks.some((t) => GLOBAL_ALL.has(t.n))) { const a = findAccounts(toks, ctx)[0]; if (a) global.account = a.account; }
+  return splitPurchases(toks, ctx).map((c) => parseChunk(c, ctx, h, global)).filter(Boolean);
 }
 
 // ------------------------------------------------------------------ public entry point
@@ -318,8 +555,7 @@ export function parseMessages(text, ctx) {
     if (sms) { rows.push(sms); continue; }
     // not a bank message: every non-empty line is its own entry
     for (const line of chunk.split('\n').map((s) => s.trim()).filter(Boolean)) {
-      const r = parseText(line, ctx, h);
-      if (r) rows.push(r);
+      rows.push(...parseUtterance(line, ctx, h));
     }
   }
   // already logged? same day, same amount, same kind (you may have typed it in before the SMS arrived)

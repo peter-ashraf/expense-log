@@ -118,6 +118,76 @@ ok(rows[0].description.length > 0, 'the note keeps the original (Arabic) words')
   ok(rows[0].amount === 1250 && rows[0].sub === 'Groceries', 'spoken: "groceries one thousand two hundred fifty"');
 }
 
+// ---- Egyptian Arabic: number words, several purchases in one sentence, wallets
+{
+  const nums = (t) => run(t).map((r) => r.amount).join(',');
+  ok(nums('قهوة بخمسين') === '50' && nums('تاكسي بتمانين') === '80' && nums('اكل بميه وخمسين') === '150', 'numbers: خمسين 50, تمانين 80, ميه وخمسين 150');
+  ok(nums('بنزين بخمسه وتلاتين') === '35' && nums('فاتورة النت بميتين وخمسين') === '250', 'numbers: خمسة وتلاتين 35, ميتين وخمسين 250');
+  ok(nums('ايجار بالفين') === '2000' && nums('موبايل بتلات تلاف وخمسميه') === '3500' && nums('سفر بالف وميتين') === '1200', 'numbers: الفين 2000, تلات تلاف وخمسميه 3500, الف وميتين 1200');
+  ok(nums('غدا بخمستاشر') === '15' && nums('عشاء بتلتميه جنيه') === '300', 'numbers: خمستاشر 15, تلتميه 300');
+  ok(nums('اتنين قهوة بخمسين') === '50', 'a small quantity word ("اتنين قهوة") is not taken as the price');
+  ok(nums('2 قهوة 50') === '50' && nums('three coffees 120') === '120', 'a small quantity digit before a word is not taken as the price');
+  ok(nums('خمسين وتمانين') === '50,80' || nums('قهوة خمسين وتمانين') !== '', 'two prices said back to back are not merged into one');
+
+  // several purchases in one spoken sentence
+  let r3 = run('اشتريت قهوة بخمسين وتاكسي بتمانين وبنزين بميتين');
+  ok(r3.length === 3 && r3.map((r) => r.amount).join() === '50,80,200', 'one sentence, three purchases and prices');
+  ok(r3.map((r) => r.sub).join() === 'Coffee,Taxi,Fuel' && r3.every((r) => r.ready), 'each is filed correctly: Coffee, Taxi, Fuel (all ready)');
+  ok(r3.map((r) => r.description).join('|') === 'قهوة|تاكسي|بنزين', 'each note keeps its own Arabic word, without the price, the verb or the connector');
+  ok(r3.every((r) => r.account === 'Credit Card'), 'no wallet mentioned: every purchase goes to the credit card');
+
+  r3 = run('دفعت خمسين في القهوة وبعدين ميه وعشرين في التاكسي');
+  ok(r3.length === 2 && r3[0].amount === 50 && r3[0].sub === 'Coffee' && r3[1].amount === 120 && r3[1].sub === 'Taxi', 'price-first wording: "paid 50 for the coffee and then 120 for the taxi"');
+
+  r3 = run('القهوة بخمسين والتاكسي بتمانين');
+  ok(r3.length === 2 && r3[1].sub === 'Taxi' && r3[1].description === 'التاكسي', 'the glued و ("والتاكسي") is a connector, not part of the word');
+
+  r3 = run('قهوة 50 وتاكسي 80 وبنزين 200 ');
+  ok(r3.length === 3, 'digits work the same as number words');
+  r3 = run('قهوة 50، تاكسي 80، بنزين 200');
+  ok(r3.length === 3 && r3[2].amount === 200, 'commas separate purchases too');
+  r3 = run('امبارح اشتريت اكل بتلتميه جنيه وبنزين بخمسميه');
+  ok(r3.length === 2 && r3.every((r) => r.date === '2026-10-03') && r3[0].sub === 'Dining Out' && r3[1].sub === 'Fuel' && r3[1].amount === 500, 'a day said at the start ("امبارح") applies to every purchase');
+  r3 = run('قهوة بخمسين النهارده وتاكسي بتمانين امبارح');
+  ok(r3.length === 2 && r3[0].date === today && r3[1].date === '2026-10-03', 'a day said inside one purchase applies only to that purchase');
+  r3 = run('بنزين بميتين ووقود بتلاتين');
+  ok(r3.length === 2 && r3[1].amount === 30, 'a word that really starts with و ("وقود") is not cut in half');
+
+  // English, same behaviour
+  r3 = run('coffee forty five and taxi eighty and fuel two hundred');
+  ok(r3.length === 3 && r3.map((r) => r.amount).join() === '45,80,200' && r3.map((r) => r.sub).join() === 'Coffee,Taxi,Fuel', 'English: three purchases in one sentence');
+  r3 = run('I paid fifty for coffee then one hundred twenty for a taxi');
+  ok(r3.length === 2 && r3[0].amount === 50 && r3[1].amount === 120, 'English: price-first wording with "then"');
+  ok(run('coffee 45 and taxi 80').length === 2, 'English: digits');
+
+  // wallets: named, said in Arabic, said in English, otherwise the credit card
+  const wallets = [{ name: 'Credit Card', type: 'card', archived: false }, { name: 'Cash', type: 'cash', archived: false }, { name: 'Vodafone Cash', type: 'cash', archived: false }, { name: 'Instapay', type: 'card', archived: false }];
+  const runW = (t) => parseMessages(t, { today, categories, accounts: wallets, history: [] });
+  let w = runW('قهوة بخمسين وتاكسي بتمانين كاش');
+  ok(w[0].account === 'Credit Card' && w[1].account === 'Cash', 'a wallet said after a purchase applies to that purchase; the rest use the credit card');
+  w = runW('كله كاش قهوة بخمسين وتاكسي بتمانين');
+  ok(w.length === 2 && w.every((r) => r.account === 'Cash'), '"كله كاش" (all cash) applies to every purchase');
+  w = runW('تاكسي بتمانين من فودافون كاش');
+  ok(w[0].account === 'Vodafone Cash' && !/فودافون/.test(w[0].description), 'a named wallet in Arabic letters ("فودافون كاش") finds "Vodafone Cash" and is left out of the note');
+  w = runW('قهوة بخمسين بالكاش وبنزين بميتين بالفيزا');
+  ok(w[0].account === 'Cash' && w[1].account === 'Credit Card', '"بالكاش" and "بالفيزا" (with the Arabic prefix) are understood');
+  w = runW('coffee 45 with Vodafone Cash and taxi 80');
+  ok(w[0].account === 'Vodafone Cash' && w[1].account === 'Credit Card', 'English: "with Vodafone Cash"');
+  w = runW('دفعت ٢٠٠ من انستاباي في الكهربا');
+  ok(w[0].account === 'Instapay' && w[0].category === 'Bills' && w[0].sub === 'Electricity', 'Instapay in Arabic letters; "الكهربا" is the electricity bill');
+  w = runW('قهوة بخمسين');
+  ok(w[0].account === 'Credit Card', 'no wallet said: credit card');
+  ok(parseMessages('قهوة بخمسين', { today, categories, accounts: [{ name: 'Visa Gold', type: 'card', archived: false }, { name: 'Cash', type: 'cash', archived: false }], history: [] })[0].account === 'Visa Gold', 'the "credit card" default is whichever card account comes first');
+  ok(parseMessages('قهوة بخمسين', { today, categories, accounts: [], history: [] })[0].account === '', 'no accounts at all: nothing invented');
+
+  // Egyptian vocabulary
+  const sub = (t) => { const r = run(t)[0]; return r.category + '>' + r.sub; };
+  ok(sub('شاي بعشرين') === 'Food>Coffee' && sub('فطار بتلاتين') === 'Food>Dining Out' && sub('عيش وخضار بستين') === 'Food>Groceries', 'food words: شاي, فطار, عيش وخضار');
+  ok(sub('ميكروباص بخمسه وعشرين') === 'Transport>Public Transit' && sub('توك توك بعشرين') === 'Transport>Public Transit' && sub('اوبر بميه') === 'Transport>Taxi', 'transport words: ميكروباص, توك توك, اوبر');
+  ok(sub('شحن رصيد بخمسين') === 'Bills>Mobile' && sub('فاتورة الميه بتمانين') === 'Bills>Water' && sub('النت بتلتميه') === 'Bills>Internet', 'bills: شحن رصيد, فاتورة الميه, النت');
+  ok(sub('صيدلية بمية وعشرين') === 'Health>Pharmacy' && sub('كشف دكتور بخمسميه') === 'Health>Doctor Visits' && sub('هدوم بالف') === 'Shopping>Clothes', 'health and shopping: صيدلية, كشف دكتور, هدوم');
+}
+
 // ---- helpers
 ok(parseDate('03/10/26', today) === '2026-10-03' && parseDate('2026-09-30', today) === '2026-09-30' && parseDate('31/12', today) === '2026-12-31' && parseDate('13/12/2025', today) === '2025-12-13', 'date formats');
 ok(parseDate('31/02/26', today) === null, 'an impossible date is rejected');

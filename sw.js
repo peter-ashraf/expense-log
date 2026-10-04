@@ -1,9 +1,9 @@
-const CACHE = 'expense-log-v30';
+const CACHE = 'expense-log-v31';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'css/app.css',
   'js/app.js', 'js/store.js', 'js/api.js', 'js/db.js', 'js/util.js', 'js/icons.js', 'js/xlsx.js', 'js/csv.js', 'js/lock.js', 'js/lockui.js',
-  'js/insights.js', 'js/quick.js', 'js/vault.js', 'js/vaultui.js',
+  'js/insights.js', 'js/quick.js', 'js/vault.js', 'js/vaultui.js', 'js/refresh.js',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/apple-touch-icon-dark.png',
 ];
 
@@ -27,7 +27,9 @@ self.addEventListener('fetch', (e) => {
   if (url.origin !== self.location.origin) return;
   e.respondWith(
     caches.match(req, { ignoreSearch: true }).then((hit) => {
-      const net = fetch(req).then((res) => {
+      // 'no-cache' = ask the server whether the file changed every time (the host's 10-minute cache would otherwise
+      // let this "background refresh" read the same old copy again)
+      const net = fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then((res) => {
         if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
         return res;
       }).catch(() => hit || caches.match('index.html'));

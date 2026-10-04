@@ -8,6 +8,7 @@ import { readCsvEntries, decodeText } from './csv.js';
 import * as lk from './lockui.js';
 import * as vault from './vault.js';
 import { promptUnlock } from './vaultui.js';
+import { hardReload } from './refresh.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -704,6 +705,8 @@ function renderSettings(view) {
       <div class="card-h"><h3>Preferences</h3></div>
       <label class="field"><span>Currency symbol</span><input id="curInput" maxlength="4" placeholder="e.g. $, €, EGP" value="${esc(st.settings.currency)}" autocomplete="off"></label>
       <p class="muted sm">Shown next to amounts. Doesn’t change your data.</p>
+      <button class="btn ghost" data-act="update-now">${icon('cloud', 18)}Update app now</button>
+      <p class="muted sm" style="margin-top:8px">Gets the newest version immediately and reloads. Your data is not touched.</p>
     </section>
     <section class="card">
       <div class="card-h"><h3>Data</h3></div>
@@ -716,7 +719,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v3.3.1</p>
+    <p class="muted center sm">Credit Card Expenses · v3.4</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -841,13 +844,13 @@ function enterQuick() {
   sheet.classList.add('quickmode');
   $('.sheet-h h2', sheet).textContent = 'Quick add';
   setQuickHeader(true);
-  const lang = store.getState().settings.voiceLang || (/^ar/i.test(navigator.language) ? 'ar-EG' : 'en-US');
+  const lang = store.getState().settings.voiceLang || 'ar-EG';
   $('#quickWrap').innerHTML = `
-    <textarea id="qText" rows="3" spellcheck="false" autocapitalize="off" placeholder="Paste your bank messages, or type it: “coffee 45”, “taxi 80 cash yesterday”, “قهوة ٤٥”">${esc(ui.quick.text)}</textarea>
+    <textarea id="qText" rows="3" spellcheck="false" autocapitalize="off" placeholder="قول أو اكتب: «قهوة بخمسين وتاكسي بتمانين كاش»، أو الصق رسائل البنك.&#10;Say or type: “coffee 45 and taxi 80 cash”, or paste bank messages.">${esc(ui.quick.text)}</textarea>
     <div class="q-tools">
       <button class="chip" data-act="quick-paste">${icon('paste', 16)}Paste</button>
       ${SpeechRec ? `<button class="chip" id="qMic" data-act="quick-mic">${icon('mic', 16)}Speak</button>
-        <span class="q-lang"><button class="chip ${lang === 'en-US' ? 'on' : ''}" data-act="quick-lang" data-v="en-US">EN</button><button class="chip ${lang === 'ar-EG' ? 'on' : ''}" data-act="quick-lang" data-v="ar-EG">عربي</button></span>` : ''}
+        <span class="q-lang"><button class="chip ${lang === 'ar-EG' ? 'on' : ''}" data-act="quick-lang" data-v="ar-EG">عربي</button><button class="chip ${lang === 'en-US' ? 'on' : ''}" data-act="quick-lang" data-v="en-US">EN</button></span>` : ''}
     </div>
     <p class="muted sm q-hint" id="qHint">${SpeechRec ? '' : 'To dictate, tap the microphone on your keyboard. '}Nothing is saved until you add it.</p>
     <div id="qRows"></div>`;
@@ -954,9 +957,9 @@ function startMic() {
   if (!SpeechRec || !ui.quick) return;
   if (rec) { stopMic(); return; }
   const r = new SpeechRec();
-  r.lang = store.getState().settings.voiceLang || (/^ar/i.test(navigator.language) ? 'ar-EG' : 'en-US');
+  r.lang = store.getState().settings.voiceLang || 'ar-EG';
   r.interimResults = true;
-  r.continuous = false;
+  r.continuous = true;                                       // a long sentence with pauses stays open; tap again to stop
   const base = ui.quick.text.trim() ? ui.quick.text.replace(/\s+$/, '') + '\n' : '';
   r.onresult = (ev) => {
     let t = '';
@@ -1820,6 +1823,7 @@ document.addEventListener('click', async (ev) => {
     case 'enc-open': encSheet(el.dataset.m); break;
     case 'enc-save': saveEncryption(); break;
     case 'enc-lock': location.reload(); break;
+    case 'update-now': toast('Updating…'); hardReload(() => vault.stashForReload()); break;
     case 'pin-change':
       try { await lk.verifyOwner(askPin); pinSetupSheet('change'); } catch (err) { toast(err.message || 'Wrong PIN', 'err'); }
       break;
@@ -2070,6 +2074,7 @@ setInterval(() => { if (document.visibilityState === 'visible') store.sync(); },
     sessionStorage.removeItem('el_resume');
     if (r) { if (r.tab) ui.tab = r.tab; if (r.month) ui.month = r.month; ui.animate = false; }
   } catch (e) { /* ignore */ }
+  if (/[?&]r=\d+/.test(location.search)) history.replaceState(null, '', location.pathname + location.hash);
   // One-tap setup link: …/#u=<api url>&k=<key>
   if (location.hash.length > 1) {
     const p = new URLSearchParams(location.hash.slice(1));
