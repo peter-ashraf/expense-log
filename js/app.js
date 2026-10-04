@@ -278,7 +278,8 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Expense Log · v1.0</p>
+    <p class="muted center sm">Expense Log · v1.1</p>
+    <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
   const sim = $('#offSim');
@@ -335,16 +336,16 @@ function openSheet(id) {
   ui.armedDelete = false;
   const body = `<div class="seg" id="fType"></div>
       <div class="amt" id="fAmt"></div>
-      <div class="keypad" id="keypad">${KEYS.map((k) => `<button data-act="key" data-k="${k}" aria-label="${k === 'del' ? 'Delete digit' : k}">${k === 'del' ? icon('backspace', 22) : k}</button>`).join('')}</div>
-      <div id="fCatWrap"><div class="lbl">Category</div><div class="chips wrap" id="fCats"></div>
-      <div class="lbl" id="fSubLbl">Sub-category</div><div class="chips wrap" id="fSubs"></div></div>
+      <div class="keypad" id="keypad">${KEYS.map((k) => `<button data-act="key" data-k="${k}" aria-label="${k === 'del' ? 'Delete digit' : k}">${k === 'del' ? icon('backspace', 20) : k}</button>`).join('')}</div>
+      <div id="fCatWrap"><div class="lbl">Category</div><div class="chips hs" id="fCats"></div>
+      <div class="lbl">Sub-category</div><div class="chips hs" id="fSubs"></div></div>
       <div class="two">
         <label class="date-pill">${icon('calendar', 18)}<span id="fDateLbl"></span><input type="date" id="fDate" value="${esc(ui.form.date)}"></label>
         <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label>
-      </div>
-      <button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>`;
+      </div>`;
+  const foot = `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>`;
   present(e ? 'Edit transaction' : 'New transaction',
-    e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : '', body);
+    e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : '', body, 'compact', foot);
   $('#fDate').addEventListener('change', (ev) => { ui.form.date = ev.target.value; refreshForm(); });
   $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; });
   refreshForm();
@@ -358,7 +359,7 @@ let sheetClosing = false;
 
 function setProgress(p) { $('#app').style.setProperty('--p', String(Math.max(0, Math.min(1, p)))); }
 
-function present(title, headExtra, body, cls = '') {
+function present(title, headExtra, body, cls = '', foot = '') {
   const layer = $('#layer');
   sheetClosing = false;
   layer.className = 'open';
@@ -372,6 +373,7 @@ function present(title, headExtra, body, cls = '') {
         </div>
       </div>
       <div class="sheet-body">${body}</div>
+      ${foot ? `<div class="sheet-foot">${foot}</div>` : ''}
     </div>`;
   document.body.classList.add('noscroll');
   const sheet = $('.sheet');
@@ -497,6 +499,20 @@ function fmtTyped(s) {
   return s.includes('.') ? head + (navigator.language && /^(de|fr|es|it|pt|ru|tr)/.test(navigator.language) ? ',' : '.') + (d || '') : head;
 }
 
+function setChips(sel, html) {
+  const el = $(sel);
+  const left = el.scrollLeft;
+  el.innerHTML = html;
+  el.scrollLeft = left;
+  const on = $('.chip.on', el);
+  if (on) {
+    const r = on.getBoundingClientRect();
+    const c = el.getBoundingClientRect();
+    if (r.left < c.left + 8) el.scrollLeft -= c.left + 8 - r.left;
+    else if (r.right > c.right - 8) el.scrollLeft += r.right - (c.right - 8);
+  }
+}
+
 function refreshForm() {
   const f = ui.form;
   if (!f) return;
@@ -507,10 +523,11 @@ function refreshForm() {
   const isExp = f.type === 'Expense';
   $('#fCatWrap').style.display = isExp ? '' : 'none';
   if (isExp) {
-    $('#fCats').innerHTML = v.categories.order.map((n) => `<button class="chip cat ${f.category === n ? 'on' : ''}" style="${hueStyle(n)}" data-act="cat" data-v="${esc(n)}">${icon(n, 16)}${esc(n)}</button>`).join('');
+    setChips('#fCats', v.categories.order.map((n) => `<button class="chip cat ${f.category === n ? 'on' : ''}" style="${hueStyle(n)}" data-act="cat" data-v="${esc(n)}">${icon(n, 16)}${esc(n)}</button>`).join(''));
     const subs = v.categories.map[f.category] || [];
-    $('#fSubLbl').style.display = f.category ? '' : 'none';
-    $('#fSubs').innerHTML = subs.map((n) => `<button class="chip ${f.sub === n ? 'on' : ''}" data-act="sub" data-v="${esc(n)}">${esc(n)}</button>`).join('');
+    setChips('#fSubs', subs.length
+      ? subs.map((n) => `<button class="chip ${f.sub === n ? 'on' : ''}" data-act="sub" data-v="${esc(n)}">${esc(n)}</button>`).join('')
+      : '<span class="hint">Pick a category first</span>');
   }
   $('#fDateLbl').textContent = dayLabel(f.date) === 'Today' || dayLabel(f.date) === 'Yesterday' ? dayLabel(f.date) : dateLong(f.date);
 }
@@ -642,13 +659,14 @@ document.addEventListener('keydown', (e) => {
 // ---------------------------------------------------------------- boot
 function fitApp() {
   const app = $('#app');
-  let h = window.innerHeight;
+  app.style.height = window.innerHeight + 'px';
+  // On some iPhones a home-screen app's web view stops above the home-indicator zone (the system fills it)
+  // while still reporting a bottom safe-area inset. In that case the inset must not be added again.
   const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
-  if (standalone && window.innerHeight > window.innerWidth) {
-    const full = Math.max(screen.width, screen.height);
-    if (full - h > 0 && full - h <= 100) h = full; // the page view stops short of the bottom safe area
-  }
-  app.style.height = h + 'px';
+  const gap = standalone && window.innerHeight > window.innerWidth
+    ? Math.max(screen.width, screen.height) - window.innerHeight : 0;
+  document.documentElement.style.setProperty('--safe-b', gap > 8 ? '0px' : 'env(safe-area-inset-bottom, 0px)');
+  fitApp.info = `view ${window.innerWidth}×${window.innerHeight} · screen ${screen.width}×${screen.height} · gap ${gap} · ${standalone ? 'app' : 'browser'}`;
 }
 fitApp();
 window.addEventListener('resize', fitApp);
