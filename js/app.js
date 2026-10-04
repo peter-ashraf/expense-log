@@ -326,13 +326,16 @@ function closeFlip() {
   if (flipAnim) flipAnim.cancel();
   const end = flipFrom(card, origin);
   flipAnim = card.animate(
-    [{ transform: 'none', opacity: 1 }, { transform: end, opacity: 1, offset: 0.72 }, { transform: end, opacity: 0 }],
-    { duration: 620, easing: 'cubic-bezier(.55, .05, .2, 1)', fill: 'forwards' }
+    [{ transform: 'none' }, { transform: end }],
+    { duration: 560, easing: 'cubic-bezier(.55, .05, .2, 1)', fill: 'forwards' }
   );
+  // fade only the back face: opacity on the card itself would flatten its 3D and show the front's mirrored text
+  const back = $('.flip-back', card);
+  if (back) back.animate([{ opacity: 1 }, { opacity: 1, offset: 0.7 }, { opacity: 0 }], { duration: 620, easing: 'ease-out', fill: 'forwards' });
   // the real tile comes back just before the card lands, and the card melts into it (no hard swap)
   setTimeout(() => { if (seq === flipSeq) $('#app').removeAttribute('data-flip'); }, 420);
   flipAnim.onfinish = done;
-  setTimeout(done, 900); // safety net if the animation clock is throttled
+  setTimeout(done, 950); // safety net if the animation clock is throttled
 }
 
 function insightsCard(v, m) {
@@ -451,7 +454,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v2.5</p>
+    <p class="muted center sm">Credit Card Expenses · v2.5.1</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
