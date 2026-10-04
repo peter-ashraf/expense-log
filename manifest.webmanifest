@@ -1,6 +1,6 @@
 {
-  "name": "Expense Log",
-  "short_name": "Expenses",
+  "name": "Credit Card Expenses",
+  "short_name": "Credit Card Expenses",
   "description": "Private expense tracker that works offline and syncs to your Google Sheet.",
   "start_url": "./",
   "scope": "./",

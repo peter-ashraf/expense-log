@@ -1,4 +1,4 @@
-# Expense Log
+# Credit Card Expenses
 
 Offline-first expense tracker (PWA) that syncs to a Google Sheet through a small Apps Script API.
 

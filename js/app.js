@@ -100,6 +100,7 @@ function renderTop() {
   else if (st.status === 'synced') label = 'Synced';
   $('#topbar').innerHTML = `${left}
     <button class="sync ${cls}" data-act="sync" aria-label="Sync now"><i></i><span>${esc(label)}</span></button>`;
+  document.documentElement.style.setProperty('--top-h', $('#topbar').offsetHeight + 'px');
 }
 
 // ---------------------------------------------------------------- tab bar
@@ -291,7 +292,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Expense Log · v1.3</p>
+    <p class="muted center sm">Credit Card Expenses · v1.4</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -829,6 +830,7 @@ store.onChange(() => {
   render();
 });
 
+$('#view').addEventListener('scroll', () => $('#topbar').classList.toggle('scrolled', $('#view').scrollTop > 4), { passive: true });
 window.addEventListener('online', () => store.sync());
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') store.sync(); });
 setInterval(() => { if (document.visibilityState === 'visible') store.sync(); }, 60000);
