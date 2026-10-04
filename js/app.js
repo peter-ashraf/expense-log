@@ -2,7 +2,7 @@ import * as store from './store.js';
 import { icon, catHue } from './icons.js';
 import { computeInsights, computeAllTime, computeStreak, weeklySeries, topMerchants } from './insights.js';
 import { parseMessages } from './quick.js';
-import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
+import { esc, num as rawNum, num0 as rawNum0, money as rawMoney, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 import { readCsvEntries, decodeText } from './csv.js';
 import * as lk from './lockui.js';
@@ -10,6 +10,17 @@ import * as lk from './lockui.js';
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+// ---- privacy mode: tap the main balance to hide every other number -------------------------------
+// The numbers are replaced in the page itself (not just blurred), so they are not readable in the browser's
+// inspector either. The balance on the main card stays visible: it is the switch.
+const priv = () => document.documentElement.classList.contains('privacy');
+const MASK = '••••';
+const num = (n) => (priv() ? MASK : rawNum(n));
+const num0 = (n) => (priv() ? MASK : rawNum0(n));
+const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
+const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
+const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
 const ui = { account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -65,7 +76,7 @@ function rawMonth() {
 function activeMonth() { return scoped(rawMonth()); }
 
 function splitAmount(n) {
-  const s = num(n);
+  const s = rawNum(n);
   const hasDec = s.length > 3 && /\D/.test(s[s.length - 3]);
   return hasDec ? [s.slice(0, -3), s.slice(-3)] : [s, ''];
 }
@@ -75,12 +86,18 @@ function heroHTML(n) {
   return `${cur() ? `<span class="cur">${esc(cur())}</span>` : ''}${esc(i)}<small>${esc(d)}</small>`;
 }
 
-const hideAmounts = () => !!store.getState().settings.hideBalance;
-const MASK = '••••';
+function setPrivacy(on) {
+  document.documentElement.classList.toggle('privacy', on);
+  try { localStorage.setItem('el_priv', on ? '1' : '0'); } catch (e) { /* ignore */ }
+  store.saveSettings({ hideBalance: on });
+  haptic(10);
+  ui.animate = false;
+  render();
+  toast(on ? 'Numbers hidden. Tap the balance to show them' : 'Numbers shown');
+}
 
 function countUp(el, to) {
   if (!el) return;
-  if (hideAmounts()) { el.textContent = '••••••'; return; }
   if (reduceMotion || !ui.animate) { el.innerHTML = heroHTML(to); return; }
   const t0 = performance.now();
   const dur = 700;
@@ -197,9 +214,7 @@ function renderHome(view, m) {
     : `Opened the month with ${fmt(m.start)}`;
   const meterShown = acc ? lim > 0 : true;
   const meterPct = acc ? Math.max(0, Math.min(100, (m.spent / (lim || 1)) * 100)) : pct;
-  const meterCap = acc ? `${Math.round((m.spent / (lim || 1)) * 100)}% of the limit used` : `${Math.round(pct)}% of available funds spent`;
-  const hide = hideAmounts();
-  const M = (s) => (hide ? MASK : s);
+  const meterCap = acc ? `${dots(Math.round((m.spent / (lim || 1)) * 100))}% of the limit used` : `${dots(Math.round(pct))}% of available funds spent`;
   const rawM = rawMonth();
   const allDates = new Set();
   v.months.forEach((k) => v.by[k].entries.forEach((e) => allDates.add(e.date)));
@@ -218,20 +233,19 @@ function renderHome(view, m) {
         const r = a.limit > 0 ? sp / a.limit : 0;
         return `<button class="bar-row acc-row ${r > 1 ? 'over' : r > 0.85 ? 'near' : ''}" data-act="acc" data-v="${esc(a.name)}" style="--h:${accHue(a)}">
           <span class="bubble sm">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}</span>
-          <span class="bar-main"><span class="bar-top"><span>${esc(a.name)}</span><b>${esc(M(num(sp)))}${a.limit > 0 ? `<small> / ${esc(M(num0(a.limit)))}</small>` : ''}</b></span>
+          <span class="bar-main"><span class="bar-top"><span>${esc(a.name)}</span><b>${esc(num(sp))}${a.limit > 0 ? `<small> / ${esc(num0(a.limit))}</small>` : ''}</b></span>
           <span class="bar"><i style="width:${a.limit > 0 ? Math.min(100, Math.max(3, r * 100)).toFixed(1) : 0}%"></i></span></span></button>`;
       }).join('')}
     </section>` : '';
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
     ${accChips()}
     <section class="hero">
-      <button class="eye" data-act="hide-bal" aria-label="${hide ? 'Show amounts' : 'Hide amounts'}" aria-pressed="${hide}">${icon(hide ? 'eyeoff' : 'eye', 20)}</button>
       <div class="hero-label">${esc(heroLabel)}</div>
-      <div class="hero-amt" id="heroAmt">${hide ? '••••••' : heroHTML(heroAmount)}</div>
-      <div class="hero-sub">${esc(hide ? 'Amounts are hidden' : heroSub)}</div>
+      <div class="hero-amt" id="heroAmt" data-act="privacy" role="button" tabindex="0" aria-pressed="${priv()}" aria-label="Balance. Tap to hide or show every other number">${heroHTML(heroAmount)}</div>
+      <div class="hero-sub">${esc(heroSub)}</div>
       <div class="hero-row">
-        <button class="mini" data-act="flip" data-kind="income" aria-label="Show income breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic up"')}Income</span><b>${esc(M(fmt(m.income)))}</b></button>
-        <button class="mini" data-act="flip" data-kind="spent" aria-label="Show spending breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic down"')}Spent</span><b>${esc(M(fmt(m.spent)))}</b></button>
+        <button class="mini" data-act="flip" data-kind="income" aria-label="Show income breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic up"')}Income</span><b>${esc(fmt(m.income))}</b></button>
+        <button class="mini" data-act="flip" data-kind="spent" aria-label="Show spending breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic down"')}Spent</span><b>${esc(fmt(m.spent))}</b></button>
       </div>
       ${meterShown ? `<div class="meter"><i style="width:${meterPct.toFixed(1)}%"></i></div>
       <div class="meter-cap">${esc(meterCap)}</div>` : ''}
@@ -339,7 +353,7 @@ function flipMarkup(kind, m) {
   const order = store.view().categories.order;
   const hueOf = spent ? (name) => catHue(name, order) : (name, list) => INCOME_HUES[list.findIndex((p) => p[0] === name) % INCOME_HUES.length];
   const rows = parts.map(([name, amt]) => `<div class="flip-row" style="--c:hsl(${hueOf(name, parts)} 70% 58%)">
-      <i></i><span class="n">${esc(name)}</span><b>${esc(num(amt))}</b><em>${Math.round((amt / total) * 100)}%</em></div>`).join('');
+      <i></i><span class="n">${esc(name)}</span><b>${esc(num(amt))}</b><em>${dots(Math.round((amt / total) * 100))}%</em></div>`).join('');
   return `<div class="flip-face flip-front">
       <div class="flip-head">
         <div><h3>${spent ? 'Spent' : 'Income'}</h3><small>${esc(keyLabel(m.key))} · ${spent ? 'by category' : 'by source'}</small></div>
@@ -445,8 +459,8 @@ function insightsCard(v, m) {
       ${head}
       ${r.items.map((it) => { const link = it.q && !all; return `<${link ? 'button' : 'div'} class="ins ${it.tone}" ${link ? `data-act="ins-open" data-q="${esc(it.q)}"` : ''} style="${it.cat ? hueStyle(it.cat) : ''}">
         <span class="bubble">${icon(it.icon, 20)}</span>
-        <span class="ins-t"><b>${esc(it.title)}</b><small>${esc(it.detail)}</small>${it.bar != null ? `<span class="ins-bar"><i style="width:${Math.min(100, it.bar * 100).toFixed(1)}%"></i></span>` : ''}</span>
-        ${it.badge ? `<em>${esc(it.badge)}</em>` : ''}
+        <span class="ins-t"><b>${esc(maskTxt(it.title))}</b><small>${esc(maskTxt(it.detail))}</small>${it.bar != null ? `<span class="ins-bar"><i style="width:${Math.min(100, it.bar * 100).toFixed(1)}%"></i></span>` : ''}</span>
+        ${it.badge ? `<em>${esc(maskTxt(it.badge))}</em>` : ''}
       </${link ? 'button' : 'div'}>`; }).join('')}
     </section>`;
 }
@@ -476,7 +490,7 @@ function renderInsights(view, m) {
   const wkDelta = wk.prevTotal > 0 ? Math.round(((wk.total - wk.prevTotal) / wk.prevTotal) * 100) : null;
   const dayLetter = (iso) => new Intl.DateTimeFormat(undefined, { weekday: 'narrow' }).format(new Date(iso + 'T12:00:00'));
   const weekCard = wk.total > 0 || wk.prevTotal > 0 ? `<section class="card">
-      <div class="card-h"><h3>Last 7 days</h3><span class="muted sm">${wkDelta === null ? '' : `${wkDelta > 0 ? '+' : wkDelta < 0 ? '−' : ''}${Math.abs(wkDelta)}% vs the week before`}</span></div>
+      <div class="card-h"><h3>Last 7 days</h3><span class="muted sm">${wkDelta === null ? '' : `${wkDelta > 0 ? '+' : wkDelta < 0 ? '−' : ''}${dots(Math.abs(wkDelta))}% vs the week before`}</span></div>
       <div class="trend week7">${wk.days.map((d) => `<div class="tcol ${d.date === endDay ? 'on' : ''}"><b>${d.amt ? esc(num0(d.amt)) : ''}</b><div class="tbar"><i style="height:${d.amt ? Math.max(4, (d.amt / wkMax) * 100).toFixed(1) : 0}%"></i></div><span>${esc(dayLetter(d.date))}</span></div>`).join('')}</div>
       <p class="muted sm" style="margin-top:8px">${esc(num0(wk.total))} spent in these 7 days${wk.prevTotal > 0 ? `, ${esc(num0(wk.prevTotal))} the week before` : ''}.</p>
     </section>` : '';
@@ -484,7 +498,7 @@ function renderInsights(view, m) {
   const merchTop = merch.length ? merch[0].amt : 1;
   const merchCard = merch.length ? `<section class="card">
       <div class="card-h"><h3>Top merchants</h3><span class="muted sm">by note · ${esc(keyLabel(m.key))}</span></div>
-      ${merch.map((x) => `<button class="bar-row acc-row" data-act="ins-open" data-q="${esc(x.name)}"><span class="bar-main"><span class="bar-top"><span>${esc(x.name)}<small class="muted"> · ${x.n}×</small></span><b>${esc(num(x.amt))}</b></span><span class="bar"><i style="width:${Math.max(4, (x.amt / merchTop) * 100).toFixed(1)}%"></i></span></span></button>`).join('')}
+      ${merch.map((x) => `<button class="bar-row acc-row" data-act="ins-open" data-q="${esc(x.name)}"><span class="bar-main"><span class="bar-top"><span>${esc(x.name)}<small class="muted"> · ${dots(x.n)}×</small></span><b>${esc(num(x.amt))}</b></span><span class="bar"><i style="width:${Math.max(4, (x.amt / merchTop) * 100).toFixed(1)}%"></i></span></span></button>`).join('')}
     </section>` : '';
   const maxSpent = Math.max(1, ...last.map((k) => sc[k].spent));
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
@@ -493,14 +507,14 @@ function renderInsights(view, m) {
       <div class="card-h"><h3>Spending split</h3></div>
       ${cats.length ? `<div class="donut-wrap">
         <div class="donut-box">${donut(cats, total)}<div class="donut-c"><small>Spent</small><b>${esc(num0(m.spent))}</b></div></div>
-        <div class="legend">${cats.slice(0, 6).map(([n, a]) => `<div style="${hueStyle(n)}"><i></i><span>${esc(n)}</span><b>${Math.round((a / total) * 100)}%</b></div>`).join('')}</div>
+        <div class="legend">${cats.slice(0, 6).map(([n, a]) => `<div style="${hueStyle(n)}"><i></i><span>${esc(n)}</span><b>${dots(Math.round((a / total) * 100))}%</b></div>`).join('')}</div>
       </div>` : '<p class="muted pad">No expenses this month.</p>'}
     </section>
     <section class="stats">
       <div class="stat"><span>Daily average</span><b>${esc(num0(m.spent / Math.max(1, days)))}</b></div>
-      <div class="stat"><span>Transactions</span><b>${m.entries.length}</b></div>
+      <div class="stat"><span>Transactions</span><b>${dots(m.entries.length)}</b></div>
       <div class="stat"><span>Largest expense</span><b>${biggest[0] ? esc(num0(biggest[0].amount)) : '—'}</b></div>
-      <div class="stat"><span>Saved</span><b class="${saved !== null && saved < 0 ? 'neg' : 'pos'}">${saved === null ? '—' : saved + '%'}</b></div>
+      <div class="stat"><span>Saved</span><b class="${saved !== null && saved < 0 ? 'neg' : 'pos'}">${saved === null ? '—' : dots(saved) + '%'}</b></div>
     </section>
     <section class="card">
       <div class="card-h"><h3>Monthly trend</h3><span class="muted sm">Spent per month</span></div>
@@ -539,7 +553,7 @@ function accountsCard(st) {
   const rows = v.accounts.map((a, i) => `<div class="acc-set ${a.archived ? 'off' : ''}">
       <span class="bubble sm" style="--h:${accHue(a)}">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}</span>
       <span class="acc-name"><b>${esc(a.name)}</b><small>${a.type === 'cash' ? 'Cash' : 'Card'}${i === 0 ? ' · main' : ''}${a.archived ? ' · archived' : ''}</small></span>
-      <input class="acc-limit" inputmode="decimal" placeholder="No limit" data-name="${esc(a.name)}" value="${a.limit > 0 ? esc(String(a.limit)) : ''}" aria-label="Monthly limit for ${esc(a.name)}" autocomplete="off">
+      <input class="acc-limit" inputmode="decimal" placeholder="No limit" data-name="${esc(a.name)}" value="${priv() ? MASK : a.limit > 0 ? esc(String(a.limit)) : ''}" ${priv() ? 'readonly' : ''} aria-label="Monthly limit for ${esc(a.name)}" autocomplete="off">
       ${i === 0 ? '' : `<button class="chip" data-act="acc-archive" data-v="${esc(a.name)}">${a.archived ? 'Restore' : 'Archive'}</button>`}
     </div>`).join('');
   return `<section class="card">
@@ -581,7 +595,7 @@ function renderSettings(view) {
     ${accountsCard(st)}
     <section class="card">
       <div class="card-h"><h3>Monthly budget</h3><span class="badge ${Number(st.settings.budget) > 0 ? 'synced' : ''}">${Number(st.settings.budget) > 0 ? 'On' : 'Off'}</span></div>
-      <label class="field"><span>Spending limit per month</span><input id="budgetInput" type="text" inputmode="decimal" placeholder="e.g. 15000" value="${Number(st.settings.budget) > 0 ? esc(String(st.settings.budget)) : ''}" autocomplete="off"></label>
+      <label class="field"><span>Spending limit per month</span><input id="budgetInput" type="text" inputmode="decimal" placeholder="e.g. 15000" value="${priv() ? MASK : Number(st.settings.budget) > 0 ? esc(String(st.settings.budget)) : ''}" ${priv() ? 'readonly' : ''} autocomplete="off"></label>
       <p class="muted sm" style="margin-top:10px">Smart insights will show how much is left, the daily amount to stay within it, and warn you when you’re heading over. Leave empty to turn it off.</p>
     </section>
     ${securityCard(st)}
@@ -601,7 +615,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v3.2</p>
+    <p class="muted center sm">Credit Card Expenses · v3.2.1</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -1636,10 +1650,7 @@ document.addEventListener('click', async (ev) => {
       if (el.classList.contains('menu-row') && performance.now() < ui.noClickUntil) break; // already handled by the slide gesture
       pickMonth(el.dataset.key);
       break;
-    case 'hide-bal':
-      store.saveSettings({ hideBalance: !hideAmounts() });
-      haptic(8); ui.animate = false; render();
-      break;
+    case 'privacy': setPrivacy(!priv()); break;
     case 'acc':
       ui.account = el.dataset.v || 'all';
       try { localStorage.setItem('el_acc', ui.account); } catch (e) { /* ignore */ }
@@ -1863,6 +1874,7 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
+  if ((e.key === 'Enter' || e.key === ' ') && e.target && e.target.id === 'heroAmt') { e.preventDefault(); setPrivacy(!priv()); return; }
   if (e.key === 'Escape') { if (flipKind) closeFlip(); else if (ui.menuOpen) closeMonthMenu(); else if ($('#layer').classList.contains('open')) closeSheet(); }
   const typing = document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName) && document.activeElement.type !== 'date';
   if (ui.form && !typing && /^[0-9.]$/.test(e.key)) pressKey(e.key);
@@ -1927,6 +1939,7 @@ setInterval(() => { if (document.visibilityState === 'visible') store.sync(); },
 
 (async function boot() {
   await store.init();
+  document.documentElement.classList.toggle('privacy', !!store.getState().settings.hideBalance);
   applyTheme(store.getState().settings.theme || 'system');
   document.documentElement.classList.toggle('no-glass', store.getState().settings.glass === false);
   lk.initLock({
