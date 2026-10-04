@@ -7,7 +7,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const ui = { tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false };
+const ui = { tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0 };
 
 // ---------------------------------------------------------------- helpers
 const cur = () => store.getState().settings.currency || '';
@@ -292,7 +292,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v1.5</p>
+    <p class="muted center sm">Credit Card Expenses · v1.6</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -402,7 +402,43 @@ function confirmNew() {
 // pull dismisses it, a short pull springs back.
 let sheetClosing = false;
 
-function setProgress(p) { $('#app').style.setProperty('--p', String(Math.max(0, Math.min(1, p)))); }
+// The system status bar takes its colour from <meta name="theme-color">; keep it in step with the dimmed backdrop.
+const themeMetas = $$('meta[name="theme-color"]');
+const themeOriginal = themeMetas.map((m) => m.content);
+let themeNow = 0;
+let themeRaf = 0;
+const SCRIM_ALPHA = 0.42;
+
+function paintTheme(p) {
+  themeNow = p;
+  if (p <= 0.001) { themeMetas.forEach((m, i) => { m.content = themeOriginal[i]; }); return; }
+  const hex = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().replace('#', '');
+  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+  const k = 1 - SCRIM_ALPHA * p;
+  const c = [0, 2, 4].map((i) => Math.round(parseInt(full.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
+  themeMetas.forEach((m) => { m.content = '#' + c; });
+}
+
+function tweenTheme(target) {
+  cancelAnimationFrame(themeRaf);
+  if (reduceMotion) { paintTheme(target); return; }
+  const from = themeNow;
+  const t0 = performance.now();
+  const dur = 460;
+  const step = (t) => {
+    const x = Math.min(1, (t - t0) / dur);
+    paintTheme(from + (target - from) * (1 - Math.pow(1 - x, 3.2)));
+    if (x < 1) themeRaf = requestAnimationFrame(step);
+  };
+  themeRaf = requestAnimationFrame(step);
+  setTimeout(() => { if (Math.abs(themeNow - target) > 0.01) paintTheme(target); }, dur + 80); // if frames are throttled
+}
+
+function setProgress(p) {
+  p = Math.max(0, Math.min(1, p));
+  $('#app').style.setProperty('--p', String(p));
+  if ($('#app').classList.contains('dragging')) { cancelAnimationFrame(themeRaf); paintTheme(p); } else tweenTheme(p);
+}
 
 function present(title, headExtra, body, cls = '', foot = '') {
   const layer = $('#layer');
@@ -608,6 +644,13 @@ function saveForm() {
 }
 
 // ---- month dropdown (anchored to the month pill) ---------------------------------------------
+function syncPill() {
+  const pill = $('.month-pill');
+  if (!pill) return;
+  pill.classList.toggle('open', ui.menuOpen);
+  pill.setAttribute('aria-expanded', String(ui.menuOpen));
+}
+
 function toggleMonthMenu(pill) {
   if (ui.menuOpen) closeMonthMenu(); else openMonthMenu(pill);
 }
@@ -628,10 +671,10 @@ function openMonthMenu(pill) {
       <span class="m">${esc(keyLabel(k))}</span><b>${esc(fmt(v.by[k].available))}</b>${on ? icon('check', 18, 2.6) : '<i class="ph"></i>'}</button>`;
   }).join('');
   root.innerHTML = `<div class="menu-backdrop" data-act="menu-close"></div>
-    <div class="menu" role="listbox" style="left:${left}px;top:${top}px;width:${width}px;transform-origin:${originX}px 0;max-height:${Math.max(160, app.height - top - 110)}px">${rows}</div>`;
+    <div class="menu ${v.months.length > 7 ? 'scroll' : ''}" role="listbox" style="left:${left}px;top:${top}px;width:${width}px;transform-origin:${originX}px 0;max-height:${Math.max(160, app.height - top - 110)}px"><i class="menu-hl"></i>${rows}</div>`;
   root.className = 'open';
   ui.menuOpen = true;
-  renderTop();
+  syncPill();
   const menu = $('.menu', root);
   let started = false;
   const go = () => { if (started || !menu.isConnected) return; started = true; menu.classList.add('in'); };
@@ -640,13 +683,108 @@ function openMonthMenu(pill) {
   haptic(6);
 }
 
+function pickMonth(key) {
+  ui.month = key;
+  ui.animate = true;
+  closeMonthMenu();
+  if ($('.sheet')) closeSheet();
+  render();
+}
+
+// Press-and-slide, like a native iOS menu: hold the pill (or press a row) and slide; a highlight follows the finger,
+// releasing on a row selects it, releasing elsewhere closes the menu. A plain tap keeps working as before.
+(function menuGestures() {
+  const g = { source: null, pill: null, timer: 0, holding: false, x: 0, y: 0, x0: 0, y0: 0, row: null };
+
+  const moveHighlight = (row) => {
+    const hl = $('.menu-hl');
+    if (!hl) return;
+    if (row === g.row) return;
+    g.row = row;
+    if (!row) { hl.classList.remove('show'); return; }
+    hl.style.height = row.offsetHeight + 'px';
+    hl.style.transform = `translateY(${row.offsetTop}px)`;
+    hl.classList.add('show');
+    haptic(4);
+  };
+
+  const track = () => {
+    const el = document.elementFromPoint(g.x, g.y);
+    const row = el && el.closest ? el.closest('.menu-row') : null;
+    moveHighlight(row && $('#menu').contains(row) ? row : null);
+  };
+
+  const reset = () => {
+    clearTimeout(g.timer);
+    g.source = null; g.pill = null; g.holding = false;
+    const hl = $('.menu-hl');
+    if (hl) hl.classList.remove('show');
+    g.row = null;
+  };
+
+  const startHold = () => {
+    if (!g.pill || !g.pill.isConnected || ui.menuOpen) return;
+    g.holding = true;
+    openMonthMenu(g.pill);
+    setTimeout(track, 30);
+  };
+
+  document.addEventListener('pointerdown', (e) => {
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    g.x = g.x0 = e.clientX; g.y = g.y0 = e.clientY;
+    const pill = e.target.closest && e.target.closest('.month-pill');
+    const row = e.target.closest && e.target.closest('.menu-row');
+    if (pill && !pill.disabled && !ui.menuOpen) {
+      g.source = 'pill'; g.pill = pill; g.holding = false;
+      g.timer = setTimeout(startHold, 260);
+    } else if (row && ui.menuOpen && !$('.menu.scroll')) {
+      g.source = 'menu'; g.holding = true;
+      track();
+    }
+  }, true);
+
+  document.addEventListener('pointermove', (e) => {
+    if (!g.source) return;
+    g.x = e.clientX; g.y = e.clientY;
+    if (g.source === 'pill' && !g.holding) {
+      if (Math.hypot(g.x - g.x0, g.y - g.y0) > 12) { clearTimeout(g.timer); startHold(); } // a drag opens it right away
+      return;
+    }
+    if (g.holding) track();
+  }, true);
+
+  const finish = (e, cancelled) => {
+    if (!g.source) return;
+    g.x = e.clientX ?? g.x; g.y = e.clientY ?? g.y;
+    const wasHolding = g.holding;
+    const source = g.source;
+    const pill = g.pill;
+    if (wasHolding && !cancelled) {
+      track();
+      const row = g.row;
+      ui.noClickUntil = performance.now() + 500; // swallow the click the browser sends after this release
+      if (row) pickMonth(row.dataset.key);
+      else if (source === 'pill') {
+        const r = pill && pill.isConnected ? pill.getBoundingClientRect() : null;
+        const overPill = r && g.x >= r.left && g.x <= r.right && g.y >= r.top && g.y <= r.bottom;
+        if (!overPill) closeMonthMenu(); // let go over empty space: dismiss; over the pill: leave the menu open
+      }
+    } else if (wasHolding && cancelled && source === 'pill') {
+      closeMonthMenu();
+    }
+    reset();
+  };
+  document.addEventListener('pointerup', (e) => finish(e, false), true);
+  document.addEventListener('pointercancel', (e) => finish(e, true), true);
+})();
+
 function closeMonthMenu() {
   if (!ui.menuOpen) return;
   ui.menuOpen = false;
   const root = $('#menu');
   const menu = $('.menu', root);
   if (menu) { menu.classList.remove('in'); menu.classList.add('out'); }
-  renderTop();
+  syncPill();
   setTimeout(() => { if (!ui.menuOpen) { root.className = ''; root.innerHTML = ''; } }, reduceMotion ? 0 : 220);
 }
 
@@ -725,13 +863,14 @@ document.addEventListener('click', async (ev) => {
     case 'new': haptic(10); openSheet(null); break;
     case 'edit': openSheet(el.dataset.id); break;
     case 'close': closeSheet(); break;
-    case 'months': toggleMonthMenu(el); break;
+    case 'months':
+      if (performance.now() < ui.noClickUntil) break;
+      toggleMonthMenu(el);
+      break;
     case 'menu-close': closeMonthMenu(); break;
     case 'pick-month':
-      ui.month = el.dataset.key; ui.animate = true;
-      closeMonthMenu();
-      if ($('.sheet')) closeSheet();
-      render();
+      if (el.classList.contains('menu-row') && performance.now() < ui.noClickUntil) break; // already handled by the slide gesture
+      pickMonth(el.dataset.key);
       break;
     case 'filter': ui.filter = el.dataset.f; renderActivity($('#view'), activeMonth()); break;
     case 'sync':

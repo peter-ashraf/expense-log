@@ -373,3 +373,14 @@ body.onboard #view { padding: 0 16px 24px; }
 .menu-row.on b { color: var(--accent); }
 .month-pill .ic { transition: transform .34s cubic-bezier(.3, 1.3, .5, 1); }
 .month-pill.open .ic { transform: rotate(180deg); }
+
+/* press-and-slide selection in the month menu */
+.month-pill { touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.menu { touch-action: none; -webkit-touch-callout: none; user-select: none; -webkit-user-select: none; }
+.menu.scroll { touch-action: pan-y; }
+.menu-row { position: relative; z-index: 1; }
+.menu-row:active { background: none; }
+.menu-hl { position: absolute; left: 6px; right: 6px; top: 0; height: 52px; border-radius: 16px; z-index: 0; pointer-events: none; opacity: 0;
+  background: color-mix(in srgb, var(--text) 10%, transparent); transform: translateY(0);
+  transition: transform .24s cubic-bezier(.3, 1.25, .5, 1), height .2s ease, opacity .14s ease; }
+.menu-hl.show { opacity: 1; }
