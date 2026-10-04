@@ -1,6 +1,7 @@
 import * as store from './store.js';
 import { icon, catHue } from './icons.js';
 import { computeInsights, computeAllTime } from './insights.js';
+import { parseMessages } from './quick.js';
 import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 import { readCsvEntries, decodeText } from './csv.js';
@@ -561,7 +562,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v3.0</p>
+    <p class="muted center sm">Credit Card Expenses · v3.1</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -635,10 +636,12 @@ function openSheet(id) {
       <div class="chips datechips" id="fDates"></div>
       <div class="chips acc-pick" id="fAccts" aria-label="Account"></div>
       <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label></div>
-      <div id="calWrap"></div>`;
-  const foot = `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>`;
+      <div id="calWrap"></div><div id="quickWrap"></div>`;
+  const foot = `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>` +
+    (e ? '' : '<button class="btn primary big" data-act="quick-add" id="quickBtn">Add selected</button>');
   present(e ? 'Edit transaction' : 'New transaction',
-    e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : '', body, 'compact', foot);
+    e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>`
+      : `<button class="icon-btn" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 20)}</button>`, body, 'compact', foot);
   $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; });
   ui.adding = null;
   ui.newName = '';
@@ -650,6 +653,176 @@ function openSheet(id) {
     if (ev.key === 'Escape') { ev.stopPropagation(); ui.adding = null; refreshForm(); }
   });
   refreshForm();
+}
+
+// ---- Quick add: paste bank SMS, or type / say it ---------------------------------------------------------------
+const SpeechRec = window.SpeechRecognition || window.webkitSpeechRecognition;
+let rec = null;
+
+function quickCtx() {
+  const v = store.view();
+  return { today: todayStr(), categories: v.categories, accounts: v.accounts, history: v.months.flatMap((k) => v.by[k].entries) };
+}
+
+const quickData = (r) => ({
+  date: r.date, description: r.description, amount: r.amount, type: r.type,
+  category: r.type === 'Income' ? 'Income' : r.category, sub: r.type === 'Income' ? 'Income' : r.sub,
+  account: r.account || defaultFormAccount(),
+});
+const quickCanAdd = (r) => !!r.amount && r.currency === 'EGP' && (r.type === 'Income' || (!!r.category && !!r.sub));
+
+function setQuickHeader(on) {
+  const h = $('.sheet .hbtns');
+  if (!h) return;
+  h.innerHTML = on
+    ? '<button class="mini-btn" data-act="quick-back" aria-label="Back to the form">Keypad</button>'
+    : `<button class="icon-btn" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 20)}</button>`;
+}
+
+function enterQuick() {
+  const sheet = $('.sheet');
+  if (!sheet || !ui.form || ui.form.id) return;
+  if (!ui.quick) ui.quick = { text: '', rows: [], sel: new Set(), current: null };
+  sheet.classList.add('quickmode');
+  $('.sheet-h h2', sheet).textContent = 'Quick add';
+  setQuickHeader(true);
+  const lang = store.getState().settings.voiceLang || (/^ar/i.test(navigator.language) ? 'ar-EG' : 'en-US');
+  $('#quickWrap').innerHTML = `
+    <textarea id="qText" rows="3" spellcheck="false" autocapitalize="off" placeholder="Paste your bank messages, or type it: “coffee 45”, “taxi 80 cash yesterday”, “قهوة ٤٥”">${esc(ui.quick.text)}</textarea>
+    <div class="q-tools">
+      <button class="chip" data-act="quick-paste">${icon('paste', 16)}Paste</button>
+      ${SpeechRec ? `<button class="chip" id="qMic" data-act="quick-mic">${icon('mic', 16)}Speak</button>
+        <span class="q-lang"><button class="chip ${lang === 'en-US' ? 'on' : ''}" data-act="quick-lang" data-v="en-US">EN</button><button class="chip ${lang === 'ar-EG' ? 'on' : ''}" data-act="quick-lang" data-v="ar-EG">عربي</button></span>` : ''}
+    </div>
+    <p class="muted sm q-hint" id="qHint">${SpeechRec ? '' : 'To dictate, tap the microphone on your keyboard. '}Nothing is saved until you add it.</p>
+    <div id="qRows"></div>`;
+  $('#qText').addEventListener('input', (e) => { ui.quick.text = e.target.value; updateQuickRows(); });
+  if (ui.quick.text && !ui.quick.rows.length) updateQuickRows(); else renderQuickRows();
+  haptic(6);
+}
+
+function leaveQuick() {
+  stopMic();
+  const sheet = $('.sheet');
+  if (!sheet) return;
+  sheet.classList.remove('quickmode');
+  $('.sheet-h h2', sheet).textContent = 'New transaction';
+  setQuickHeader(false);
+  refreshForm();
+}
+
+function updateQuickRows() {
+  const rows = parseMessages(ui.quick.text, quickCtx());
+  ui.quick.rows = rows;
+  ui.quick.sel = new Set(rows.filter((r) => r.ready));
+  renderQuickRows();
+}
+
+function quickBadge(r) {
+  if (r.dup) return ['Already logged', 'dup'];
+  if (r.currency !== 'EGP') return [`${r.currency} amount, check it`, 'warn'];
+  if (!r.category || !r.sub) return ['Pick a category', 'warn'];
+  if (!r.ready) return ['Check the category', 'check'];
+  return ['', ''];
+}
+
+function renderQuickRows() {
+  const q = ui.quick;
+  const box = $('#qRows');
+  if (!box) return;
+  if (!q.rows.length) {
+    box.innerHTML = q.text.trim() ? '<p class="muted pad">I couldn’t find an amount in that. Try “coffee 45”.</p>' : '';
+  } else {
+    box.innerHTML = q.rows.map((r, i) => {
+      const [badge, tone] = quickBadge(r);
+      const can = quickCanAdd(r);
+      const where = r.type === 'Income' ? 'Income' : (r.category ? `${r.category} › ${r.sub}` : 'No category yet');
+      return `<div class="q-row t-${tone}">
+        <input type="checkbox" class="q-check" data-qsel="${i}" ${q.sel.has(r) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select">
+        <button class="q-main" data-act="quick-edit" data-i="${i}">
+          <b>${esc(r.description || (r.type === 'Income' ? 'Income' : 'No note'))}</b>
+          <small>${esc(where)}${multiAcc() && r.account ? ' · ' + esc(r.account) : ''} · ${esc(dateShort(r.date))}${badge ? ` <i class="q-badge t-${tone}">${esc(badge)}</i>` : ''}</small>
+        </button>
+        <span class="q-amt ${r.type === 'Income' ? 'inc' : ''}">${r.type === 'Income' ? '+' : '−'}${esc(num(r.amount))}</span>
+      </div>`;
+    }).join('');
+  }
+  const n = q.sel.size;
+  const btn = $('#quickBtn');
+  if (btn) {
+    btn.disabled = n === 0;
+    btn.textContent = n === 0 ? (q.rows.length ? 'Tap a message to review it' : 'Add selected') : `Add ${n} transaction${n === 1 ? '' : 's'}`;
+  }
+}
+
+function addQuickSelected() {
+  const q = ui.quick;
+  const picks = q.rows.filter((r) => q.sel.has(r) && quickCanAdd(r));
+  if (!picks.length) return;
+  store.addMany(picks.map(quickData));
+  ui.month = monthKeyOf(picks[picks.length - 1].date);
+  q.rows = q.rows.filter((r) => !picks.includes(r));
+  q.sel = new Set();
+  haptic(14);
+  toast(`${picks.length} transaction${picks.length === 1 ? '' : 's'} added`, 'ok');
+  if (!q.rows.length) { closeSheet(); ui.animate = false; return; }
+  renderQuickRows();
+}
+
+function editQuickRow(i) {
+  const r = ui.quick.rows[i];
+  if (!r) return;
+  ui.quick.current = r;
+  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount() };
+  const d = $('#fDesc');
+  if (d) d.value = r.description;
+  leaveQuick();
+}
+
+function quickHint(msg) { const h = $('#qHint'); if (h) h.textContent = msg; }
+
+function stopMic() {
+  if (rec) { try { rec.abort(); } catch (e) { /* ignore */ } rec = null; }
+  const b = $('#qMic');
+  if (b) { b.classList.remove('on'); b.lastChild.textContent = 'Speak'; }
+}
+
+const MIC_ERRORS = {
+  'not-allowed': 'Microphone access is off for this app. You can dictate with the microphone on your keyboard instead.',
+  'service-not-allowed': 'Voice input isn’t available inside this app on your phone. Tap the microphone on your keyboard to dictate instead.',
+  'no-speech': 'I didn’t hear anything. Tap Speak and try again.',
+  'audio-capture': 'No microphone was found.',
+  'network': 'Voice input needs an internet connection. You can still type it.',
+};
+
+function startMic() {
+  if (!SpeechRec || !ui.quick) return;
+  if (rec) { stopMic(); return; }
+  const r = new SpeechRec();
+  r.lang = store.getState().settings.voiceLang || (/^ar/i.test(navigator.language) ? 'ar-EG' : 'en-US');
+  r.interimResults = true;
+  r.continuous = false;
+  const base = ui.quick.text.trim() ? ui.quick.text.replace(/\s+$/, '') + '\n' : '';
+  r.onresult = (ev) => {
+    let t = '';
+    for (let i = 0; i < ev.results.length; i++) t += ev.results[i][0].transcript;
+    ui.quick.text = base + t;
+    const ta = $('#qText');
+    if (ta) ta.value = ui.quick.text;
+    updateQuickRows();
+  };
+  r.onerror = (ev) => { quickHint(MIC_ERRORS[ev.error] || 'Voice input stopped. You can type it instead.'); };
+  r.onend = () => { if (rec === r) stopMic(); };
+  try {
+    r.start();
+    rec = r;
+    const b = $('#qMic');
+    if (b) { b.classList.add('on'); b.lastChild.textContent = 'Listening…'; }
+    quickHint('Listening… say something like “coffee forty five”.');
+    haptic(8);
+  } catch (e) {
+    quickHint(MIC_ERRORS['service-not-allowed']);
+  }
 }
 
 // ---- in-app calendar (shown inside the add sheet, replacing the form while a day is being chosen) ------------
@@ -909,6 +1082,8 @@ function closeSheet() {
   const layer = $('#layer');
   if (!sheet || sheetClosing) return;
   sheetClosing = true;
+  stopMic();
+  ui.quick = null;
   const scrim = $('.scrim');
   $('#app').classList.remove('dragging');
   sheet.classList.add('animating');
@@ -1029,10 +1204,17 @@ function saveForm() {
   if (f.account && multiAcc()) store.saveSettings({ lastAccount: f.account });
   if (f.id) store.updateEntry(f.id, data); else store.addEntry(data);
   ui.month = monthKeyOf(f.date);
+  let again = null;
+  if (!f.id && ui.quick && ui.quick.current) {
+    ui.quick.rows = ui.quick.rows.filter((r) => r !== ui.quick.current);
+    ui.quick.current = null;
+    if (ui.quick.rows.length) again = ui.quick;
+  }
   haptic(14);
   toast(f.id ? 'Changes saved' : 'Transaction added', 'ok');
   closeSheet();
   ui.animate = false;
+  if (again) setTimeout(() => { openSheet(null); ui.quick = again; enterQuick(); }, 480);
 }
 
 // ---- month dropdown (anchored to the month pill) ---------------------------------------------
@@ -1378,7 +1560,31 @@ document.addEventListener('click', async (ev) => {
       ui.q = el.dataset.q || ''; ui.filter = 'Expense'; ui.tab = 'activity'; ui.animate = true; haptic(6);
       $('#view').innerHTML = ''; render();
       break;
-    case 'new': haptic(10); openSheet(null); break;
+    case 'new': haptic(10); ui.quick = null; openSheet(null); break;
+    case 'quick-open': enterQuick(); break;
+    case 'quick-back': leaveQuick(); break;
+    case 'quick-add': addQuickSelected(); break;
+    case 'quick-edit': editQuickRow(+el.dataset.i); break;
+    case 'quick-mic': startMic(); break;
+    case 'quick-lang': {
+      store.saveSettings({ voiceLang: el.dataset.v });
+      $$('.q-lang .chip').forEach((b) => b.classList.toggle('on', b.dataset.v === el.dataset.v));
+      stopMic();
+      break;
+    }
+    case 'quick-paste': {
+      const ta = $('#qText');
+      if (!ta) break;
+      if (navigator.clipboard && navigator.clipboard.readText) {
+        navigator.clipboard.readText().then((t) => {
+          if (!t || !t.trim()) { quickHint('The clipboard is empty. Copy your bank message first.'); return; }
+          ta.value = ui.quick.text.trim() ? ui.quick.text.replace(/\s+$/, '') + '\n\n' + t.trim() : t.trim();
+          ui.quick.text = ta.value;
+          updateQuickRows();
+        }).catch(() => { ta.focus(); quickHint('Your phone blocked the paste button. Press and hold in the box, then tap Paste.'); });
+      } else { ta.focus(); quickHint('Press and hold in the box, then tap Paste.'); }
+      break;
+    }
     case 'edit': openSheet(el.dataset.id); break;
     case 'close': closeSheet(); break;
     case 'months':
@@ -1577,6 +1783,12 @@ document.addEventListener('click', async (ev) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target && e.target.dataset && e.target.dataset.qsel !== undefined && ui.quick) {
+    const r = ui.quick.rows[+e.target.dataset.qsel];
+    if (r) { if (e.target.checked) ui.quick.sel.add(r); else ui.quick.sel.delete(r); }
+    renderQuickRows();
+    return;
+  }
   if (e.target && e.target.classList && e.target.classList.contains('acc-limit')) {
     const n = parseFloat(String(e.target.value).replace(/,/g, '').trim());
     const val = Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;

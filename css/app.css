@@ -555,3 +555,30 @@ button.ins { cursor: pointer; } button.ins:active { opacity: .6; }
 .acc-row .bar i { display: block; }
 .seg.two button { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .acc-set .chip { padding: 7px 12px; font-size: 13px; }
+
+/* ---- quick add ---- */
+.sheet #quickWrap { display: none; }
+.sheet.quickmode #formMain { display: none; }
+.sheet.quickmode #quickWrap { display: block; animation: rise .32s cubic-bezier(.2, .8, .2, 1) both; }
+.sheet.quickmode #saveBtn { display: none; }
+.sheet:not(.quickmode) #quickBtn { display: none; }
+.sheet.quickmode.picking #quickBtn { display: none; }
+#qText { width: 100%; min-height: 84px; padding: 12px 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); font: inherit; font-size: 16px; line-height: 1.4; outline: 0; resize: none; color: inherit; }
+#qText:focus { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 16%, transparent); }
+.q-tools { display: flex; gap: 8px; align-items: center; margin: 10px 0 2px; flex-wrap: wrap; }
+.q-tools .chip { gap: 6px; }
+.q-tools .chip.on { background: var(--accent); color: #fff; border-color: transparent; }
+.q-lang { display: inline-flex; gap: 6px; margin-left: auto; }
+.q-hint { margin: 8px 2px 4px; min-height: 1.2em; }
+.q-row { display: flex; align-items: center; gap: 10px; padding: 11px 0; border-top: 1px solid var(--line); }
+.q-row:first-child { border-top: 0; }
+.q-check { flex: none; width: 22px; height: 22px; accent-color: var(--accent); }
+.q-main { flex: 1; min-width: 0; text-align: left; color: inherit; font: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.q-main b { display: block; font-size: 15px; font-weight: 650; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.q-main small { display: block; margin-top: 2px; font-size: 12.5px; color: var(--muted); line-height: 1.5; }
+.q-amt { flex: none; font-weight: 700; font-variant-numeric: tabular-nums; }
+.q-amt.inc { color: var(--pos); }
+.q-badge { font-style: normal; font-weight: 700; font-size: 11.5px; padding: 2px 8px; border-radius: 999px; margin-left: 4px; background: color-mix(in srgb, var(--muted) 18%, transparent); color: var(--muted); white-space: nowrap; }
+.q-badge.t-warn { background: color-mix(in srgb, var(--warn) 20%, transparent); color: var(--warn); }
+.q-badge.t-check { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.q-row.t-dup { opacity: .7; }
