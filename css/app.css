@@ -441,3 +441,5 @@ body.onboard #view { padding: 0 16px 24px; }
 .switch.block input { margin-top: 2px; flex: none; }
 
 .note-line { margin: 8px 0; padding: 8px 10px; border-radius: 12px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+
+.badge.retrying { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }

@@ -22,6 +22,7 @@ let transport = null;
 let cache = null;
 let syncing = false;
 let timer = null;
+let retries = 0;
 
 export const getState = () => S;
 export const onChange = (fn) => { subs.add(fn); return () => subs.delete(fn); };
@@ -259,13 +260,26 @@ export async function sync() {
     S.queue = S.queue.filter((o) => !done.has(o.opId));
     S.snap = { categories: r.categories, firstStart: r.firstStart, months: r.months, entries: r.entries };
     S.lastSync = Date.now();
+    retries = 0;
     S.status = 'synced';
     S.error = '';
     await db.set('lastSync', S.lastSync);
   } catch (e) {
-    S.status = navigator.onLine ? 'error' : 'offline';
+    const msg = (e && e.message) || String(e);
+    // "Load failed" / "Failed to fetch": the request never completed (phone radio asleep, tunnel, dropped signal...).
+    const network = !navigator.onLine || e instanceof TypeError || /load failed|failed to fetch|network|timed out|abort/i.test(msg);
+    if (network) {
+      S.status = navigator.onLine ? 'retrying' : 'offline';
+      S.error = "Couldn't reach the server. Trying again automatically…";
+      retries++;
+      if (navigator.onLine) scheduleSync(Math.min(60000, 2500 * Math.pow(2, retries - 1)));
+    } else {
+      S.status = 'error';
+      S.error = msg;
+      retries++;
+      scheduleSync(Math.min(120000, 15000 * retries));
+    }
     if (S.cfg && S.cfg.demo && localStorage.getItem('el_demo_offline') === '1') S.status = 'offline';
-    S.error = (e && e.message) || String(e);
   } finally {
     syncing = false;
     await persist();

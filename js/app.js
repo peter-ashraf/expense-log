@@ -96,6 +96,7 @@ function renderTop() {
   let cls = st.status;
   if (st.status === 'syncing') label = 'Syncing…';
   else if (st.status === 'offline') label = n ? `Offline · ${n} pending` : 'Offline';
+  else if (st.status === 'retrying') { label = n ? `Reconnecting · ${n} pending` : 'Reconnecting…'; cls = 'offline'; }
   else if (st.status === 'error') label = n ? `Sync issue · ${n} pending` : 'Sync issue';
   else if (n) { label = `${n} pending`; cls = 'pending'; }
   else if (st.status === 'synced') label = 'Synced';
@@ -275,7 +276,7 @@ function renderSettings(view) {
       <div class="kv"><span>Source</span><b>${esc(host)}</b></div>
       <div class="kv"><span>Last synced</span><b>${esc(last)}</b></div>
       <div class="kv"><span>Waiting to upload</span><b>${n}</b></div>
-      ${st.error && st.status === 'error' ? `<p class="warn">${esc(st.error)}</p>` : ''}
+      ${st.error && (st.status === 'error' || st.status === 'retrying') ? `<p class="warn">${esc(st.error)}</p>` : ''}
       <button class="btn" data-act="sync">${icon('cloud', 18)}Sync now</button>
     </section>
     <section class="card">
@@ -300,7 +301,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v1.9</p>
+    <p class="muted center sm">Credit Card Expenses · v2.0</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -1056,7 +1057,7 @@ document.addEventListener('click', async (ev) => {
       store.sync().then(() => {
         const st = store.getState();
         if (st.status === 'synced') toast('Up to date', 'ok');
-        else if (st.status === 'offline') toast('You’re offline — changes are saved on this device');
+        else if (st.status === 'offline' || st.status === 'retrying') toast('Can’t reach the server right now — changes are saved on this device');
         else if (st.status === 'error') toast(st.error || 'Sync failed', 'err');
       });
       break;
@@ -1227,7 +1228,7 @@ $('#view').addEventListener('scroll', () => $('#topbar').classList.toggle('scrol
 window.addEventListener('online', () => store.sync());
 document.addEventListener('visibilitychange', () => {
   paintTheme(themeNow); // the phone's appearance may have changed while the app was away
-  if (document.visibilityState === 'visible') store.sync();
+  if (document.visibilityState === 'visible') setTimeout(() => store.sync(), 700); // give a sleeping mobile connection a moment to wake
 });
 window.addEventListener('pageshow', () => paintTheme(themeNow));
 setInterval(() => { if (document.visibilityState === 'visible') store.sync(); }, 60000);
