@@ -157,3 +157,116 @@ export function computeInsights({ m, prev, today, fmt, monthName }) {
   items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   return { enough: true, items: items.slice(0, 7) };
 }
+
+/**
+ * Insights across every month on record.
+ * months : [{ key, entries }] oldest first.  Same return shape as computeInsights.
+ */
+export function computeAllTime({ months, today, fmt, monthName }) {
+  const all = months.flatMap((mo) => mo.entries);
+  const exp = all.filter((e) => e.type === 'Expense');
+  const income = sum(all.filter((e) => e.type === 'Income'));
+  const spent = sum(exp);
+  const active = months.filter((mo) => mo.entries.some((e) => e.type === 'Expense'));
+  if (exp.length < 5 || spent <= 0) return { enough: false, items: [] };
+
+  const cur = today.slice(0, 7);
+  const nm = (k) => `${monthName(k)} ${k.slice(0, 4)}`;
+  const items = [];
+  const add = (it) => items.push(it);
+  const cats = groupBy(exp, (e) => e.category);
+  const subs = groupBy(exp, (e) => e.category + '\u0001' + e.sub);
+  const perMonth = active.map((mo) => ({ key: mo.key, amt: sum(mo.entries.filter((e) => e.type === 'Expense')) }));
+  const count = perMonth.length;
+  const total = (list) => list.reduce((n, x) => n + x.amt, 0);
+
+  // 1) overall favourite category and its driver
+  const top = cats[0];
+  const topSubs = groupBy(top.items, (e) => e.sub);
+  add({
+    id: 'top-cat', icon: top.key, cat: top.key, tone: 'info', q: top.key,
+    title: `${top.key} is where most of your money goes`,
+    detail: `${fmt(top.amt)} overall, ${pct(top.amt / spent)}% of everything you’ve spent${topSubs.length > 1 ? `. Mostly ${topSubs[0].key} (${fmt(topSubs[0].amt)}).` : '.'}`,
+    badge: `${pct(top.amt / spent)}%`,
+  });
+
+  // 2) top sub-category overall
+  const [oc, os] = subs[0].key.split('\u0001');
+  if (oc !== top.key) {
+    add({ id: 'top-sub', icon: oc, cat: oc, tone: 'info', q: os, title: `${os} is your top sub-category`, detail: `${fmt(subs[0].amt)} across ${subs[0].n} purchase${subs[0].n === 1 ? '' : 's'} (in ${oc}).` });
+  }
+
+  // 3) average month
+  if (count >= 2) {
+    add({ id: 'avg', icon: 'chart', tone: 'info', title: `You spend about ${fmt(spent / count)} a month`, detail: `${fmt(spent)} over ${count} months with spending, from ${nm(active[0].key)} to ${nm(active[count - 1].key)}.` });
+  }
+
+  // 4) costliest month (and cheapest finished month)
+  if (count >= 3) {
+    const sorted = perMonth.slice().sort((a, b) => b.amt - a.amt);
+    const hi = sorted[0];
+    const complete = sorted.filter((x) => x.key !== cur); // the month in progress would always look cheap
+    const lo = complete[complete.length - 1];
+    add({ id: 'hi-month', icon: 'calendar', tone: 'warn', title: `${nm(hi.key)} was your costliest month`, detail: `${fmt(hi.amt)}${lo && lo.key !== hi.key && lo.amt < hi.amt * 0.97 ? `, versus ${fmt(lo.amt)} in your cheapest, ${nm(lo.key)}` : ''}.`, badge: fmt(hi.amt) });
+  }
+
+  // 5) recent trend: last finished months vs the same number before
+  const done = perMonth.filter((x) => x.key !== cur);
+  if (done.length >= 4) {
+    const n = Math.min(3, Math.floor(done.length / 2));
+    const recent = done.slice(-n), before = done.slice(-2 * n, -n);
+    const r = total(recent) / n, b = total(before) / n;
+    if (b > 0 && Math.abs((r - b) / b) >= 0.08) {
+      const d = (r - b) / b;
+      add({ id: 'trend', icon: 'chart', tone: d > 0 ? 'warn' : 'good', title: `Your monthly spending is ${d > 0 ? 'rising' : 'falling'}`, detail: `Averaging ${fmt(r)} over the last ${n} months, ${pct(d)}% ${d > 0 ? 'more' : 'less'} than the ${n} before (${fmt(b)}).`, badge: `${d > 0 ? '+' : '−'}${pct(d)}%` });
+    }
+
+    // 6) which categories are behind it
+    const catAvg = (ms) => {
+      const out = new Map();
+      months.filter((mo) => ms.some((x) => x.key === mo.key)).forEach((mo) => mo.entries.filter((e) => e.type === 'Expense').forEach((e) => out.set(e.category, (out.get(e.category) || 0) + e.amount / ms.length)));
+      return out;
+    };
+    const rc = catAvg(recent), bc = catAvg(before);
+    const moves = [...new Set([...rc.keys(), ...bc.keys()])].map((c) => ({ c, d: (rc.get(c) || 0) - (bc.get(c) || 0), now: rc.get(c) || 0, was: bc.get(c) || 0 }));
+    const floor = (spent / count) * 0.04;
+    const up = moves.slice().sort((a, b2) => b2.d - a.d)[0];
+    if (up && up.d >= floor && up.was > 0) add({ id: 'cat-up', icon: up.c, cat: up.c, tone: 'warn', q: up.c, title: `${up.c} is growing the fastest`, detail: `Now ${fmt(up.now)} a month on average, up from ${fmt(up.was)} (+${fmt(up.d)}).`, badge: `+${pct(up.d / up.was)}%` });
+    const dn = moves.slice().sort((a, b2) => a.d - b2.d)[0];
+    if (dn && -dn.d >= floor && dn.was > 0) add({ id: 'cat-down', icon: dn.c, cat: dn.c, tone: 'good', q: dn.c, title: `${dn.c} is shrinking`, detail: `Now ${fmt(dn.now)} a month on average, down from ${fmt(dn.was)} (−${fmt(-dn.d)}).`, badge: `−${pct(-dn.d / dn.was)}%` });
+  }
+
+  // 7) biggest single expense ever
+  const big = exp.slice().sort((a, b) => b.amount - a.amount)[0];
+  const bigLabel = (big.description || '').trim() || big.sub;
+  add({ id: 'big', icon: big.category, cat: big.category, tone: 'info', q: bigLabel, title: `Biggest single expense: ${fmt(big.amount)}`, detail: `${bigLabel} (${big.category}) on ${big.date}.` });
+
+  // 8) most frequent purchase
+  const rep = groupBy(exp.filter((e) => (e.description || '').trim()), (e) => e.description.trim().toLowerCase())
+    .filter((g) => g.n >= 3).sort((a, b) => b.n - a.n || b.amt - a.amt)[0];
+  if (rep) {
+    const label = rep.items[0].description.trim();
+    add({ id: 'repeat', icon: rep.items[0].category, cat: rep.items[0].category, tone: 'info', q: label, title: `“${label}” is your most frequent purchase`, detail: `${rep.n} times, ${fmt(rep.amt)} in total (about ${fmt(rep.amt / rep.n)} each).` });
+  }
+
+  // 9) weekday
+  if (exp.length >= 20) {
+    const best = groupBy(exp, (e) => new Date(e.date + 'T12:00:00').getDay())[0];
+    if (best.amt / spent >= 0.2) add({ id: 'weekday', icon: 'calendar', tone: 'info', title: `${WEEKDAYS[best.key]} are your biggest spending day`, detail: `${pct(best.amt / spent)}% of all spending (${fmt(best.amt)}) happens on ${WEEKDAYS[best.key]}.` });
+  }
+
+  // 10) subscriptions
+  const subCat = cats.find((c) => /subscri/i.test(c.key));
+  if (subCat && subCat.key !== top.key) add({ id: 'subs', icon: subCat.key, cat: subCat.key, tone: 'info', q: subCat.key, title: `Subscriptions have cost ${fmt(subCat.amt)}`, detail: `About ${fmt(subCat.amt / count)} a month, ${pct(subCat.amt / spent)}% of your spending.` });
+
+  // 11) income kept
+  if (income > 0) {
+    const kept = (income - spent) / income;
+    if (kept >= 0.1) add({ id: 'saved', icon: 'income', tone: 'good', title: `You’ve kept ${pct(kept)}% of everything you earned`, detail: `${fmt(income - spent)} left from ${fmt(income)} in income.`, badge: `${pct(kept)}%` });
+    else if (kept < 0) add({ id: 'over', icon: 'income', tone: 'warn', title: 'Overall you’ve spent more than you earned', detail: `${fmt(spent - income)} more went out than came in across all months.` });
+  }
+
+  const order = ['top-cat', 'avg', 'trend', 'cat-up', 'cat-down', 'hi-month', 'saved', 'over', 'top-sub', 'big', 'repeat', 'subs', 'weekday'];
+  items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
+  return { enough: true, items: items.slice(0, 9) };
+}

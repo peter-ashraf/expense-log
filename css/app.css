@@ -519,3 +519,8 @@ button.ins { cursor: pointer; } button.ins:active { opacity: .6; }
 .ins em { flex: none; font-style: normal; font-size: 12.5px; font-weight: 700; padding: 4px 9px; border-radius: 999px; background: color-mix(in srgb, var(--accent) 13%, transparent); color: var(--accent); }
 .ins.good em { background: color-mix(in srgb, var(--pos) 15%, transparent); color: var(--pos); }
 .ins.warn em { background: color-mix(in srgb, var(--warn) 18%, transparent); color: var(--warn); }
+
+.seg.two { grid-template-columns: repeat(2, 1fr); margin: 0 0 6px; }
+.seg.two button { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.seg.two button.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.ins-seg + .ins { border-top: 0; }

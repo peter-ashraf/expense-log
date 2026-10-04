@@ -1,6 +1,6 @@
 import * as store from './store.js';
 import { icon, catHue } from './icons.js';
-import { computeInsights } from './insights.js';
+import { computeInsights, computeAllTime } from './insights.js';
 import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 import { readCsvEntries, decodeText } from './csv.js';
@@ -10,7 +10,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const ui = { tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
+const ui = { insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
 // ---------------------------------------------------------------- helpers
 const cur = () => store.getState().settings.currency || '';
@@ -339,20 +339,31 @@ function closeFlip() {
 }
 
 function insightsCard(v, m) {
-  const i = v.months.indexOf(m.key);
-  const prev = i > 0 ? v.by[v.months[i - 1]] : null;
-  const r = computeInsights({
-    m, prev, today: todayStr(), fmt: num0,
-    monthName: (k) => keyLabel(k).split(' ')[0],
-  });
-  if (!r.enough) return `<section class="card"><div class="card-h"><h3>Smart insights</h3></div><p class="muted pad">Add a few more expenses in ${esc(keyLabel(m.key))} and I’ll start spotting patterns.</p></section>`;
+  const all = ui.insScope === 'all';
+  let r;
+  if (all) {
+    r = computeAllTime({
+      months: v.months.map((k) => ({ key: k, entries: v.by[k].entries })),
+      today: todayStr(), fmt: num0, monthName: (k) => keyLabel(k).split(' ')[0],
+    });
+  } else {
+    const i = v.months.indexOf(m.key);
+    r = computeInsights({
+      m, prev: i > 0 ? v.by[v.months[i - 1]] : null, today: todayStr(), fmt: num0,
+      monthName: (k) => keyLabel(k).split(' ')[0],
+    });
+  }
+  const seg = `<div class="seg two ins-seg" role="radiogroup" aria-label="Insights range">${[['month', keyLabel(m.key)], ['all', 'All time']]
+    .map(([k, l]) => `<button role="radio" aria-checked="${(all ? 'all' : 'month') === k}" class="${(all ? 'all' : 'month') === k ? 'on' : ''}" data-act="ins-scope" data-v="${k}">${esc(l)}</button>`).join('')}</div>`;
+  const head = `<div class="card-h"><h3>Smart insights</h3></div>${seg}`;
+  if (!r.enough) return `<section class="card insights">${head}<p class="muted pad">${all ? 'Add a few more expenses and I’ll start spotting patterns across your history.' : `Add a few more expenses in ${esc(keyLabel(m.key))} and I’ll start spotting patterns.`}</p></section>`;
   return `<section class="card insights">
-      <div class="card-h"><h3>Smart insights</h3><span class="muted sm">${esc(keyLabel(m.key))}</span></div>
-      ${r.items.map((it) => `<${it.q ? 'button' : 'div'} class="ins ${it.tone}" ${it.q ? `data-act="ins-open" data-q="${esc(it.q)}"` : ''} style="${it.cat ? hueStyle(it.cat) : ''}">
+      ${head}
+      ${r.items.map((it) => { const link = it.q && !all; return `<${link ? 'button' : 'div'} class="ins ${it.tone}" ${link ? `data-act="ins-open" data-q="${esc(it.q)}"` : ''} style="${it.cat ? hueStyle(it.cat) : ''}">
         <span class="bubble">${icon(it.icon, 20)}</span>
         <span class="ins-t"><b>${esc(it.title)}</b><small>${esc(it.detail)}</small></span>
         ${it.badge ? `<em>${esc(it.badge)}</em>` : ''}
-      </${it.q ? 'button' : 'div'}>`).join('')}
+      </${link ? 'button' : 'div'}>`; }).join('')}
     </section>`;
 }
 
@@ -372,7 +383,6 @@ function renderInsights(view, m) {
   const last = v.months.slice(-6);
   const maxSpent = Math.max(1, ...last.map((k) => v.by[k].spent));
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
-    ${insightsCard(v, m)}
     <section class="card">
       <div class="card-h"><h3>Spending split</h3></div>
       ${cats.length ? `<div class="donut-wrap">
@@ -395,6 +405,7 @@ function renderInsights(view, m) {
       }).join('')}</div>
     </section>
     ${biggest.length ? `<section class="card"><div class="card-h"><h3>Biggest expenses</h3></div>${biggest.map((e) => entryRow(e, v.pending)).join('')}</section>` : ''}
+    ${insightsCard(v, m)}
   </div>`;
 }
 
@@ -454,7 +465,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v2.5.1</p>
+    <p class="muted center sm">Credit Card Expenses · v2.6</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -1231,6 +1242,11 @@ document.addEventListener('click', async (ev) => {
       closeMonthMenu();
       if (ui.tab !== el.dataset.tab) { ui.tab = el.dataset.tab; ui.animate = true; $('#view').innerHTML = ''; render(); }
       haptic(6);
+      break;
+    case 'ins-scope':
+      ui.insScope = el.dataset.v === 'all' ? 'all' : 'month'; ui.animate = false; haptic(6);
+      try { localStorage.setItem('el_ins', ui.insScope); } catch (e) { /* ignore */ }
+      render();
       break;
     case 'ins-open':
       ui.q = el.dataset.q || ''; ui.filter = 'Expense'; ui.tab = 'activity'; ui.animate = true; haptic(6);
