@@ -443,3 +443,6 @@ body.onboard #view { padding: 0 16px 24px; }
 .note-line { margin: 8px 0; padding: 8px 10px; border-radius: 12px; color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
 
 .badge.retrying { background: color-mix(in srgb, var(--warn) 16%, transparent); color: var(--warn); }
+
+/* brief fade while the page reloads so the status bar can re-read the theme */
+body.reloading #app { opacity: 0; transition: opacity .2s ease; }

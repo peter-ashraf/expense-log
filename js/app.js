@@ -301,7 +301,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v2.0</p>
+    <p class="muted center sm">Credit Card Expenses · v2.1</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -510,6 +510,22 @@ function tweenTheme(target) {
   setTimeout(() => { if (Math.abs(themeNow - target) > 0.01) paintTheme(target); }, dur + 80); // if frames are throttled
 }
 
+// iOS only repaints the status bar for a different theme after the page (re)loads, so a theme change that alters the
+// effective light/dark look reloads the page quickly and returns to the same screen.
+let shownTheme = null; // the light/dark look the status bar was set up for at load time
+
+function reloadForStatusBar() {
+  if ($('.sheet')) { ui.reloadAfterSheet = true; return; } // never yank a form away; do it when it closes
+  try { sessionStorage.setItem('el_resume', JSON.stringify({ tab: ui.tab, month: ui.month })); } catch (e) { /* ignore */ }
+  document.body.classList.add('reloading');
+  setTimeout(() => location.reload(), 220);
+}
+
+function checkThemeChanged() {
+  const now = effectiveTheme();
+  if (shownTheme !== null && now !== shownTheme) { shownTheme = now; reloadForStatusBar(); }
+}
+
 // ---- appearance: light / dark / follow the phone -----------------------------------------------
 function applyTheme(mode) {
   const root = document.documentElement;
@@ -521,7 +537,7 @@ function applyTheme(mode) {
 }
 
 // When following the phone, flip the status bar the moment the phone's appearance changes.
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (themeMode === 'system') paintTheme(themeNow); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (themeMode === 'system') { paintTheme(themeNow); checkThemeChanged(); } });
 
 function setProgress(p) {
   p = Math.max(0, Math.min(1, p));
@@ -637,6 +653,7 @@ function closeSheet() {
     layer.innerHTML = '';
     document.body.classList.remove('noscroll');
     sheetClosing = false;
+    if (ui.reloadAfterSheet) { ui.reloadAfterSheet = false; reloadForStatusBar(); }
   }, reduceMotion ? 0 : 480);
 }
 
@@ -1070,6 +1087,7 @@ document.addEventListener('click', async (ev) => {
       store.saveSettings({ theme: mode });
       applyTheme(mode);
       haptic(8);
+      checkThemeChanged();
       break;
     }
     case 'new-cat': ui.adding = 'cat'; ui.newName = ''; refreshForm(); break;
@@ -1228,6 +1246,7 @@ $('#view').addEventListener('scroll', () => $('#topbar').classList.toggle('scrol
 window.addEventListener('online', () => store.sync());
 document.addEventListener('visibilitychange', () => {
   paintTheme(themeNow); // the phone's appearance may have changed while the app was away
+  checkThemeChanged();
   if (document.visibilityState === 'visible') setTimeout(() => store.sync(), 700); // give a sleeping mobile connection a moment to wake
 });
 window.addEventListener('pageshow', () => paintTheme(themeNow));
@@ -1236,6 +1255,12 @@ setInterval(() => { if (document.visibilityState === 'visible') store.sync(); },
 (async function boot() {
   await store.init();
   applyTheme(store.getState().settings.theme || 'system');
+  shownTheme = effectiveTheme();
+  try {
+    const r = JSON.parse(sessionStorage.getItem('el_resume') || 'null');
+    sessionStorage.removeItem('el_resume');
+    if (r) { if (r.tab) ui.tab = r.tab; if (r.month) ui.month = r.month; ui.animate = false; }
+  } catch (e) { /* ignore */ }
   // One-tap setup link: …/#u=<api url>&k=<key>
   if (location.hash.length > 1) {
     const p = new URLSearchParams(location.hash.slice(1));

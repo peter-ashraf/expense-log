@@ -16,18 +16,21 @@
   :root[data-theme="dark"] { --bg: #0A0B10; --fg: #F2F3F8; --card: #14161F; --mut: #8D93A8; }
   html, body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.4 -apple-system, system-ui, sans-serif; }
   #wrap { padding: 18px 16px 120px; min-height: 130vh; background: var(--bg); }
-  /* L2 fixed: the app's current setup (body overflow hidden + fixed full-screen scroller) */
-  html.L-fixed body { overflow: hidden; }
-  html.L-fixed #wrap { position: fixed; inset: 0; overflow-y: auto; min-height: 0; }
-  /* L3 fixedScroll: fixed scroller, body NOT hidden, document made scrollable by a spacer */
-  html.L-fixedScroll #wrap { position: fixed; inset: 0; overflow-y: auto; min-height: 0; }
-  html.L-fixedScroll #spacer { display: block; height: calc(100vh + 60px); }
-  /* L4 inner: html/body fill the screen and clip; an ordinary (not fixed) block scrolls inside */
-  html.L-inner, html.L-inner body { height: 100%; overflow: hidden; }
-  html.L-inner #wrap { height: 100%; overflow-y: auto; min-height: 0; box-sizing: border-box; }
-  /* L5 fixedPlain: fixed scroller only; body untouched and not scrollable */
-  html.L-fixedPlain #wrap { position: fixed; inset: 0; overflow-y: auto; min-height: 0; }
-  #spacer { display: none; }
+  /* docBars: the document scrolls (content in normal flow) + opaque fixed top and bottom bars */
+  .bar { display: none; position: fixed; left: 0; right: 0; z-index: 30; height: 56px; background: var(--bg); box-sizing: border-box; }
+  #barTop { top: 0; border-bottom: 1px solid rgba(128,128,128,.3); }
+  #barBot { bottom: 0; border-top: 1px solid rgba(128,128,128,.3); }
+  html.L-docBars .bar, html.L-docBarsGlass .bar { display: block; }
+  html.L-docBars #wrap, html.L-docBarsGlass #wrap { padding-top: 76px; padding-bottom: 140px; }
+  /* docBarsGlass: same, but translucent bars with a blur (like my real top bar and tab bar) */
+  html.L-docBarsGlass .bar { background: color-mix(in srgb, var(--bg) 62%, transparent); -webkit-backdrop-filter: blur(22px); backdrop-filter: blur(22px); }
+  /* innerFree: html/body fill the screen (no clipping, no fixed); one inner block scrolls */
+  html.L-innerFree, html.L-innerFree body { height: 100%; }
+  html.L-innerFree #wrap { height: 100%; overflow-y: auto; min-height: 0; box-sizing: border-box; }
+  /* innerAbs: the scroller is absolutely positioned to fill the page */
+  html.L-innerAbs, html.L-innerAbs body { height: 100%; }
+  html.L-innerAbs body { position: relative; }
+  html.L-innerAbs #wrap { position: absolute; inset: 0; overflow-y: auto; min-height: 0; }
   h1 { font-size: 22px; margin: 4px 0 6px; }
   p { color: var(--mut); margin: 6px 0 12px; }
   .card { background: var(--card); border-radius: 18px; padding: 14px; margin: 12px 0; border: 1px solid rgba(128,128,128,.2); }
@@ -53,9 +56,9 @@
 </style>
 </head>
 <body>
-<div id="spacer"></div>
+<div class="bar" id="barTop"></div><div class="bar" id="barBot"></div>
 <div id="wrap">
-  <h1>Status bar probe <small style="font-weight:400;color:var(--mut)">v4</small></h1>
+  <h1>Status bar probe <small style="font-weight:400;color:var(--mut)">v5</small></h1>
   <p>Tests how iOS repaints the status bar. Open this from the Home Screen icon, not from Safari.</p>
 
   <div class="card">
@@ -70,11 +73,11 @@
     </select>
     <p>Layout</p>
     <select id="layout">
-      <option value="flow">L1 · Normal page (document scrolls)</option>
-      <option value="fixed">L2 · Fixed scroller + body overflow hidden (my app today)</option>
-      <option value="fixedScroll">L3 · Fixed scroller, body free, document scrollable</option>
-      <option value="inner">L4 · Not fixed: html/body clipped, inner block scrolls</option>
-      <option value="fixedPlain">L5 · Fixed scroller only (body untouched)</option>
+      <option value="flow">L1 · Normal page (document scrolls) — control</option>
+      <option value="docBars">L6 · Document scrolls + fixed opaque top/bottom bars</option>
+      <option value="docBarsGlass">L7 · Document scrolls + fixed GLASS (blurred) bars</option>
+      <option value="innerFree">L8 · Inner scroller, nothing fixed, no clipping</option>
+      <option value="innerAbs">L9 · Inner scroller filling the page (absolute)</option>
     </select>
     <div class="row" style="margin-top:12px">
       <button id="dark" class="primary">Go dark</button>
@@ -141,7 +144,7 @@
     e.t = ts(); e.ms = Date.now(); events.push(e);
     var l = $('#log'); l.textContent = e.t + '  ' + e.text + '\n' + l.textContent;
   }
-  var LAYOUTS = ['fixed', 'fixedScroll', 'inner', 'fixedPlain'];
+  var LAYOUTS = ['docBars', 'docBarsGlass', 'innerFree', 'innerAbs'];
   function setLayout(v) {
     var c = document.documentElement.classList;
     LAYOUTS.forEach(function (l) { c.remove('L-' + l); });
@@ -263,7 +266,7 @@
     });
   }
   function buildReport() {
-    var lines = ['STATUS BAR PROBE REPORT (v4)', 'created: ' + new Date().toString(), '', deviceInfo(), ''];
+    var lines = ['STATUS BAR PROBE REPORT (v5)', 'created: ' + new Date().toString(), '', deviceInfo(), ''];
     if (steps.length) {
       lines.push('RESULTS  (✓ = status bar followed, ✗ = did not change, ? = not marked; taps recorded: ' + taps.length + ')');
       steps.forEach(function (s, i) {
@@ -296,7 +299,7 @@
     try { localStorage.removeItem('probe_theme'); } catch (e) { /* ignore */ }
     steps = []; marks = {}; events = []; taps = []; $('#log').textContent = '';
     $('#seen').style.display = 'block';
-    ['flow', 'fixed', 'fixedScroll', 'inner', 'fixedPlain'].forEach(function (lay) { ['1', '4'].forEach(function (m) { steps.push({ lay: lay, m: m }); }); });
+    ['flow', 'docBars', 'docBarsGlass', 'innerFree', 'innerAbs'].forEach(function (lay) { ['1', '4'].forEach(function (m) { steps.push({ lay: lay, m: m }); }); });
     var big = $('#big'); big.style.display = 'block';
     $('#results').style.display = 'none'; $('#reportCard').style.display = 'none';
     var i = 0;
