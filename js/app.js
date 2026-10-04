@@ -1,6 +1,6 @@
 import * as store from './store.js';
 import { icon, catHue } from './icons.js';
-import { computeInsights, computeAllTime } from './insights.js';
+import { computeInsights, computeAllTime, computeStreak, weeklySeries, topMerchants } from './insights.js';
 import { parseMessages } from './quick.js';
 import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
@@ -75,8 +75,12 @@ function heroHTML(n) {
   return `${cur() ? `<span class="cur">${esc(cur())}</span>` : ''}${esc(i)}<small>${esc(d)}</small>`;
 }
 
+const hideAmounts = () => !!store.getState().settings.hideBalance;
+const MASK = '••••';
+
 function countUp(el, to) {
   if (!el) return;
+  if (hideAmounts()) { el.textContent = '••••••'; return; }
   if (reduceMotion || !ui.animate) { el.innerHTML = heroHTML(to); return; }
   const t0 = performance.now();
   const dur = 700;
@@ -194,7 +198,19 @@ function renderHome(view, m) {
   const meterShown = acc ? lim > 0 : true;
   const meterPct = acc ? Math.max(0, Math.min(100, (m.spent / (lim || 1)) * 100)) : pct;
   const meterCap = acc ? `${Math.round((m.spent / (lim || 1)) * 100)}% of the limit used` : `${Math.round(pct)}% of available funds spent`;
+  const hide = hideAmounts();
+  const M = (s) => (hide ? MASK : s);
   const rawM = rawMonth();
+  const allDates = new Set();
+  v.months.forEach((k) => v.by[k].entries.forEach((e) => allDates.add(e.date)));
+  const sk = computeStreak(allDates, todayStr(), weekStart());
+  const dowName = (iso) => new Intl.DateTimeFormat(undefined, { weekday: 'narrow' }).format(new Date(iso + 'T12:00:00'));
+  const streakCard = v.months.length ? `<section class="card streak">
+      <div class="streak-h"><span class="flame ${sk.streak ? 'lit' : ''}">${icon('flame', 22, 1.8)}</span>
+        <div class="streak-t"><b>${sk.streak ? `${sk.streak}-day streak` : 'Start a streak'}</b>
+        <small>${sk.streak ? (sk.loggedToday ? `Best so far: ${sk.best} day${sk.best === 1 ? '' : 's'}` : 'Log something today to keep it going') : 'Log an entry today to begin'}</small></div></div>
+      <div class="week">${sk.week.map((d) => `<span class="wd ${d.on ? 'on' : ''} ${d.today ? 'today' : ''} ${d.future ? 'future' : ''}"><i>${d.on ? icon('check', 12, 3) : ''}</i><em>${esc(dowName(d.date))}</em></span>`).join('')}</div>
+    </section>` : '';
   const accCard = !m.scoped && multiAcc() ? `<section class="card">
       <div class="card-h"><h3>Accounts</h3></div>
       ${liveAccts().map((a) => {
@@ -202,23 +218,25 @@ function renderHome(view, m) {
         const r = a.limit > 0 ? sp / a.limit : 0;
         return `<button class="bar-row acc-row ${r > 1 ? 'over' : r > 0.85 ? 'near' : ''}" data-act="acc" data-v="${esc(a.name)}" style="--h:${accHue(a)}">
           <span class="bubble sm">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}</span>
-          <span class="bar-main"><span class="bar-top"><span>${esc(a.name)}</span><b>${esc(num(sp))}${a.limit > 0 ? `<small> / ${esc(num0(a.limit))}</small>` : ''}</b></span>
+          <span class="bar-main"><span class="bar-top"><span>${esc(a.name)}</span><b>${esc(M(num(sp)))}${a.limit > 0 ? `<small> / ${esc(M(num0(a.limit)))}</small>` : ''}</b></span>
           <span class="bar"><i style="width:${a.limit > 0 ? Math.min(100, Math.max(3, r * 100)).toFixed(1) : 0}%"></i></span></span></button>`;
       }).join('')}
     </section>` : '';
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
     ${accChips()}
     <section class="hero">
+      <button class="eye" data-act="hide-bal" aria-label="${hide ? 'Show amounts' : 'Hide amounts'}" aria-pressed="${hide}">${icon(hide ? 'eyeoff' : 'eye', 20)}</button>
       <div class="hero-label">${esc(heroLabel)}</div>
-      <div class="hero-amt" id="heroAmt">${heroHTML(heroAmount)}</div>
-      <div class="hero-sub">${esc(heroSub)}</div>
+      <div class="hero-amt" id="heroAmt">${hide ? '••••••' : heroHTML(heroAmount)}</div>
+      <div class="hero-sub">${esc(hide ? 'Amounts are hidden' : heroSub)}</div>
       <div class="hero-row">
-        <button class="mini" data-act="flip" data-kind="income" aria-label="Show income breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic up"')}Income</span><b>${esc(fmt(m.income))}</b></button>
-        <button class="mini" data-act="flip" data-kind="spent" aria-label="Show spending breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic down"')}Spent</span><b>${esc(fmt(m.spent))}</b></button>
+        <button class="mini" data-act="flip" data-kind="income" aria-label="Show income breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic up"')}Income</span><b>${esc(M(fmt(m.income)))}</b></button>
+        <button class="mini" data-act="flip" data-kind="spent" aria-label="Show spending breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic down"')}Spent</span><b>${esc(M(fmt(m.spent)))}</b></button>
       </div>
       ${meterShown ? `<div class="meter"><i style="width:${meterPct.toFixed(1)}%"></i></div>
       <div class="meter-cap">${esc(meterCap)}</div>` : ''}
     </section>
+    ${streakCard}
     ${accCard}
     ${cats.length ? `<section class="card">
       <div class="card-h"><h3>Where it went</h3><button class="link" data-act="tab" data-tab="insights">See all</button></div>
@@ -449,6 +467,25 @@ function renderInsights(view, m) {
   const last = v.months.slice(-6);
   const sc = {};
   last.forEach((k) => { sc[k] = scoped(v.by[k]); });
+  // the last 7 days: ending today for the current month, else on the last day of the month being viewed
+  const today = todayStr();
+  const endDay = today.slice(0, 7) === m.key ? today : `${m.key}-${String(new Date(+m.key.slice(0, 4), +m.key.slice(5), 0).getDate()).padStart(2, '0')}`;
+  const allSpend = v.months.flatMap((k) => scoped(v.by[k]).entries);
+  const wk = weeklySeries(allSpend, endDay);
+  const wkMax = Math.max(1, ...wk.days.map((d) => d.amt));
+  const wkDelta = wk.prevTotal > 0 ? Math.round(((wk.total - wk.prevTotal) / wk.prevTotal) * 100) : null;
+  const dayLetter = (iso) => new Intl.DateTimeFormat(undefined, { weekday: 'narrow' }).format(new Date(iso + 'T12:00:00'));
+  const weekCard = wk.total > 0 || wk.prevTotal > 0 ? `<section class="card">
+      <div class="card-h"><h3>Last 7 days</h3><span class="muted sm">${wkDelta === null ? '' : `${wkDelta > 0 ? '+' : wkDelta < 0 ? '−' : ''}${Math.abs(wkDelta)}% vs the week before`}</span></div>
+      <div class="trend week7">${wk.days.map((d) => `<div class="tcol ${d.date === endDay ? 'on' : ''}"><b>${d.amt ? esc(num0(d.amt)) : ''}</b><div class="tbar"><i style="height:${d.amt ? Math.max(4, (d.amt / wkMax) * 100).toFixed(1) : 0}%"></i></div><span>${esc(dayLetter(d.date))}</span></div>`).join('')}</div>
+      <p class="muted sm" style="margin-top:8px">${esc(num0(wk.total))} spent in these 7 days${wk.prevTotal > 0 ? `, ${esc(num0(wk.prevTotal))} the week before` : ''}.</p>
+    </section>` : '';
+  const merch = topMerchants(m.entries, 5);
+  const merchTop = merch.length ? merch[0].amt : 1;
+  const merchCard = merch.length ? `<section class="card">
+      <div class="card-h"><h3>Top merchants</h3><span class="muted sm">by note · ${esc(keyLabel(m.key))}</span></div>
+      ${merch.map((x) => `<button class="bar-row acc-row" data-act="ins-open" data-q="${esc(x.name)}"><span class="bar-main"><span class="bar-top"><span>${esc(x.name)}<small class="muted"> · ${x.n}×</small></span><b>${esc(num(x.amt))}</b></span><span class="bar"><i style="width:${Math.max(4, (x.amt / merchTop) * 100).toFixed(1)}%"></i></span></span></button>`).join('')}
+    </section>` : '';
   const maxSpent = Math.max(1, ...last.map((k) => sc[k].spent));
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
     ${accChips()}
@@ -473,6 +510,8 @@ function renderInsights(view, m) {
         return `<button class="tcol ${k === m.key ? 'on' : ''}" data-act="pick-month" data-key="${k}"><b>${esc(num0(mm.spent))}</b><div class="tbar"><i style="height:${h.toFixed(1)}%"></i></div><span>${esc(keyShort(k))}</span></button>`;
       }).join('')}</div>
     </section>
+    ${weekCard}
+    ${merchCard}
     ${biggest.length ? `<section class="card"><div class="card-h"><h3>Biggest expenses</h3></div>${biggest.map((e) => entryRow(e, v.pending)).join('')}</section>` : ''}
     ${insightsCard(v, m)}
   </div>`;
@@ -562,7 +601,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v3.1.1</p>
+    <p class="muted center sm">Credit Card Expenses · v3.2</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -637,11 +676,11 @@ function openSheet(id) {
       <div class="chips acc-pick" id="fAccts" aria-label="Account"></div>
       <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label></div>
       <div id="calWrap"></div><div id="quickWrap"></div>`;
-  const foot = `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>` +
+  const foot = (e ? '' : `<button class="btn ghost sq" id="quickToggle" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 24)}</button>`) +
+    `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>` +
     (e ? '' : '<button class="btn primary big" data-act="quick-add" id="quickBtn">Add selected</button>');
   present(e ? 'Edit transaction' : 'New transaction',
-    e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>`
-      : `<button class="icon-btn" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 20)}</button>`, body, 'compact', foot);
+    e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : '', body, 'compact', foot);
   $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; });
   ui.adding = null;
   ui.newName = '';
@@ -671,12 +710,13 @@ const quickData = (r) => ({
 });
 const quickCanAdd = (r) => !!r.amount && r.currency === 'EGP' && (r.type === 'Income' || (!!r.category && !!r.sub));
 
+// The toggle sits in the bottom bar beside the main button, where a thumb reaches it on a large phone.
 function setQuickHeader(on) {
-  const h = $('.sheet .hbtns');
-  if (!h) return;
-  h.innerHTML = on
-    ? '<button class="mini-btn" data-act="quick-back" aria-label="Back to the form">Keypad</button>'
-    : `<button class="icon-btn" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 20)}</button>`;
+  const t = $('#quickToggle');
+  if (!t) return;
+  t.dataset.act = on ? 'quick-back' : 'quick-open';
+  t.setAttribute('aria-label', on ? 'Back to the keypad' : 'Quick add: paste a bank message or type it');
+  t.innerHTML = icon(on ? 'keypad' : 'spark', 24);
 }
 
 function enterQuick() {
@@ -1595,6 +1635,10 @@ document.addEventListener('click', async (ev) => {
     case 'pick-month':
       if (el.classList.contains('menu-row') && performance.now() < ui.noClickUntil) break; // already handled by the slide gesture
       pickMonth(el.dataset.key);
+      break;
+    case 'hide-bal':
+      store.saveSettings({ hideBalance: !hideAmounts() });
+      haptic(8); ui.animate = false; render();
       break;
     case 'acc':
       ui.account = el.dataset.v || 'all';

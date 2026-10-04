@@ -309,3 +309,57 @@ export function computeAllTime({ months, today, fmt, monthName }) {
   items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
   return { enough: true, items: items.slice(0, 9) };
 }
+
+// ------------------------------------------------------------------ streak, week chart, top merchants
+const isoShift = (d, n) => {
+  const [y, m, dd] = d.split('-').map(Number);
+  const dt = new Date(y, m - 1, dd + n, 12);
+  return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
+};
+
+/**
+ * dates : every date (YYYY-MM-DD) that has at least one entry; today : 'YYYY-MM-DD'; ws : first day of the week (0 = Sunday)
+ * A streak is a run of consecutive days with an entry. It stays alive until the end of the day after the last entry.
+ */
+export function computeStreak(dates, today, ws = 1) {
+  const set = dates instanceof Set ? dates : new Set(dates);
+  const loggedToday = set.has(today);
+  let cursor = loggedToday ? today : set.has(isoShift(today, -1)) ? isoShift(today, -1) : null;
+  let streak = 0;
+  while (cursor && set.has(cursor)) { streak++; cursor = isoShift(cursor, -1); }
+  let best = 0, run = 0, prev = null;
+  [...set].sort().forEach((d) => { run = prev && isoShift(prev, 1) === d ? run + 1 : 1; if (run > best) best = run; prev = d; });
+  const dow = new Date(today + 'T12:00:00').getDay();
+  const start = isoShift(today, -((dow - ws + 7) % 7));
+  const week = Array.from({ length: 7 }, (_, i) => {
+    const date = isoShift(start, i);
+    return { date, on: set.has(date), today: date === today, future: date > today };
+  });
+  return { streak, best: Math.max(best, streak), loggedToday, week };
+}
+
+/** The 7 days ending on `end`, with what was spent each day, plus the 7 days before for comparison. */
+export function weeklySeries(expenses, end) {
+  const byDay = new Map();
+  expenses.forEach((e) => { if (e.type === 'Expense') byDay.set(e.date, (byDay.get(e.date) || 0) + e.amount); });
+  const days = Array.from({ length: 7 }, (_, i) => { const date = isoShift(end, i - 6); return { date, amt: byDay.get(date) || 0 }; });
+  let prev = 0;
+  for (let i = 7; i < 14; i++) prev += byDay.get(isoShift(end, -i)) || 0;
+  return { days, total: days.reduce((n, d) => n + d.amt, 0), prevTotal: prev };
+}
+
+/** Where the money goes by name (the note), biggest first. Entries without a note are skipped. */
+export function topMerchants(expenses, limit = 5) {
+  const m = new Map();
+  expenses.forEach((e) => {
+    if (e.type !== 'Expense') return;
+    const name = String(e.description || '').replace(/\s+/g, ' ').trim();
+    if (!name) return;
+    const k = name.toLowerCase();
+    const cur = m.get(k) || { name, amt: 0, n: 0 };
+    cur.amt += e.amount;
+    cur.n++;
+    m.set(k, cur);
+  });
+  return [...m.values()].sort((a, b) => b.amt - a.amt).slice(0, limit);
+}
