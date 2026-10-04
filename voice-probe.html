@@ -1,0 +1,182 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Voice test">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#0A0B10">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Voice test</title>
+<style>
+  :root { color-scheme: light dark; --bg:#F4F5FA; --card:#fff; --text:#0F1020; --muted:#6B6E85; --line:#E1E3EE; --accent:#6D5EF6; --ok:#12A66B; --bad:#E5484D; --warn:#D98A06; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0A0B10; --card:#14151D; --text:#F2F3FA; --muted:#8E91AB; --line:#24263A; --ok:#3DDC97; --bad:#FF6B70; --warn:#F5B544; } }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.4 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; padding: 16px 16px 80px; max-width: 560px; margin-inline: auto; }
+  h1 { font-size: 22px; margin: 6px 0 2px; } h2 { font-size: 15px; margin: 0 0 8px; }
+  p.sub { color: var(--muted); margin: 0 0 14px; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px; margin-bottom: 12px; }
+  .kv { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .kv:first-of-type { border-top: 0; } .kv span { color: var(--muted); } .kv b { text-align: right; word-break: break-word; }
+  .yes { color: var(--ok); } .no { color: var(--bad); } .maybe { color: var(--warn); }
+  button { font: inherit; color: inherit; border: 1px solid var(--line); background: none; border-radius: 14px; padding: 11px 14px; cursor: pointer; }
+  button.main { width: 100%; height: 64px; font-size: 18px; font-weight: 700; background: var(--accent); color: #fff; border: 0; border-radius: 18px; }
+  button.main.on { background: var(--bad); }
+  button.chip { padding: 8px 14px; border-radius: 999px; font-weight: 600; } button.chip.on { background: var(--text); color: var(--bg); }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; }
+  textarea { width: 100%; min-height: 76px; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: inherit; padding: 10px 12px; font: inherit; font-size: 16px; resize: none; }
+  #heard { min-height: 52px; font-size: 18px; margin: 12px 0 4px; }
+  #heard i { color: var(--muted); font-style: normal; }
+  .res { border-top: 1px solid var(--line); padding: 10px 0; } .res:first-child { border-top: 0; }
+  .res b { display: block; } .res small { color: var(--muted); display: block; margin-top: 2px; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); max-height: 260px; overflow: auto; }
+  .tip { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+</style>
+</head>
+<body>
+<h1>Voice test</h1>
+<p class="sub">Tests speech recognition on this device and shows how Quick add would read what you say. It is not connected to your sheet and saves nothing.</p>
+
+<div class="card">
+  <h2>This device</h2>
+  <div id="env"></div>
+</div>
+
+<div class="card">
+  <h2>1. Speak</h2>
+  <div class="row" id="langs">
+    <button class="chip on" data-lang="en-US">English</button>
+    <button class="chip" data-lang="ar-EG">عربي (مصر)</button>
+  </div>
+  <button class="main" id="mic">Tap and speak</button>
+  <div id="heard"><i>What the phone heard will appear here.</i></div>
+  <p class="tip">Try: “coffee forty five”, “taxi 80 cash yesterday”, “groceries one thousand two hundred”, then in Arabic “قهوة خمسة وأربعين” or “تاكسي ٨٠”.</p>
+</div>
+
+<div class="card">
+  <h2>2. Or use your keyboard’s microphone</h2>
+  <textarea id="kb" placeholder="Tap here, then tap the microphone on your keyboard and speak"></textarea>
+  <p class="tip">This is the fallback if the Speak button is blocked. The text below is read the same way.</p>
+</div>
+
+<div class="card">
+  <h2>How Quick add reads it</h2>
+  <div id="parsed"><p class="tip">Nothing yet.</p></div>
+</div>
+
+<div class="card">
+  <h2>Microphone permission</h2>
+  <button id="perm">Check microphone access</button>
+  <p class="tip" id="permOut"></p>
+</div>
+
+<div class="card">
+  <h2>Event log</h2>
+  <pre id="log">(empty)</pre>
+  <div class="row"><button id="copy">Copy report</button><button id="clear">Clear</button></div>
+  <p class="tip" id="copied"></p>
+</div>
+
+<script type="module">
+import { parseMessages } from './js/quick.js';
+
+const $ = (s) => document.querySelector(s);
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+const standalone = (navigator.standalone === true) || matchMedia('(display-mode: standalone)').matches;
+const t0 = performance.now();
+const logLines = [];
+const log = (m) => { const l = `${((performance.now() - t0) / 1000).toFixed(1)}s  ${m}`; logLines.push(l); $('#log').textContent = logLines.join('\n'); $('#log').scrollTop = 1e9; };
+
+// ---- device
+const kv = (k, v, cls = '') => `<div class="kv"><span>${k}</span><b class="${cls}">${v}</b></div>`;
+const env = {
+  mode: standalone ? 'Installed app (home screen)' : 'Browser tab',
+  speech: SR ? (window.SpeechRecognition ? 'SpeechRecognition' : 'webkitSpeechRecognition') : 'not available',
+  secure: window.isSecureContext,
+  online: navigator.onLine,
+  lang: navigator.language,
+  ua: navigator.userAgent.replace(/^Mozilla\/5\.0 /, '').slice(0, 90),
+};
+$('#env').innerHTML = kv('Opened as', env.mode) + kv('Speech recognition', env.speech, SR ? 'yes' : 'no') + kv('Secure page', env.secure ? 'yes' : 'no', env.secure ? 'yes' : 'no')
+  + kv('Online', env.online ? 'yes' : 'no', env.online ? 'yes' : 'maybe') + kv('Phone language', env.lang) + kv('Browser', env.ua);
+log(`opened as: ${env.mode}; speech: ${env.speech}; secure: ${env.secure}; online: ${env.online}`);
+if (!SR) { $('#mic').disabled = true; $('#mic').textContent = 'Speech recognition is not available here'; $('#mic').style.opacity = .5; }
+
+// ---- parsing, with the real category list
+const categories = {
+  order: ['Bills', 'Food', 'Transport', 'Entertainment', 'Shopping', 'Health', 'Education', 'Travel', 'Subscriptions', 'Miscellaneous'],
+  map: { Bills: ['Mobile', 'Internet', 'Electricity', 'Water', 'Landline'], Food: ['Groceries', 'Dining Out', 'Coffee'], Transport: ['Fuel', 'Taxi', 'Public Transit'],
+    Entertainment: ['Streaming', 'Cinema', 'Games'], Shopping: ['Clothes', 'Electronics', 'Household'], Health: ['Doctor Visits', 'Pharmacy', 'Insurance', 'Gym'],
+    Education: ['Courses', 'Books', 'Tuition'], Travel: ['Flights', 'Hotels', 'Tours', 'Transport'],
+    Subscriptions: ['Netflix', 'Spotify', 'Youtube Premium', 'iCloude+', 'Claude AI', 'Other Services'], Miscellaneous: ['Other'] },
+};
+const accounts = [{ name: 'Credit Card', type: 'card', archived: false }, { name: 'Cash', type: 'cash', archived: false }];
+const today = new Date(); const pad = (n) => String(n).padStart(2, '0');
+const todayStr = `${today.getFullYear()}-${pad(today.getMonth() + 1)}-${pad(today.getDate())}`;
+let lastParsed = [];
+function show(text) {
+  const rows = parseMessages(text, { today: todayStr, categories, accounts, history: [] });
+  lastParsed = rows;
+  $('#parsed').innerHTML = rows.length ? rows.map((r) => `<div class="res"><b>${r.type === 'Income' ? '+' : '−'}${r.amount} · ${r.description || '(no note)'}</b>
+    <small>${r.type === 'Income' ? 'Income' : (r.category ? r.category + ' › ' + r.sub : 'no category: you would pick one')} · ${r.account || 'default account'} · ${r.date} · ${r.confidence}${r.ready ? ' · ready' : ''}</small></div>`).join('')
+    : '<p class="tip">No amount found in that.</p>';
+}
+
+// ---- speaking
+let lang = 'en-US', rec = null, finals = [];
+document.querySelectorAll('#langs .chip').forEach((b) => b.addEventListener('click', () => {
+  lang = b.dataset.lang;
+  document.querySelectorAll('#langs .chip').forEach((x) => x.classList.toggle('on', x === b));
+  log(`language set to ${lang}`);
+}));
+
+function stop() { if (rec) { try { rec.stop(); } catch (e) { /* ignore */ } } }
+$('#mic').addEventListener('click', () => {
+  if (!SR) return;
+  if (rec) { log('tapped stop'); stop(); return; }
+  const r = new SR();
+  r.lang = lang; r.interimResults = true; r.continuous = false; r.maxAlternatives = 1;
+  const evs = ['audiostart', 'soundstart', 'speechstart', 'speechend', 'soundend', 'audioend', 'nomatch'];
+  evs.forEach((e) => r.addEventListener(e, () => log(`event: ${e}`)));
+  r.onstart = () => { log(`event: start (lang ${r.lang})`); $('#mic').classList.add('on'); $('#mic').textContent = 'Listening… tap to stop'; };
+  r.onresult = (ev) => {
+    let heard = '', fin = false, conf = '';
+    for (let i = 0; i < ev.results.length; i++) { heard += ev.results[i][0].transcript; if (ev.results[i].isFinal) { fin = true; conf = (ev.results[i][0].confidence || 0).toFixed(2); } }
+    $('#heard').textContent = heard;
+    log(`result${fin ? ' (final, confidence ' + conf + ')' : ''}: “${heard}”`);
+    show(heard);
+    if (fin) finals.push({ lang, heard });
+  };
+  r.onerror = (ev) => { log(`ERROR: ${ev.error}${ev.message ? ' — ' + ev.message : ''}`); $('#heard').innerHTML = `<i>Error: ${ev.error}</i>`; };
+  r.onend = () => { log('event: end'); rec = null; $('#mic').classList.remove('on'); $('#mic').textContent = 'Tap and speak'; };
+  try { r.start(); rec = r; log('start() called'); }
+  catch (e) { log(`start() threw: ${e.name}: ${e.message}`); $('#heard').innerHTML = `<i>Could not start: ${e.name}</i>`; rec = null; }
+});
+
+// ---- keyboard dictation
+$('#kb').addEventListener('input', (e) => { show(e.target.value); });
+
+// ---- permission
+$('#perm').addEventListener('click', async () => {
+  const out = $('#permOut');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { out.textContent = 'This page cannot ask for the microphone here.'; log('getUserMedia: not available'); return; }
+  try {
+    const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+    s.getTracks().forEach((t) => t.stop());
+    out.textContent = 'Microphone access: allowed.'; log('getUserMedia: allowed');
+  } catch (e) { out.textContent = `Microphone access: ${e.name}. ${e.message || ''}`; log(`getUserMedia: ${e.name} ${e.message || ''}`); }
+});
+
+// ---- report
+$('#clear').addEventListener('click', () => { logLines.length = 0; finals = []; $('#log').textContent = '(empty)'; $('#copied').textContent = ''; });
+$('#copy').addEventListener('click', async () => {
+  const report = ['VOICE TEST REPORT', `opened as: ${env.mode}`, `speech api: ${env.speech}`, `secure: ${env.secure}  online: ${env.online}  phone language: ${env.lang}`, `browser: ${navigator.userAgent}`, '',
+    'EVENTS', ...logLines, '', 'LAST READING', ...lastParsed.map((r) => `${r.type} ${r.amount} | ${r.description} | ${r.category} > ${r.sub} | ${r.account || '-'} | ${r.date} | ${r.confidence}`)].join('\n');
+  try { await navigator.clipboard.writeText(report); $('#copied').textContent = 'Copied. Paste it into the chat.'; }
+  catch (e) { const ta = document.createElement('textarea'); ta.value = report; document.body.appendChild(ta); ta.select(); try { document.execCommand('copy'); $('#copied').textContent = 'Copied. Paste it into the chat.'; } catch (e2) { $('#copied').textContent = 'Could not copy. Select the log above and copy it by hand.'; } ta.remove(); }
+});
+</script>
+</body>
+</html>

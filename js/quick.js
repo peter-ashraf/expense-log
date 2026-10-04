@@ -185,6 +185,30 @@ function decide(text, ctx, h) {
   return { category: '', sub: '', confidence: 'low', why: '' };
 }
 
+// ------------------------------------------------------------------ number words ("forty five", "two hundred and fifty")
+// Speech engines sometimes hand back words instead of digits. A lone small number ("two coffees") is left alone so it
+// can't be mistaken for the price; anything from eleven up, or with tens / hundreds / thousands, is converted.
+const W_UNITS = { zero: 0, one: 1, two: 2, three: 3, four: 4, five: 5, six: 6, seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12, thirteen: 13, fourteen: 14, fifteen: 15, sixteen: 16, seventeen: 17, eighteen: 18, nineteen: 19 };
+const W_TENS = { twenty: 20, thirty: 30, forty: 40, fifty: 50, sixty: 60, seventy: 70, eighty: 80, ninety: 90 };
+const W_ANY = Object.keys(W_UNITS).concat(Object.keys(W_TENS), ['hundred', 'thousand']).join('|');
+const W_RUN = new RegExp('\\b(?:a\\s+)?(?:(?:' + W_ANY + ')\\b(?:[\\s-]+and)?[\\s-]*)+(?<![\\s-])', 'g');
+
+export function wordsToDigits(text) {
+  return String(text).replace(W_RUN, (run) => {
+    const words = run.toLowerCase().split(/[\s-]+/).filter((w) => w && w !== 'and' && w !== 'a');
+    if (!words.length) return run;
+    let total = 0, cur = 0, big = false;
+    for (const w of words) {
+      if (w in W_UNITS) cur += W_UNITS[w];
+      else if (w in W_TENS) { cur += W_TENS[w]; big = true; }
+      else if (w === 'hundred') { cur = (cur || 1) * 100; big = true; }
+      else if (w === 'thousand') { total += (cur || 1) * 1000; cur = 0; big = true; }
+    }
+    const n = total + cur;
+    return big || n > 10 ? ` ${n} ` : run;
+  });
+}
+
 // ------------------------------------------------------------------ accounts
 function pickAccount(text, ctx, source) {
   const live = (ctx.accounts || []).filter((a) => !a.archived);
@@ -234,7 +258,7 @@ function parseSms(chunk, ctx, h) {
 
 // ------------------------------------------------------------------ free text ("coffee 45", "taxi 80 cash", "قهوة ٤٥ امبارح")
 function parseText(line, ctx, h) {
-  let t = norm(line);
+  let t = wordsToDigits(norm(line));
   let date = ctx.today;
   // explicit date first, so its digits are not mistaken for the amount
   const dm = /(\d{4}-\d{1,2}-\d{1,2})|(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)|(\d{1,2}\.\d{1,2}\.\d{2,4})/.exec(t);
@@ -263,7 +287,7 @@ function parseText(line, ctx, h) {
 
 // the note the user would expect to see: their own words minus the number, currency, date and account words
 function originalNote(line, rest) {
-  let s = String(line)
+  let s = wordsToDigits(String(line))
     .replace(/[٠-٩۰-۹]/g, (d) => String(d.charCodeAt(0) >= 0x06F0 ? d.charCodeAt(0) - 0x06F0 : d.charCodeAt(0) - 0x0660))
     .replace(/(\d{4}-\d{1,2}-\d{1,2})|(\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)|(\d{1,2}\.\d{1,2}\.\d{2,4})/g, ' ')
     .replace(/\d[\d,]*(?:\.\d+)?\s*(?:k|الف)?/i, ' ')

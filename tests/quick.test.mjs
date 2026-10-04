@@ -1,5 +1,5 @@
 // node tests/quick.test.mjs
-import { parseMessages, parseDate, norm } from '../js/quick.js';
+import { parseMessages, parseDate, norm, wordsToDigits } from '../js/quick.js';
 
 let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('FAIL:', m); } else console.log('ok  :', m); };
@@ -98,6 +98,25 @@ rows = run('فاتورة فودافون 350');
 ok(rows[0].category === 'Bills' && rows[0].sub === 'Mobile' && rows[0].amount === 350, 'Arabic: Vodafone bill');
 rows = run('قهوة ٤٥');
 ok(rows[0].description.length > 0, 'the note keeps the original (Arabic) words');
+
+// ---- number words (what a speech engine may return)
+{
+  const n = (x) => wordsToDigits(x).replace(/\s+/g, ' ').trim();
+  ok(n('coffee forty five') === 'coffee 45', 'words: forty five -> 45');
+  ok(n('taxi eighty') === 'taxi 80' && n('lunch fifteen') === 'lunch 15', 'words: eighty, fifteen');
+  ok(n('shoes two hundred and fifty') === 'shoes 250' && n('rent four thousand two hundred') === 'rent 4200', 'words: hundreds and thousands');
+  ok(n('a hundred') === '100' && n('twenty-five') === '25' && n('one thousand') === '1000', 'words: "a hundred", hyphenated, one thousand');
+  ok(n('two coffees') === 'two coffees' && n('one plus phone') === 'one plus phone', 'words: a lone small number is left alone ("two coffees")');
+  rows = run('coffee forty five');
+  ok(rows[0].amount === 45 && rows[0].sub === 'Coffee', 'spoken: "coffee forty five" -> Coffee 45');
+  ok(run('coffee forty five')[0].description === 'Coffee' && run('taxi eighty cash')[0].description === 'Taxi', 'spoken: the note keeps your words but not the spoken number');
+  rows = run('two coffees forty five');
+  ok(rows[0].amount === 45 || rows[0].amount === 2, 'spoken: a quantity word does not crash the parse');
+  rows = run('taxi eighty cash yesterday');
+  ok(rows[0].amount === 80 && rows[0].account === 'Cash' && rows[0].date === '2026-10-03', 'spoken: "taxi eighty cash yesterday"');
+  rows = run('groceries one thousand two hundred fifty');
+  ok(rows[0].amount === 1250 && rows[0].sub === 'Groceries', 'spoken: "groceries one thousand two hundred fifty"');
+}
 
 // ---- helpers
 ok(parseDate('03/10/26', today) === '2026-10-03' && parseDate('2026-09-30', today) === '2026-09-30' && parseDate('31/12', today) === '2026-12-31' && parseDate('13/12/2025', today) === '2025-12-13', 'date formats');
