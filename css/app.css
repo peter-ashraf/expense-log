@@ -623,3 +623,17 @@ html.privacy input[readonly].acc-limit, html.privacy #budgetInput[readonly] { fi
 #lockPass input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
 #lockPass .btn { margin-top: 0; }
 #lockPass.shake { animation: shake .4s; }
+
+/* ---- settings: grouped rows and sub-pages ---- */
+.set-h { margin: 18px 6px 8px; font-size: 12.5px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+.slist { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; overflow: hidden; box-shadow: var(--shadow); }
+.srow { display: flex; align-items: center; gap: 13px; width: 100%; text-align: left; color: inherit; font: inherit; padding: 12px 14px; background: none; border: 0; border-top: 1px solid var(--line); border-radius: 0; cursor: pointer; }
+.srow:first-child { border-top: 0; }
+.srow:active { background: color-mix(in srgb, var(--muted) 10%, transparent); }
+.srow-t { flex: 1; min-width: 0; }
+.srow-t b { display: block; font-size: 16px; font-weight: 650; letter-spacing: -.01em; }
+.srow-t small { display: block; margin-top: 1px; font-size: 13px; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow-go { flex: none; color: var(--muted); opacity: .7; transform: rotate(-90deg); display: grid; place-items: center; }
+.page-title { font-size: 28px; font-weight: 800; letter-spacing: -.03em; margin: 4px 4px 14px; }
+.month-pill.back { gap: 6px; }
+.sync-card { margin-bottom: 0; }

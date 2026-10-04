@@ -25,7 +25,9 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const ui = { account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
+const APP_VERSION = '3.5';
+
+const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
 // ---------------------------------------------------------------- helpers
 const cur = () => store.getState().settings.currency || '';
@@ -191,7 +193,7 @@ function renderTop() {
   const v = store.view();
   const m = activeMonth();
   const left = ui.tab === 'settings'
-    ? '<h1 class="title">Settings</h1>'
+    ? (ui.settingsPage ? `<button class="month-pill back" data-act="settings-back" aria-label="Back to Settings">${icon('back', 16, 2.4)}<span>Settings</span></button>` : '<h1 class="title">Settings</h1>')
     : `<button class="month-pill ${ui.menuOpen ? 'open' : ''}" data-act="months" aria-haspopup="listbox" aria-expanded="${ui.menuOpen}" ${v.months.length ? '' : 'disabled'}>
         <span>${m ? esc(keyLabel(m.key)) : 'No data'}</span>${icon('chevron', 16, 2.2)}</button>`;
   const n = st.queue.length;
@@ -670,59 +672,129 @@ async function saveEncryption() {
   } catch (err) { fail(err.message || 'Something went wrong.'); }
 }
 
-function renderSettings(view) {
-  const st = store.getState();
+// ---------------------------------------------------------------- settings: a short top level, then one page per topic
+const SET_TITLES = { accounts: 'Accounts & budget', appearance: 'Appearance', security: 'Privacy & security', data: 'Data', about: 'About' };
+
+function srow(page, ic, hue, title, sub) {
+  return `<button class="srow" data-act="settings-go" data-p="${page}">
+      <span class="bubble" style="--h:${hue}">${icon(ic, 20)}</span>
+      <span class="srow-t"><b>${esc(title)}</b>${sub ? `<small>${esc(sub)}</small>` : ''}</span>
+      <span class="srow-go">${icon('chevron', 16, 2.4)}</span>
+    </button>`;
+}
+
+function settingsHome(st) {
   const n = st.queue.length;
   const last = st.lastSync ? new Date(st.lastSync).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
   const demo = st.cfg && st.cfg.demo;
   const host = demo ? 'Demo mode (data stays on this device)' : (() => { try { return new URL(st.cfg.url).host; } catch (e) { return 'Connected'; } })();
-  view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
-    <section class="card">
+  const v = store.view();
+  const live = v.accounts.filter((a) => !a.archived);
+  const budget = Number(st.settings.budget) || 0;
+  const accSub = `${live.length} account${live.length === 1 ? '' : 's'}${budget > 0 ? ` · budget ${num0(budget)}` : ''}`;
+  const theme = { light: 'Light', dark: 'Dark', system: 'Match my phone' }[st.settings.theme || 'system'];
+  const lock = lockCfg();
+  const lockLabel = { bio: 'Face ID', pin: 'PIN', off: 'No lock' }[lock.method || 'off'] || 'No lock';
+  const secSub = `${lockLabel} · ${vault.isEnabled() ? 'Encrypted' : 'Not encrypted'}`;
+  const dataSub = st.trash.length ? `Export, import, ${st.trash.length} recently deleted` : 'Export, import, recently deleted';
+  return `<div class="page ${ui.animate ? 'enter' : ''}">
+    <section class="card sync-card">
       <div class="card-h"><h3>Sync</h3><span class="badge ${st.status}">${esc(st.status === 'idle' ? 'ready' : st.status)}</span></div>
       <div class="kv"><span>Source</span><b>${esc(host)}</b></div>
       <div class="kv"><span>Last synced</span><b>${esc(last)}</b></div>
-      <div class="kv"><span>Waiting to upload</span><b>${n}</b></div>
+      ${n ? `<div class="kv"><span>Waiting to upload</span><b>${n}</b></div>` : ''}
       ${st.error && (st.status === 'error' || st.status === 'retrying') ? `<p class="warn">${esc(st.error)}</p>` : ''}
       <button class="btn" data-act="sync">${icon('cloud', 18)}Sync now</button>
     </section>
-    <section class="card">
-      <div class="card-h"><h3>Appearance</h3></div>
-      <div class="seg three" role="radiogroup" aria-label="Theme">${[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['system', 'System', 'device']]
-        .map(([k, l, ic]) => `<button role="radio" aria-checked="${(st.settings.theme || 'system') === k}" class="${(st.settings.theme || 'system') === k ? 'on' : ''}" data-act="theme" data-v="${k}">${icon(ic, 18)}${l}</button>`).join('')}</div>
-      <p class="muted sm" style="margin-top:10px">System follows your phone’s light/dark setting automatically.</p>
-      <label class="switch block"><input type="checkbox" id="glassSwitch" ${st.settings.glass === false ? '' : 'checked'}><span>Glass bars <small class="muted">(blurred top bar and tab bar)</small></span></label>
-      <button class="btn ghost" data-act="refresh-view">Status bar not matching? Refresh</button>
-    </section>
-    ${accountsCard(st)}
+    <p class="set-h">General</p>
+    <div class="slist">
+      ${srow('accounts', 'card', 255, 'Accounts & budget', accSub)}
+      ${srow('appearance', 'sun', 40, 'Appearance', theme)}
+    </div>
+    <p class="set-h">Protection</p>
+    <div class="slist">
+      ${srow('security', 'lock', 150, 'Privacy & security', secSub)}
+    </div>
+    <p class="set-h">More</p>
+    <div class="slist">
+      ${srow('data', 'file', 200, 'Data', dataSub)}
+      ${srow('about', 'device', 300, 'About', `v${APP_VERSION} · update, disconnect`)}
+    </div>
+  </div>`;
+}
+
+function renderSettings(view) {
+  const st = store.getState();
+  const p = SET_TITLES[ui.settingsPage] ? ui.settingsPage : null;
+  if (!p) { ui.settingsPage = null; view.innerHTML = settingsHome(st); return; }
+  const demo = st.cfg && st.cfg.demo;
+  const head = `<h2 class="page-title">${esc(SET_TITLES[p])}</h2>`;
+  let body = '';
+
+  if (p === 'accounts') {
+    body = `${accountsCard(st)}
     <section class="card">
       <div class="card-h"><h3>Monthly budget</h3><span class="badge ${Number(st.settings.budget) > 0 ? 'synced' : ''}">${Number(st.settings.budget) > 0 ? 'On' : 'Off'}</span></div>
       <label class="field"><span>Spending limit per month</span><input id="budgetInput" type="text" inputmode="decimal" placeholder="e.g. 15000" value="${priv() ? MASK : Number(st.settings.budget) > 0 ? esc(String(st.settings.budget)) : ''}" ${priv() ? 'readonly' : ''} autocomplete="off"></label>
       <p class="muted sm" style="margin-top:10px">Smart insights will show how much is left, the daily amount to stay within it, and warn you when you’re heading over. Leave empty to turn it off.</p>
     </section>
-    ${securityCard(st)}
-    ${encryptionCard()}
     <section class="card">
-      <div class="card-h"><h3>Preferences</h3></div>
+      <div class="card-h"><h3>Currency</h3></div>
       <label class="field"><span>Currency symbol</span><input id="curInput" maxlength="4" placeholder="e.g. $, €, EGP" value="${esc(st.settings.currency)}" autocomplete="off"></label>
       <p class="muted sm">Shown next to amounts. Doesn’t change your data.</p>
-      <button class="btn ghost" data-act="update-now">${icon('cloud', 18)}Update app now</button>
-      <p class="muted sm" style="margin-top:8px">Gets the newest version immediately and reloads. Your data is not touched.</p>
+    </section>`;
+  } else if (p === 'appearance') {
+    body = `<section class="card">
+      <div class="card-h"><h3>Theme</h3></div>
+      <div class="seg three" role="radiogroup" aria-label="Theme">${[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['system', 'System', 'device']]
+        .map(([k, l, ic]) => `<button role="radio" aria-checked="${(st.settings.theme || 'system') === k}" class="${(st.settings.theme || 'system') === k ? 'on' : ''}" data-act="theme" data-v="${k}">${icon(ic, 18)}${l}</button>`).join('')}</div>
+      <p class="muted sm" style="margin-top:10px">System follows your phone’s light/dark setting automatically.</p>
     </section>
     <section class="card">
-      <div class="card-h"><h3>Data</h3></div>
+      <div class="card-h"><h3>Bars</h3></div>
+      <label class="switch block"><input type="checkbox" id="glassSwitch" ${st.settings.glass === false ? '' : 'checked'}><span>Glass bars <small class="muted">(blurred top bar and tab bar)</small></span></label>
+      <button class="btn ghost" data-act="refresh-view">Status bar not matching? Refresh</button>
+    </section>`;
+  } else if (p === 'security') {
+    body = `${securityCard(st)}
+    ${encryptionCard()}
+    <section class="card">
+      <div class="card-h"><h3>Hide numbers</h3></div>
+      <p class="muted sm" style="margin-top:0">Tap the big balance on Home to hide every number in the app, then tap it again to show them. Handy when someone is looking over your shoulder.</p>
+    </section>`;
+  } else if (p === 'data') {
+    body = `<section class="card">
+      <div class="card-h"><h3>Excel</h3></div>
       <button class="btn ghost" data-act="export-xlsx">${icon('download', 18)}Export to Excel (.xlsx)</button>
       <button class="btn ghost" data-act="import-xlsx">${icon('download', 18).replace('class="ic"', 'class="ic flip"')}Import from Excel</button>
+    </section>
+    <section class="card">
+      <div class="card-h"><h3>CSV</h3></div>
       <button class="btn ghost" data-act="export">${icon('download', 18)}Export as CSV</button>
       <button class="btn ghost" data-act="import-csv">${icon('file', 18)}Import from CSV</button>
-      <button class="btn ghost" data-act="trash">${icon('trash', 18)}Recently deleted${st.trash.length ? ` (${st.trash.length})` : ''}</button>
+    </section>
+    <section class="card">
+      <div class="card-h"><h3>Recently deleted</h3></div>
+      <button class="btn ghost" data-act="trash">${icon('trash', 18)}Open recently deleted${st.trash.length ? ` (${st.trash.length})` : ''}</button>
+      <p class="muted sm">Deleted entries stay here for 60 days so you can bring them back.</p>
       ${demo ? `<label class="switch"><input type="checkbox" id="offSim" ${localStorage.getItem('el_demo_offline') === '1' ? 'checked' : ''}><span>Simulate offline (demo)</span></label>` : ''}
+    </section>`;
+  } else if (p === 'about') {
+    body = `<section class="card">
+      <div class="card-h"><h3>Credit Card Expenses</h3><span class="badge">v${APP_VERSION}</span></div>
+      <button class="btn ghost" data-act="update-now">${icon('cloud', 18)}Update app now</button>
+      <p class="muted sm" style="margin-top:8px">Gets the newest version immediately and reloads. Your data is not touched.</p>
+      <p class="muted xs">${esc(fitApp.info || '')}</p>
+    </section>
+    <section class="card">
+      <div class="card-h"><h3>This device</h3></div>
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
-    </section>
-    <p class="muted center sm">Credit Card Expenses · v3.4</p>
-    <p class="muted center xs">${esc(fitApp.info || '')}</p>
-  </div>`;
-  $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
+    </section>`;
+  }
+  view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">${head}${body}</div>`;
+  const cur = $('#curInput');
+  if (cur) cur.addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
   const sim = $('#offSim');
   if (sim) sim.addEventListener('change', (e) => { localStorage.setItem('el_demo_offline', e.target.checked ? '1' : '0'); if (!e.target.checked) store.sync(); else { toast('Offline simulation on'); } });
 }
@@ -1707,9 +1779,15 @@ document.addEventListener('click', async (ev) => {
   switch (act) {
     case 'tab':
       closeMonthMenu();
-      if (ui.tab !== el.dataset.tab) { ui.tab = el.dataset.tab; ui.animate = true; $('#view').innerHTML = ''; render(); }
+      {
+        const going = el.dataset.tab;
+        const backToTop = going === 'settings' && ui.tab === 'settings' && ui.settingsPage;   // tapping Settings again goes back to the top level
+        if (ui.tab !== going || backToTop) { if (going === 'settings') ui.settingsPage = null; ui.tab = going; ui.animate = true; $('#view').innerHTML = ''; render(); }
+      }
       haptic(6);
       break;
+    case 'settings-go': ui.settingsPage = el.dataset.p; ui.animate = true; haptic(6); $('#view').innerHTML = ''; render(); break;
+    case 'settings-back': ui.settingsPage = null; ui.animate = true; haptic(6); $('#view').innerHTML = ''; render(); break;
     case 'ins-scope':
       ui.insScope = el.dataset.v === 'all' ? 'all' : 'month'; ui.animate = false; haptic(6);
       try { localStorage.setItem('el_ins', ui.insScope); } catch (e) { /* ignore */ }
