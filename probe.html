@@ -1,0 +1,130 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Probe">
+<meta name="theme-color" content="#F4F5FA">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>Status bar probe</title>
+<style>
+  :root { --bg: #F4F5FA; --fg: #0E1224; --card: #FFFFFF; --mut: #6B7287; }
+  :root[data-theme="dark"] { --bg: #0A0B10; --fg: #F2F3F8; --card: #14161F; --mut: #8D93A8; }
+  html, body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.4 -apple-system, system-ui, sans-serif; }
+  #wrap { padding: 18px 16px 120px; min-height: 130vh; background: var(--bg); }
+  html.fixedmode body { overflow: hidden; }
+  html.fixedmode #wrap { position: fixed; inset: 0; overflow-y: auto; min-height: 0; }
+  h1 { font-size: 22px; margin: 4px 0 6px; }
+  p { color: var(--mut); margin: 6px 0 12px; }
+  .card { background: var(--card); border-radius: 18px; padding: 14px; margin: 12px 0; border: 1px solid rgba(128,128,128,.2); }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  button, label.btn { font: inherit; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(128,128,128,.35); background: var(--card); color: var(--fg); }
+  button.primary { background: #5B5BF0; color: #fff; border: 0; font-weight: 700; }
+  select { font: inherit; padding: 10px; border-radius: 12px; width: 100%; background: var(--card); color: var(--fg); border: 1px solid rgba(128,128,128,.35); }
+  #state { font-weight: 700; }
+  #big { font-size: 30px; font-weight: 800; text-align: center; padding: 18px 8px; border-radius: 18px; background: #5B5BF0; color: #fff; display: none; }
+  #log { font: 13px/1.5 ui-monospace, monospace; color: var(--mut); white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<div id="wrap">
+  <h1>Status bar probe</h1>
+  <p>Tests how iOS repaints the status bar. Open this from the Home Screen icon, not from Safari.</p>
+
+  <div class="card">
+    <div id="state">…</div>
+    <p>Method</p>
+    <select id="method">
+      <option value="1">1 · theme-color meta changed in place + page background</option>
+      <option value="2">2 · theme-color meta replaced + page background</option>
+      <option value="3">3 · meta in place + background + scroll nudge</option>
+      <option value="4">4 · page background only (meta untouched)</option>
+      <option value="5">5 · theme-color meta only (background untouched)</option>
+    </select>
+    <p>Layout</p>
+    <select id="layout">
+      <option value="flow">Normal page (document scrolls)</option>
+      <option value="fixed">Fixed full-screen container (like my app)</option>
+    </select>
+    <div class="row" style="margin-top:12px">
+      <button id="dark" class="primary">Go dark</button>
+      <button id="light">Go light</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <b>Automatic run</b>
+    <p>Cycles every Method × Layout, switching dark → light with a pause. Watch the status bar at the top of the screen and note the step numbers where it changed.</p>
+    <button id="run" class="primary">Run all tests</button>
+    <div id="big"></div>
+  </div>
+
+  <div class="card"><div id="log"></div></div>
+</div>
+<script>
+(function () {
+  var $ = function (s) { return document.querySelector(s); };
+  var C = { dark: { bg: '#0A0B10' }, light: { bg: '#F4F5FA' } };
+  function meta() { return document.querySelector('meta[name="theme-color"]'); }
+  function log(t) { var l = $('#log'); l.textContent = t + '\n' + l.textContent; }
+  function setLayout(v) { document.documentElement.classList.toggle('fixedmode', v === 'fixed'); }
+  function nudge() {
+    var sc = document.documentElement.classList.contains('fixedmode') ? $('#wrap') : window;
+    if (sc === window) { window.scrollTo(0, 2); requestAnimationFrame(function () { window.scrollTo(0, 0); }); }
+    else { sc.scrollTop = 2; requestAnimationFrame(function () { sc.scrollTop = 0; }); }
+  }
+  function apply(theme, method) {
+    var hex = C[theme].bg;
+    var root = document.documentElement;
+    if (method === '4') { root.setAttribute('data-theme', theme); }
+    else if (method === '5') { meta().setAttribute('content', hex); }
+    else if (method === '2') {
+      root.setAttribute('data-theme', theme);
+      var old = meta(); var m = document.createElement('meta'); m.name = 'theme-color'; m.content = hex;
+      old.parentNode.removeChild(old); document.head.appendChild(m);
+    } else {
+      root.setAttribute('data-theme', theme);
+      meta().setAttribute('content', hex);
+      if (method === '3') nudge();
+    }
+    $('#state').textContent = 'Now: ' + theme.toUpperCase() + ' · method ' + method + ' · ' + $('#layout').value;
+  }
+  $('#layout').addEventListener('change', function () { setLayout(this.value); });
+  $('#dark').addEventListener('click', function () { apply('dark', $('#method').value); });
+  $('#light').addEventListener('click', function () { apply('light', $('#method').value); });
+
+  var running = false;
+  $('#run').addEventListener('click', function () {
+    if (running) return;
+    running = true;
+    var steps = [];
+    ['flow', 'fixed'].forEach(function (lay) { ['1', '2', '3', '4', '5'].forEach(function (m) { steps.push({ lay: lay, m: m }); }); });
+    var big = $('#big'); big.style.display = 'block';
+    var i = 0;
+    function next() {
+      if (i >= steps.length) { big.textContent = 'Done'; running = false; apply('light', '1'); setLayout('flow'); $('#layout').value = 'flow'; log('— finished —'); return; }
+      var s = steps[i++];
+      var n = i;
+      setLayout(s.lay); $('#layout').value = s.lay; $('#method').value = s.m;
+      apply('light', '1');                 // start every step from light
+      setTimeout(function () {
+        big.textContent = 'Step ' + n + ' of ' + steps.length + '\n' + s.lay + ' · method ' + s.m + '\n→ DARK';
+        log('Step ' + n + ': ' + s.lay + ' · method ' + s.m + ' → dark');
+        apply('dark', s.m);
+        setTimeout(function () {
+          big.textContent = 'Step ' + n + ' of ' + steps.length + '\n' + s.lay + ' · method ' + s.m + '\n→ LIGHT';
+          apply('light', s.m);
+          setTimeout(next, 2600);
+        }, 3000);
+      }, 1800);
+    }
+    next();
+  });
+  apply('light', '1');
+})();
+</script>
+</body>
+</html>
