@@ -9,6 +9,7 @@
 <meta name="apple-mobile-web-app-title" content="Probe">
 <meta name="theme-color" content="#F4F5FA">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<script>try{var pt=localStorage.getItem("probe_theme");if(pt==="dark"||pt==="light"){document.documentElement.setAttribute("data-theme",pt);document.querySelector('meta[name="theme-color"]').setAttribute("content",pt==="dark"?"#0A0B10":"#F4F5FA");}}catch(e){}</script>
 <title>Status bar probe</title>
 <style>
   :root { --bg: #F4F5FA; --fg: #0E1224; --card: #FFFFFF; --mut: #6B7287; }
@@ -34,11 +35,16 @@
   .res button.no { background: #DC2626; color: #fff; border: 0; }
   #report { width: 100%; box-sizing: border-box; height: 150px; font: 11px/1.4 ui-monospace, monospace; border-radius: 12px; border: 1px solid rgba(128,128,128,.35); background: var(--card); color: var(--fg); padding: 8px; }
   #results, #reportCard { display: none; }
+  #seen { display: none; position: fixed; left: 16px; right: 16px; bottom: 22px; z-index: 50; padding: 22px 12px; font-size: 22px; font-weight: 800; border: 0; border-radius: 22px; background: #16A34A; color: #fff; box-shadow: 0 14px 30px rgba(0,0,0,.35); }
+  #seen:active { transform: scale(.97); }
+  #seen.flash { background: #0EA5E9; }
+  button.sb { font-size: 14px; padding: 10px 12px; }
+
 </style>
 </head>
 <body>
 <div id="wrap">
-  <h1>Status bar probe</h1>
+  <h1>Status bar probe <small style="font-weight:400;color:var(--mut)">v3</small></h1>
   <p>Tests how iOS repaints the status bar. Open this from the Home Screen icon, not from Safari.</p>
 
   <div class="card">
@@ -63,10 +69,25 @@
   </div>
 
   <div class="card">
+    <b>Extra experiments</b>
+    <p>Tap one and watch the status bar. Then tell me what each did.</p>
+    <div class="row" style="margin-bottom:8px">
+      <button id="rdark">E1 · Go dark, then reload page</button>
+      <button id="rlight">E2 · Go light, then reload page</button>
+    </div>
+    <div class="row">
+      <button class="sb" data-style="default">E3 · bar style: default</button>
+      <button class="sb" data-style="black">E4 · bar style: black</button>
+      <button class="sb" data-style="black-translucent">E5 · bar style: translucent</button>
+    </div>
+  </div>
+
+  <div class="card">
     <b>Automatic run</b>
-    <p>Cycles every Method × Layout, switching dark → light with a pause. Watch the status bar at the top of the screen. When it finishes, mark what you saw for each step and copy the report.</p>
+    <p>Cycles every Method × Layout, switching dark → light with a pause. <b>Watch the status bar at the top of the screen and tap the big “Bar just changed” button at the bottom every time you see it change colour.</b> Don’t tap if it stays the same. When it finishes, check the marks and copy the report.</p>
     <button id="run" class="primary">Run all tests</button>
     <div id="big"></div>
+    <button id="seen">Bar just changed ✓</button>
   </div>
 
   <div class="card" id="results">
@@ -91,18 +112,19 @@
 (function () {
   var $ = function (s) { return document.querySelector(s); };
   var FAST = /[?&]fast/.test(location.search);       // used only for quick self-testing
-  var T = function (ms) { return FAST ? Math.max(30, ms / 40) : ms; };
+  var T = function (ms) { return FAST ? Math.max(30, ms / 10) : ms; };
   var C = { dark: '#0A0B10', light: '#F4F5FA' };
   var events = [];
   var steps = [];
   var marks = {};                                     // "n:dark" / "n:light" -> '?', 'ok', 'no'
   var current = { step: 0, label: 'manual' };
+  var taps = [];
 
   function meta() { return document.querySelector('meta[name="theme-color"]'); }
   function metaState() { var all = document.querySelectorAll('meta[name="theme-color"]'); return all.length + ' tag(s) ' + (all[0] ? all[0].getAttribute('content') : '-'); }
   function ts() { var d = new Date(); return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0'); }
   function addEvent(e) {
-    e.t = ts(); events.push(e);
+    e.t = ts(); e.ms = Date.now(); events.push(e);
     var l = $('#log'); l.textContent = e.t + '  ' + e.text + '\n' + l.textContent;
   }
   function setLayout(v) { document.documentElement.classList.toggle('fixedmode', v === 'fixed'); }
@@ -129,13 +151,33 @@
     var lay = document.documentElement.classList.contains('fixedmode') ? 'fixed' : 'flow';
     $('#state').textContent = 'Now: ' + theme.toUpperCase() + ' · method ' + method + ' · ' + lay;
     addEvent({
-      step: tag ? tag.step : 0, theme: theme, method: method, layout: lay,
+      step: tag ? tag.step : 0, theme: theme, method: method, layout: lay, kind: tag && tag.reset ? 'reset' : 'test',
       text: (tag ? 'step ' + tag.step + ' ' : 'manual ') + lay + ' m' + method + ' → ' + theme +
         ' | meta ' + before + ' → ' + metaState() + ' | data-theme=' + root.getAttribute('data-theme') +
         ' | html bg ' + getComputedStyle(root).backgroundColor
     });
   }
 
+  // ---- experiments
+  function reloadWith(theme) {
+    addEvent({ text: 'experiment: ' + theme + ' then reload' });
+    try { localStorage.setItem('probe_theme', theme); } catch (e) { /* ignore */ }
+    setTimeout(function () { location.reload(); }, 150);
+  }
+  $('#rdark').addEventListener('click', function () { reloadWith('dark'); });
+  $('#rlight').addEventListener('click', function () { reloadWith('light'); });
+  document.querySelectorAll('button.sb').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var m = document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]');
+      var before = m.getAttribute('content'); m.setAttribute('content', b.getAttribute('data-style'));
+      addEvent({ text: 'experiment: status-bar-style meta ' + before + ' → ' + b.getAttribute('data-style') });
+    });
+  });
+  $('#seen').addEventListener('click', function () {
+    taps.push(Date.now());
+    addEvent({ text: 'TAP: user saw the status bar change' });
+    var s = $('#seen'); s.classList.add('flash'); setTimeout(function () { s.classList.remove('flash'); }, 250);
+  });
   $('#layout').addEventListener('change', function () { setLayout(this.value); });
   $('#dark').addEventListener('click', function () { apply('dark', $('#method').value); });
   $('#light').addEventListener('click', function () { apply('light', $('#method').value); });
@@ -186,10 +228,20 @@
   function methodName(m) {
     return { 1: 'meta changed in place + page background', 2: 'meta replaced + page background', 3: 'meta in place + background + scroll nudge', 4: 'page background only', 5: 'meta only' }[m];
   }
+  function autoMark() {
+    // a tap counts for an event if it happened within a few seconds after it
+    events.forEach(function (e) {
+      if (!e.step || e.theme === undefined) return;
+      if (e.kind === 'reset') return;
+      var win = T(e.theme === 'dark' ? 2900 : 2500);
+      var hit = taps.some(function (t) { return t >= e.ms && t <= e.ms + win; });
+      marks[e.step + ':' + e.theme] = hit ? 'ok' : 'no';
+    });
+  }
   function buildReport() {
-    var lines = ['STATUS BAR PROBE REPORT', 'created: ' + new Date().toString(), '', deviceInfo(), ''];
+    var lines = ['STATUS BAR PROBE REPORT (v3)', 'created: ' + new Date().toString(), '', deviceInfo(), ''];
     if (steps.length) {
-      lines.push('RESULTS  (✓ = status bar followed, ✗ = did not change, ? = not marked)');
+      lines.push('RESULTS  (✓ = status bar followed, ✗ = did not change, ? = not marked; taps recorded: ' + taps.length + ')');
       steps.forEach(function (s, i) {
         var n = i + 1; var d = marks[n + ':dark'] || '?', l = marks[n + ':light'] || '?';
         var f = function (v) { return v === 'ok' ? '✓' : v === 'no' ? '✗' : '?'; };
@@ -217,7 +269,8 @@
   $('#run').addEventListener('click', function () {
     if (running) return;
     running = true;
-    steps = []; marks = {}; events = []; $('#log').textContent = '';
+    steps = []; marks = {}; events = []; taps = []; $('#log').textContent = '';
+    $('#seen').style.display = 'block';
     ['flow', 'fixed'].forEach(function (lay) { ['1', '2', '3', '4', '5'].forEach(function (m) { steps.push({ lay: lay, m: m }); }); });
     var big = $('#big'); big.style.display = 'block';
     $('#results').style.display = 'none'; $('#reportCard').style.display = 'none';
@@ -226,11 +279,12 @@
       if (i >= steps.length) {
         big.textContent = 'Done — scroll down'; running = false;
         apply('light', '1'); setLayout('flow'); $('#layout').value = 'flow';
-        renderResults(); return;
+        $('#seen').style.display = 'none';
+        autoMark(); renderResults(); return;
       }
       var s = steps[i++]; var n = i;
       setLayout(s.lay); $('#layout').value = s.lay; $('#method').value = s.m;
-      apply('light', '1', { step: n });              // start every step from light
+      apply('light', '1', { step: n, reset: true }); // start every step from light (not a test)
       setTimeout(function () {
         big.textContent = 'Step ' + n + ' of ' + steps.length + '\n' + s.lay + ' · method ' + s.m + '\n→ DARK';
         apply('dark', s.m, { step: n });
