@@ -609,3 +609,9 @@ button.ins { cursor: pointer; } button.ins:active { opacity: .6; }
 
 #heroAmt { cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none; width: fit-content; }
 #heroAmt:active { opacity: .8; }
+
+/* privacy mode: soft blur over the masking dots */
+.pv { display: inline-block; filter: blur(4px); user-select: none; -webkit-user-select: none; pointer-events: none; }
+.hero-amt .pv { filter: blur(11px); }
+html.privacy input[readonly].acc-limit, html.privacy #budgetInput[readonly] { filter: blur(4px); }
+#heroAmt { min-width: 120px; min-height: 1.1em; }

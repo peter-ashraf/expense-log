@@ -82,8 +82,37 @@ function splitAmount(n) {
 }
 
 function heroHTML(n) {
+  if (priv()) return '••••••';
   const [i, d] = splitAmount(n);
   return `${cur() ? `<span class="cur">${esc(cur())}</span>` : ''}${esc(i)}<small>${esc(d)}</small>`;
+}
+
+// Runs of dots are wrapped in a blurred span (the digits are already gone from the page; this just makes it soft).
+let pvObs = null;
+function blurMasks(root) {
+  const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
+    acceptNode: (n) => (n.nodeValue.includes('•') && !(n.parentElement && n.parentElement.closest('.pv')) ? NodeFilter.FILTER_ACCEPT : NodeFilter.FILTER_REJECT),
+  });
+  const nodes = [];
+  while (w.nextNode()) nodes.push(w.currentNode);
+  nodes.forEach((n) => {
+    const frag = document.createDocumentFragment();
+    n.nodeValue.split(/(•+)/).forEach((part) => {
+      if (!part) return;
+      if (part[0] === '•') { const sp = document.createElement('span'); sp.className = 'pv'; sp.textContent = part; frag.appendChild(sp); }
+      else frag.appendChild(document.createTextNode(part));
+    });
+    n.parentNode.replaceChild(frag, n);
+  });
+}
+
+function watchPrivacy(on) {
+  if (pvObs) { pvObs.disconnect(); pvObs = null; }
+  if (!on) return;
+  const opts = { childList: true, subtree: true, characterData: true };
+  pvObs = new MutationObserver(() => { pvObs.disconnect(); blurMasks(document.body); pvObs.observe(document.body, opts); });
+  blurMasks(document.body);
+  pvObs.observe(document.body, opts);
 }
 
 function setPrivacy(on) {
@@ -93,11 +122,21 @@ function setPrivacy(on) {
   haptic(10);
   ui.animate = false;
   render();
-  toast(on ? 'Numbers hidden. Tap the balance to show them' : 'Numbers shown');
+  watchPrivacy(on);
+  // the hint is only for the very first time it is ever shown
+  if (on) {
+    let seen = false;
+    try { seen = localStorage.getItem('el_priv_hint') === '1'; } catch (e) { /* ignore */ }
+    if (!seen) {
+      try { localStorage.setItem('el_priv_hint', '1'); } catch (e) { /* ignore */ }
+      toast('Numbers hidden. Tap the balance again to show them');
+    }
+  }
 }
 
 function countUp(el, to) {
   if (!el) return;
+  if (priv()) { el.textContent = '••••••'; return; }
   if (reduceMotion || !ui.animate) { el.innerHTML = heroHTML(to); return; }
   const t0 = performance.now();
   const dur = 700;
@@ -615,7 +654,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v3.2.1</p>
+    <p class="muted center sm">Credit Card Expenses · v3.2.2</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -1940,6 +1979,7 @@ setInterval(() => { if (document.visibilityState === 'visible') store.sync(); },
 (async function boot() {
   await store.init();
   document.documentElement.classList.toggle('privacy', !!store.getState().settings.hideBalance);
+  watchPrivacy(!!store.getState().settings.hideBalance);
   applyTheme(store.getState().settings.theme || 'system');
   document.documentElement.classList.toggle('no-glass', store.getState().settings.glass === false);
   lk.initLock({
