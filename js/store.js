@@ -15,6 +15,7 @@ const S = {
   error: '',
   lastSync: 0,
   rejected: [],
+  trash: [], // recently deleted entries, kept on this device so they can be restored
 };
 const subs = new Set();
 let transport = null;
@@ -37,6 +38,8 @@ export async function init() {
   S.queue = (await db.get('queue')) || [];
   S.settings = Object.assign(S.settings, (await db.get('settings')) || {});
   S.lastSync = (await db.get('lastSync')) || 0;
+  const cutoff = Date.now() - 60 * 86400000;
+  S.trash = ((await db.get('trash')) || []).filter((t) => t.deletedAt > cutoff);
   if (S.cfg) transport = makeTransport(S.cfg);
   emit();
 }
@@ -83,7 +86,47 @@ export function addEntry(data) {
   return id;
 }
 export function updateEntry(id, data) { enqueue({ type: 'update', id, data: clean(data) }); }
-export function deleteEntry(id) { enqueue({ type: 'delete', id }); }
+export function deleteEntry(id) {
+  const v = view();
+  let e = null;
+  for (const k of v.months) {
+    const f = v.by[k].entries.find((x) => x.id === id);
+    if (f) { e = f; break; }
+  }
+  let trashId = null;
+  if (e) {
+    trashId = uid();
+    S.trash.unshift({ trashId, deletedAt: Date.now(), data: { date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub } });
+    S.trash = S.trash.slice(0, 100);
+    db.set('trash', S.trash);
+  }
+  enqueue({ type: 'delete', id });
+  return trashId;
+}
+
+// Put a deleted entry back (as a fresh entry with the same details).
+export function restoreTrash(trashId) {
+  const i = S.trash.findIndex((t) => t.trashId === trashId);
+  if (i < 0) return null;
+  const [t] = S.trash.splice(i, 1);
+  db.set('trash', S.trash);
+  return addEntry(t.data);
+}
+
+export function clearTrash() {
+  S.trash = [];
+  db.set('trash', S.trash);
+  emit();
+}
+
+// Many adds at once (used by Excel import): one save, one redraw, one sync.
+export function addMany(list) {
+  for (const d of list) S.queue.push({ type: 'add', id: uid(), opId: uid(), ts: Date.now(), data: clean(d) });
+  persist();
+  emit();
+  scheduleSync();
+  return list.length;
+}
 
 const clean = (d) => ({
   date: d.date,
@@ -172,7 +215,7 @@ export async function sync() {
   S.status = 'syncing';
   emit();
   try {
-    const ops = S.queue.slice();
+    const ops = S.queue.slice(0, 20); // big batches go up in slices so each request stays quick
     const r = ops.length ? await transport.call('push', { ops }) : await transport.call('pull', {});
     const done = new Set([...(r.applied || []), ...(r.rejected || []).map((x) => x.opId)]);
     if (r.rejected && r.rejected.length) S.rejected = r.rejected;

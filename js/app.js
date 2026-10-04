@@ -1,6 +1,7 @@
 import * as store from './store.js';
 import { icon, catHue } from './icons.js';
-import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, monthKeyOf, haptic, csvEscape } from './util.js';
+import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
+import { buildWorkbook, parseWorkbook } from './xlsx.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -47,12 +48,21 @@ function countUp(el, to) {
   requestAnimationFrame(step);
 }
 
-function toast(msg, kind = '') {
+function toast(msg, kind = '', action = null) {
   const t = $('#toast');
-  t.textContent = msg;
-  t.className = 'show ' + kind;
+  t.textContent = '';
+  const span = document.createElement('span');
+  span.textContent = msg;
+  t.appendChild(span);
+  if (action) {
+    const btn = document.createElement('button');
+    btn.textContent = action.label;
+    btn.addEventListener('click', () => { t.className = ''; action.fn(); });
+    t.appendChild(btn);
+  }
+  t.className = 'show ' + kind + (action ? ' has-action' : '');
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => { t.className = ''; }, kind === 'err' ? 4200 : 2200);
+  toast._t = setTimeout(() => { t.className = ''; }, action ? 7000 : kind === 'err' ? 4200 : 2200);
 }
 
 function hueStyle(name) {
@@ -273,12 +283,15 @@ function renderSettings(view) {
     </section>
     <section class="card">
       <div class="card-h"><h3>Data</h3></div>
-      <button class="btn ghost" data-act="export">${icon('download', 18)}Export all as CSV</button>
+      <button class="btn ghost" data-act="export-xlsx">${icon('download', 18)}Export to Excel (.xlsx)</button>
+      <button class="btn ghost" data-act="import-xlsx">${icon('download', 18).replace('class="ic"', 'class="ic flip"')}Import from Excel</button>
+      <button class="btn ghost" data-act="export">${icon('download', 18)}Export as CSV</button>
+      <button class="btn ghost" data-act="trash">${icon('trash', 18)}Recently deleted${st.trash.length ? ` (${st.trash.length})` : ''}</button>
       ${demo ? `<label class="switch"><input type="checkbox" id="offSim" ${localStorage.getItem('el_demo_offline') === '1' ? 'checked' : ''}><span>Simulate offline (demo)</span></label>` : ''}
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Expense Log · v1.1</p>
+    <p class="muted center sm">Expense Log · v1.2</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -556,6 +569,67 @@ function openMonths() {
   present('Choose month', '', `<div class="mlist">${v.months.slice().reverse().map((k) => `<button class="mrow ${k === ui.month ? 'on' : ''}" data-act="pick-month" data-key="${k}"><span>${esc(keyLabel(k))}</span><b>${esc(fmt(v.by[k].available))}</b>${k === ui.month ? icon('check', 18, 2.4) : ''}</button>`).join('')}</div>`, 'small');
 }
 
+// ---- Excel import ----------------------------------------------------------------------------
+async function readImportFile(file) {
+  try {
+    toast('Reading ' + file.name + '…');
+    const res = await parseWorkbook(await file.arrayBuffer(), store.view().categories);
+    const v = store.view();
+    const keyOf = (e) => [e.date, e.description, Number(e.amount).toFixed(2), e.type, e.category, e.sub].join('|');
+    const have = new Map();
+    v.months.forEach((k) => v.by[k].entries.forEach((e) => have.set(keyOf(e), (have.get(keyOf(e)) || 0) + 1)));
+    const fresh = [];
+    let dupes = 0;
+    for (const e of res.entries) {
+      const k = keyOf(e);
+      if (have.get(k)) { have.set(k, have.get(k) - 1); dupes++; } else fresh.push(e);
+    }
+    ui.importData = { fresh, dupes, skipped: res.skipped, found: res.entries.length, sheets: res.sheets, name: file.name };
+    $('#toast').className = '';
+    openImportPreview();
+  } catch (err) {
+    toast(err.message || 'Could not read that file', 'err');
+  }
+}
+
+function openImportPreview() {
+  const d = ui.importData;
+  const byMonth = {};
+  d.fresh.forEach((e) => { const k = e.date.slice(0, 7); byMonth[k] = (byMonth[k] || 0) + 1; });
+  const months = Object.keys(byMonth).sort();
+  const body = `<div class="imp">
+      <p class="imp-file">${esc(d.name)}</p>
+      <div class="imp-stats">
+        <div><b>${d.fresh.length}</b><span>new</span></div>
+        <div><b>${d.dupes}</b><span>already here</span></div>
+        <div><b>${d.skipped.length}</b><span>skipped</span></div>
+      </div>
+      ${months.length ? `<div class="lbl">Will be added</div>${months.map((k) => `<div class="kv"><span>${esc(keyLabel(k))}</span><b>${byMonth[k]}</b></div>`).join('')}` : '<p class="muted pad">Nothing new to add — everything in this file is already in the app.</p>'}
+      ${d.skipped.length ? `<div class="lbl">Skipped rows</div>${d.skipped.slice(0, 6).map((x) => `<p class="warn sm">${esc(x.sheet)} row ${x.row}: ${esc(x.reason)}</p>`).join('')}${d.skipped.length > 6 ? `<p class="muted sm">…and ${d.skipped.length - 6} more</p>` : ''}` : ''}
+      <p class="muted sm">Duplicates are detected by date, description, amount and category, so importing the same file twice is safe.</p>
+    </div>`;
+  present('Import from Excel', '', body, 'compact', `<button class="btn primary big" data-act="do-import" ${d.fresh.length ? '' : 'disabled'}>${d.fresh.length ? `Import ${d.fresh.length} transaction${d.fresh.length === 1 ? '' : 's'}` : 'Nothing to import'}</button>`);
+}
+
+// ---- Recently deleted ------------------------------------------------------------------------
+function openTrash(rerender = false) {
+  const t = store.getState().trash;
+  const body = t.length ? `<div class="card flush">${t.map((x) => {
+    const e = x.data;
+    const isInc = e.type === 'Income';
+    return `<div class="row ${isInc ? 'inc' : 'exp'} trashrow">
+      <span class="bubble" style="${hueStyle(isInc ? 'Income' : e.category)}">${icon(isInc ? 'income' : e.category, 20)}</span>
+      <span class="row-main"><span class="row-t">${esc(e.description || (isInc ? 'Income' : e.sub))}</span><span class="row-s">${esc(dateLong(e.date))} · ${isInc ? '+' : '\u2212'}${esc(num(e.amount))}</span></span>
+      <button class="mini-btn" data-act="restore" data-id="${esc(x.trashId)}">Restore</button>
+    </div>`;
+  }).join('')}</div>
+    <button class="btn danger" data-act="clear-trash">Clear this list</button>
+    <p class="muted sm">Deleted entries stay here for 60 days on this device. Your Google Sheet also keeps its own version history.</p>`
+    : '<p class="muted pad">Nothing deleted recently.</p>';
+  if (rerender && $('.sheet-body')) { $('.sheet-body').innerHTML = body; return; }
+  present('Recently deleted', '', body, 'small');
+}
+
 // ---------------------------------------------------------------- events
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-act]');
@@ -597,23 +671,56 @@ document.addEventListener('click', async (ev) => {
         haptic(12);
         setTimeout(() => { ui.armedDelete = false; if (el.isConnected) el.classList.remove('armed'); }, 3000);
       } else {
-        store.deleteEntry(ui.form.id);
+        const trashId = store.deleteEntry(ui.form.id);
         haptic(18);
-        toast('Transaction deleted');
         closeSheet();
+        toast('Transaction deleted', '', trashId ? { label: 'Undo', fn: () => { store.restoreTrash(trashId); haptic(10); toast('Restored', 'ok'); } } : null);
       }
       break;
     }
     case 'export': {
       const rows = store.exportCsv();
-      const blob = new Blob([rows.map((r) => r.map(csvEscape).join(',')).join('\n')], { type: 'text/csv' });
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = 'expense-log.csv';
-      a.click();
-      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      await saveFile('expense-log.csv', new Blob([rows.map((r) => r.map(csvEscape).join(',')).join('\n')], { type: 'text/csv' }));
       break;
     }
+    case 'export-xlsx': {
+      try {
+        const v = store.view();
+        const bytes = buildWorkbook({ months: v.months, by: v.by, categories: v.categories });
+        const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const r = await saveFile('Expense Log.xlsx', blob);
+        if (r !== 'cancelled') toast(r === 'shared' ? 'Excel file ready' : 'Excel file downloaded', 'ok');
+      } catch (err) { toast('Could not create the Excel file: ' + (err.message || err), 'err'); }
+      break;
+    }
+    case 'import-xlsx': {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel.sheet.macroEnabled.12';
+      input.addEventListener('change', () => { if (input.files && input.files[0]) readImportFile(input.files[0]); });
+      input.click();
+      break;
+    }
+    case 'do-import': {
+      const d = ui.importData;
+      if (!d || !d.fresh.length) { closeSheet(); break; }
+      store.addMany(d.fresh);
+      ui.importData = null;
+      haptic(14);
+      closeSheet();
+      toast(`Importing ${d.fresh.length} transactions…`, 'ok');
+      break;
+    }
+    case 'trash': openTrash(); break;
+    case 'restore': {
+      const id = store.restoreTrash(el.dataset.id);
+      if (id) { haptic(10); toast('Restored', 'ok'); }
+      if (!store.getState().trash.length) closeSheet(); else openTrash(true);
+      break;
+    }
+    case 'clear-trash':
+      if (confirm('Permanently clear the recently deleted list on this device?')) { store.clearTrash(); closeSheet(); }
+      break;
     case 'disconnect':
       if (confirm('Remove the local copy and disconnect this device? Unsynced changes will be lost.')) { await store.disconnect(); render(); }
       break;
@@ -634,19 +741,23 @@ document.addEventListener('keydown', (e) => {
 function fitApp() {
   const app = $('#app');
   app.style.height = window.innerHeight + 'px';
-  // On some iPhones a home-screen app's web view stops above the home-indicator zone (the system fills it)
-  // while still reporting a bottom safe-area inset. In that case the inset must not be added again.
+  const root = document.documentElement;
   const standalone = window.navigator.standalone || matchMedia('(display-mode: standalone)').matches;
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;left:0;top:0;width:0;visibility:hidden;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px) 0';
+  document.body.appendChild(probe);
+  const inset = probe.offsetHeight; // top + bottom
+  probe.style.padding = 'env(safe-area-inset-top,0px) 0 0 0';
+  const insetTop = probe.offsetHeight;
+  probe.remove();
   const gap = standalone && window.innerHeight > window.innerWidth
     ? Math.max(screen.width, screen.height) - window.innerHeight : 0;
-  document.documentElement.style.setProperty('--safe-b', gap > 8 ? '0px' : 'env(safe-area-inset-bottom, 0px)');
-  const probe = document.createElement('div');
-  probe.style.cssText = 'position:fixed;left:0;top:0;width:0;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px) 0;visibility:hidden';
-  document.body.appendChild(probe);
-  const inset = probe.offsetHeight;
-  probe.remove();
+  // If the page reaches under the status bar (top inset > 0) yet stops short of the bottom, iOS has already
+  // reserved the bottom strip, so the home-indicator inset must not be added a second time.
+  const shortUnderBar = gap > 8 && insetTop >= gap - 8;
+  root.style.setProperty('--safe-b', shortUnderBar ? '0px' : 'env(safe-area-inset-bottom, 0px)');
   const vv = window.visualViewport ? Math.round(window.visualViewport.height) : '-';
-  fitApp.info = `inner ${window.innerWidth}×${window.innerHeight} · visual ${vv} · screen ${screen.width}×${screen.height} · doc ${document.documentElement.clientHeight} · app ${Math.round(app.getBoundingClientRect().height)} · insets(top+bottom) ${inset} · gap ${gap} · ${standalone ? 'app' : 'browser'}`;
+  fitApp.info = `inner ${window.innerWidth}×${window.innerHeight} · visual ${vv} · screen ${screen.width}×${screen.height} · insets ${insetTop}+${inset - insetTop} · gap ${gap}${shortUnderBar ? ' (compensated)' : ''} · ${standalone ? 'app' : 'browser'}`;
 }
 fitApp();
 window.addEventListener('resize', fitApp);

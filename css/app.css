@@ -322,3 +322,19 @@ body.onboard #view { padding-bottom: 24px; }
 .hint { color: var(--muted); font-size: 13.5px; padding: 9px 2px; }
 .sheet.compact .sheet-body { padding-bottom: 8px; }
 .muted.xs { font-size: 11px; opacity: .7; margin-top: 4px; }
+
+/* toast with an action (Undo) */
+#toast { display: flex; align-items: center; gap: 14px; }
+#toast.has-action { pointer-events: auto; padding-right: 10px; }
+#toast button { font-weight: 800; padding: 6px 12px; border-radius: 10px; background: color-mix(in srgb, var(--bg) 18%, transparent); color: inherit; }
+
+/* small controls, import preview, recently deleted */
+.ic.flip { transform: rotate(180deg); }
+.mini-btn { padding: 8px 14px; border-radius: 12px; font-weight: 700; font-size: 14px; color: var(--accent); background: color-mix(in srgb, var(--accent) 12%, transparent); }
+.trashrow { cursor: default; }
+.imp-file { font-weight: 650; word-break: break-all; margin: 2px 0 12px; color: var(--muted); }
+.imp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 6px; }
+.imp-stats div { background: var(--surface); border: 1px solid var(--line); border-radius: 16px; padding: 12px; text-align: center; }
+.imp-stats b { display: block; font-size: 24px; font-weight: 760; letter-spacing: -.02em; }
+.imp-stats span { font-size: 12px; color: var(--muted); font-weight: 600; }
+.warn.sm { margin-top: 6px; padding: 8px 10px; }

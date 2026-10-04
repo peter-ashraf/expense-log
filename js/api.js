@@ -9,7 +9,7 @@ function remoteTransport(cfg) {
   return {
     async call(action, body = {}) {
       const ctl = new AbortController();
-      const timer = setTimeout(() => ctl.abort(), 30000);
+      const timer = setTimeout(() => ctl.abort(), 120000);
       try {
         // text/plain keeps this a "simple" request: no CORS preflight (Apps Script can't answer one).
         const res = await fetch(cfg.url, {

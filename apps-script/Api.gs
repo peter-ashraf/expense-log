@@ -361,7 +361,8 @@ function validate_(t) {
     category = String(t.category || '');
     sub = String(t.sub || '');
     if (!cats[category]) throw new Error('Unknown category "' + category + '".');
-    if (cats[category].indexOf(sub) < 0) throw new Error('Unknown sub-category "' + sub + '".');
+    // older rows sometimes repeat the category as the sub-category; keep accepting those
+    if (cats[category].indexOf(sub) < 0 && sub !== category) throw new Error('Unknown sub-category "' + sub + '".');
   }
   return { year: y, month0: mo - 1, date: dt, description: String(t.description || '').trim().slice(0, 200),
            amount: amount, type: t.type, category: category, sub: sub };
