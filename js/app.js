@@ -10,13 +10,48 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const ui = { insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
+const ui = { account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
 // ---------------------------------------------------------------- helpers
 const cur = () => store.getState().settings.currency || '';
 const fmt = (n) => money(n, cur());
 
-function activeMonth() {
+// ---- spending accounts (credit card, cash, ...) ----
+const accList = () => store.view().accounts;
+const liveAccts = () => accList().filter((a) => !a.archived);
+const multiAcc = () => liveAccts().length > 1;
+const accOf = (name) => accList().find((a) => a.name === name) || null;
+const accHue = (a) => (a && a.type === 'cash' ? 150 : 255);
+const sumBy = (list, type) => list.reduce((n, e) => n + (e.type === type ? e.amount : 0), 0);
+
+// A month limited to the selected account (the same shape as a normal month), or the month itself for "All".
+function scoped(m) {
+  if (!m) return m;
+  if (ui.account !== 'all' && !liveAccts().some((a) => a.name === ui.account)) ui.account = 'all';
+  if (ui.account === 'all') return m;
+  const entries = m.entries.filter((e) => e.account === ui.account);
+  const spent = Math.round(sumBy(entries, 'Expense') * 100) / 100;
+  const income = Math.round(sumBy(entries, 'Income') * 100) / 100;
+  return { key: m.key, entries, spent, income, start: 0, available: Math.round((income - spent) * 100) / 100, scoped: true };
+}
+
+function accChips() {
+  if (!multiAcc()) return '';
+  const all = [['all', 'All accounts', null]].concat(liveAccts().map((a) => [a.name, a.name, a]));
+  return `<div class="chips acc-chips" role="tablist" aria-label="Account">${all.map(([k, l, a]) =>
+    `<button class="chip ${ui.account === k ? 'on' : ''}" role="tab" aria-selected="${ui.account === k}" data-act="acc" data-v="${esc(k)}">${a ? icon(a.type === 'cash' ? 'cash' : 'card', 16) : ''}${esc(l)}</button>`).join('')}</div>`;
+}
+
+// What the insights compare spending against: the account's own limit, or the overall budget / the limits added up.
+function budgetFor() {
+  if (ui.account !== 'all') { const a = accOf(ui.account); return a ? a.limit || 0 : 0; }
+  const own = Number(store.getState().settings.budget) || 0;
+  if (own > 0) return own;
+  const live = liveAccts();
+  return live.length && live.every((a) => a.limit > 0) ? live.reduce((n, a) => n + a.limit, 0) : 0;
+}
+
+function rawMonth() {
   const v = store.view();
   if (!v.months.length) return null;
   if (!ui.month || !v.by[ui.month]) {
@@ -25,6 +60,8 @@ function activeMonth() {
   }
   return v.by[ui.month];
 }
+
+function activeMonth() { return scoped(rawMonth()); }
 
 function splitAmount(n) {
   const s = num(n);
@@ -76,7 +113,7 @@ function hueStyle(name) {
 function entryRow(e, pending) {
   const isInc = e.type === 'Income';
   const title = e.description || (isInc ? 'Income' : e.sub);
-  const subtitle = isInc ? 'Income' : `${e.category} · ${e.sub}`;
+  const subtitle = (isInc ? 'Income' : `${e.category} · ${e.sub}`) + (ui.account === 'all' && multiAcc() && e.account ? ` · ${e.account}` : '');
   return `<button class="row ${isInc ? 'inc' : 'exp'}" data-act="edit" data-id="${esc(e.id)}">
     <span class="bubble" style="${hueStyle(isInc ? 'Income' : e.category)}">${icon(isInc ? 'income' : e.category, 20)}</span>
     <span class="row-main"><span class="row-t">${esc(title)}</span><span class="row-s">${esc(subtitle)}${pending.has(e.id) ? '<i class="pend" title="Waiting to sync"></i>' : ''}</span></span>
@@ -146,18 +183,42 @@ function renderHome(view, m) {
   const pct = funds > 0 ? Math.max(0, Math.min(100, (m.spent / funds) * 100)) : 0;
   const cats = catTotals(m).slice(0, 5);
   const top = cats.length ? cats[0][1] : 1;
+  const acc = m.scoped ? accOf(ui.account) : null;
+  const lim = acc ? acc.limit : 0;
+  const heroLabel = acc ? `${acc.name} · ${lim > 0 ? 'left this month' : 'spent this month'}` : 'Available balance';
+  const heroAmount = acc ? (lim > 0 ? lim - m.spent : m.spent) : m.available;
+  const heroSub = acc
+    ? (lim > 0 ? (m.spent > lim ? `Over the ${fmt(lim)} limit by ${fmt(m.spent - lim)}` : `Monthly limit ${fmt(lim)}`) : 'No limit set. You can add one in Settings')
+    : `Opened the month with ${fmt(m.start)}`;
+  const meterShown = acc ? lim > 0 : true;
+  const meterPct = acc ? Math.max(0, Math.min(100, (m.spent / (lim || 1)) * 100)) : pct;
+  const meterCap = acc ? `${Math.round((m.spent / (lim || 1)) * 100)}% of the limit used` : `${Math.round(pct)}% of available funds spent`;
+  const rawM = rawMonth();
+  const accCard = !m.scoped && multiAcc() ? `<section class="card">
+      <div class="card-h"><h3>Accounts</h3></div>
+      ${liveAccts().map((a) => {
+        const sp = sumBy(rawM.entries.filter((e) => e.account === a.name), 'Expense');
+        const r = a.limit > 0 ? sp / a.limit : 0;
+        return `<button class="bar-row acc-row ${r > 1 ? 'over' : r > 0.85 ? 'near' : ''}" data-act="acc" data-v="${esc(a.name)}" style="--h:${accHue(a)}">
+          <span class="bubble sm">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}</span>
+          <span class="bar-main"><span class="bar-top"><span>${esc(a.name)}</span><b>${esc(num(sp))}${a.limit > 0 ? `<small> / ${esc(num0(a.limit))}</small>` : ''}</b></span>
+          <span class="bar"><i style="width:${a.limit > 0 ? Math.min(100, Math.max(3, r * 100)).toFixed(1) : 0}%"></i></span></span></button>`;
+      }).join('')}
+    </section>` : '';
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
+    ${accChips()}
     <section class="hero">
-      <div class="hero-label">Available balance</div>
-      <div class="hero-amt" id="heroAmt">${heroHTML(m.available)}</div>
-      <div class="hero-sub">Opened the month with ${esc(fmt(m.start))}</div>
+      <div class="hero-label">${esc(heroLabel)}</div>
+      <div class="hero-amt" id="heroAmt">${heroHTML(heroAmount)}</div>
+      <div class="hero-sub">${esc(heroSub)}</div>
       <div class="hero-row">
         <button class="mini" data-act="flip" data-kind="income" aria-label="Show income breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic up"')}Income</span><b>${esc(fmt(m.income))}</b></button>
         <button class="mini" data-act="flip" data-kind="spent" aria-label="Show spending breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic down"')}Spent</span><b>${esc(fmt(m.spent))}</b></button>
       </div>
-      <div class="meter"><i style="width:${pct.toFixed(1)}%"></i></div>
-      <div class="meter-cap">${Math.round(pct)}% of available funds spent</div>
+      ${meterShown ? `<div class="meter"><i style="width:${meterPct.toFixed(1)}%"></i></div>
+      <div class="meter-cap">${esc(meterCap)}</div>` : ''}
     </section>
+    ${accCard}
     ${cats.length ? `<section class="card">
       <div class="card-h"><h3>Where it went</h3><button class="link" data-act="tab" data-tab="insights">See all</button></div>
       ${cats.map(([name, amt]) => `<div class="bar-row" style="${hueStyle(name)}">
@@ -170,17 +231,19 @@ function renderHome(view, m) {
       ${m.entries.length ? m.entries.slice(0, 5).map((e) => entryRow(e, v.pending)).join('') : '<p class="muted pad">No transactions this month.</p>'}
     </section>
   </div>`;
-  countUp($('#heroAmt'), m.available);
+  countUp($('#heroAmt'), heroAmount);
 }
 
 function renderActivity(view, m) {
   if (!$('#actList')) {
     view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
+      <div id="accChips"></div>
       <div class="search">${icon('search', 18)}<input id="q" type="search" placeholder="Search transactions" value="${esc(ui.q)}" autocomplete="off" enterkeyhint="search"></div>
       <div class="chips" id="filters"></div>
       <div id="actList"></div></div>`;
     $('#q').addEventListener('input', (e) => { ui.q = e.target.value; fillActivity(); });
   }
+  $('#accChips').innerHTML = accChips();
   $('#filters').innerHTML = [['all', 'All'], ['Expense', 'Expenses'], ['Income', 'Income']]
     .map(([k, l]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="filter" data-f="${k}">${l}</button>`).join('');
   fillActivity();
@@ -343,15 +406,15 @@ function insightsCard(v, m) {
   let r;
   if (all) {
     r = computeAllTime({
-      months: v.months.map((k) => ({ key: k, entries: v.by[k].entries })),
+      months: v.months.map((k) => ({ key: k, entries: scoped(v.by[k]).entries })),
       today: todayStr(), fmt: num0, monthName: (k) => keyLabel(k).split(' ')[0],
     });
   } else {
     const i = v.months.indexOf(m.key);
     r = computeInsights({
-      m, prev: i > 0 ? v.by[v.months[i - 1]] : null, today: todayStr(), fmt: num0,
-      budget: Number(store.getState().settings.budget) || 0,
-      history: v.months.flatMap((k) => v.by[k].entries.filter((e) => e.type === 'Expense')),
+      m, prev: i > 0 ? scoped(v.by[v.months[i - 1]]) : null, today: todayStr(), fmt: num0,
+      budget: budgetFor(),
+      history: v.months.flatMap((k) => scoped(v.by[k]).entries.filter((e) => e.type === 'Expense')),
       monthName: (k) => keyLabel(k).split(' ')[0],
     });
   }
@@ -383,8 +446,11 @@ function renderInsights(view, m) {
   })();
   const saved = m.income > 0 ? Math.round(((m.income - m.spent) / m.income) * 100) : null;
   const last = v.months.slice(-6);
-  const maxSpent = Math.max(1, ...last.map((k) => v.by[k].spent));
+  const sc = {};
+  last.forEach((k) => { sc[k] = scoped(v.by[k]); });
+  const maxSpent = Math.max(1, ...last.map((k) => sc[k].spent));
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
+    ${accChips()}
     <section class="card">
       <div class="card-h"><h3>Spending split</h3></div>
       ${cats.length ? `<div class="donut-wrap">
@@ -401,7 +467,7 @@ function renderInsights(view, m) {
     <section class="card">
       <div class="card-h"><h3>Monthly trend</h3><span class="muted sm">Spent per month</span></div>
       <div class="trend">${last.map((k) => {
-        const mm = v.by[k];
+        const mm = sc[k];
         const h = Math.max(4, (mm.spent / maxSpent) * 100);
         return `<button class="tcol ${k === m.key ? 'on' : ''}" data-act="pick-month" data-key="${k}"><b>${esc(num0(mm.spent))}</b><div class="tbar"><i style="height:${h.toFixed(1)}%"></i></div><span>${esc(keyShort(k))}</span></button>`;
       }).join('')}</div>
@@ -424,6 +490,28 @@ function securityCard(st) {
         <div class="seg four">${delays.map(([sec, l]) => `<button class="${cur === sec ? 'on' : ''}" data-act="lock-delay" data-v="${sec}">${l}</button>`).join('')}</div>
         <div class="row-btns"><button class="btn ghost" data-act="lock-now">${icon('lock', 18)}Lock now</button>${lock.method === 'pin' ? '<button class="btn ghost" data-act="pin-change">Change PIN</button>' : ''}</div>` : ''}
       <p class="muted sm" style="margin-top:10px">${lock.method === 'bio' ? 'Uses Face ID or Touch ID through your phone’s passkey. ' : ''}This keeps others out of the app. It doesn’t encrypt the data on your phone.</p>
+    </section>`;
+}
+
+function accountsCard(st) {
+  const v = store.view();
+  const t = ui.newAccType || 'card';
+  const rows = v.accounts.map((a, i) => `<div class="acc-set ${a.archived ? 'off' : ''}">
+      <span class="bubble sm" style="--h:${accHue(a)}">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}</span>
+      <span class="acc-name"><b>${esc(a.name)}</b><small>${a.type === 'cash' ? 'Cash' : 'Card'}${i === 0 ? ' · main' : ''}${a.archived ? ' · archived' : ''}</small></span>
+      <input class="acc-limit" inputmode="decimal" placeholder="No limit" data-name="${esc(a.name)}" value="${a.limit > 0 ? esc(String(a.limit)) : ''}" aria-label="Monthly limit for ${esc(a.name)}" autocomplete="off">
+      ${i === 0 ? '' : `<button class="chip" data-act="acc-archive" data-v="${esc(a.name)}">${a.archived ? 'Restore' : 'Archive'}</button>`}
+    </div>`).join('');
+  return `<section class="card">
+      <div class="card-h"><h3>Accounts</h3><span class="badge ${v.accounts.length > 1 ? 'synced' : ''}">${v.accounts.length}</span></div>
+      ${v.accountsSupported ? '' : '<p class="warn">Your Google Sheet script doesn’t support accounts yet. Paste the updated script (Api.gs) and deploy a new version, then sync.</p>'}
+      ${rows}
+      <div class="lbl">Add an account</div>
+      <div class="seg two"><button class="${t === 'card' ? 'on' : ''}" data-act="acc-type" data-v="card">${icon('card', 18)}Card</button><button class="${t === 'cash' ? 'on' : ''}" data-act="acc-type" data-v="cash">${icon('cash', 18)}Cash</button></div>
+      <div class="acc-new"><label class="field"><span>Name</span><input id="accName" maxlength="30" placeholder="e.g. Cash" autocomplete="off"></label>
+      <label class="field"><span>Monthly limit</span><input id="accLimit" inputmode="decimal" placeholder="Optional" autocomplete="off"></label></div>
+      <button class="btn" data-act="acc-add">${icon('plus', 18)}Add account</button>
+      <p class="muted sm" style="margin-top:10px">Every entry belongs to one account. Limits are per month. Totals and the balance in your sheet still add up all accounts together.</p>
     </section>`;
 }
 
@@ -450,6 +538,7 @@ function renderSettings(view) {
       <label class="switch block"><input type="checkbox" id="glassSwitch" ${st.settings.glass === false ? '' : 'checked'}><span>Glass bars <small class="muted">(blurred top bar and tab bar)</small></span></label>
       <button class="btn ghost" data-act="refresh-view">Status bar not matching? Refresh</button>
     </section>
+    ${accountsCard(st)}
     <section class="card">
       <div class="card-h"><h3>Monthly budget</h3><span class="badge ${Number(st.settings.budget) > 0 ? 'synced' : ''}">${Number(st.settings.budget) > 0 ? 'On' : 'Off'}</span></div>
       <label class="field"><span>Spending limit per month</span><input id="budgetInput" type="text" inputmode="decimal" placeholder="e.g. 15000" value="${Number(st.settings.budget) > 0 ? esc(String(st.settings.budget)) : ''}" autocomplete="off"></label>
@@ -472,7 +561,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v2.7</p>
+    <p class="muted center sm">Credit Card Expenses · v3.0</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -515,6 +604,15 @@ function renderOnboarding(prefill = {}) {
 // ---------------------------------------------------------------- add / edit sheet
 const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'];
 
+// Which account a new entry starts in: the one being viewed, else the one used last, else the main one.
+function defaultFormAccount() {
+  const live = liveAccts();
+  if (ui.account !== 'all' && live.some((a) => a.name === ui.account)) return ui.account;
+  const last = store.getState().settings.lastAccount;
+  const hit = live.find((a) => a.name === last);
+  return hit ? hit.name : (accList()[0] || {}).name || '';
+}
+
 function openSheet(id) {
   const v = store.view();
   let e = null;
@@ -525,8 +623,8 @@ function openSheet(id) {
     return m && t.slice(0, 7) !== m.key ? m.key + '-01' : t;
   })();
   ui.form = e
-    ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description }
-    : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '' };
+    ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description, account: e.account }
+    : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '', account: defaultFormAccount() };
   ui.armedDelete = false;
   const body = `<div id="formMain"><div class="seg" id="fType"></div>
       <div class="amt" id="fAmt"></div>
@@ -535,6 +633,7 @@ function openSheet(id) {
       <div class="lbl">Sub-category</div><div class="chips hs" id="fSubs"></div></div>
       <div class="lbl">Date</div>
       <div class="chips datechips" id="fDates"></div>
+      <div class="chips acc-pick" id="fAccts" aria-label="Account"></div>
       <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label></div>
       <div id="calWrap"></div>`;
   const foot = `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>`;
@@ -872,6 +971,14 @@ function refreshForm() {
       if (inp && document.activeElement !== inp) { inp.focus(); inp.scrollIntoView({ inline: 'nearest', block: 'nearest' }); }
     }
   }
+  const showAcc = multiAcc() || (f.account && f.account !== (accList()[0] || {}).name);
+  $('#fAccts').style.display = showAcc ? '' : 'none';
+  if (showAcc) {
+    const opts = liveAccts().slice();
+    const cur = accOf(f.account);
+    if (cur && !opts.includes(cur)) opts.push(cur);   // keep an archived account usable on entries that already have it
+    $('#fAccts').innerHTML = opts.map((a) => `<button class="chip ${f.account === a.name ? 'on' : ''}" data-act="facc" data-v="${esc(a.name)}">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}${esc(a.name)}</button>`).join('');
+  }
   const today = todayStr();
   const yest = shiftDate(today, -1);
   const custom = f.date !== today && f.date !== yest;
@@ -917,7 +1024,9 @@ function saveForm() {
     date: f.date, description: f.desc, amount, type: f.type,
     category: f.type === 'Income' ? 'Income' : f.category,
     sub: f.type === 'Income' ? 'Income' : f.sub,
+    account: f.account || undefined,
   };
+  if (f.account && multiAcc()) store.saveSettings({ lastAccount: f.account });
   if (f.id) store.updateEntry(f.id, data); else store.addEntry(data);
   ui.month = monthKeyOf(f.date);
   haptic(14);
@@ -1118,7 +1227,8 @@ async function readImportFile(file) {
 function computeImportPlan() {
   const d = ui.importData;
   const v = store.view();
-  const keyOf = (e) => [e.date, e.description, Number(e.amount).toFixed(2), e.type, e.category, e.sub].join('|');
+  const defAcc = v.accounts[0].name;
+  const keyOf = (e) => [e.date, e.description, Number(e.amount).toFixed(2), e.type, e.category, e.sub, e.account || defAcc].join('|');
   const have = new Map();
   v.months.forEach((k) => v.by[k].entries.forEach((e) => have.set(keyOf(e), (have.get(keyOf(e)) || 0) + 1)));
 
@@ -1145,8 +1255,13 @@ function computeImportPlan() {
   const canonicalCat = new Map();
   const fresh = [];
   let dupes = 0;
+  const unknownAcc = new Map();
   for (const e0 of candidates) {
     const e = { ...e0 };
+    if (e.account) {
+      const hit = v.accounts.find((a) => lc(a.name) === lc(e.account));
+      if (hit) e.account = hit.name; else { unknownAcc.set(lc(e.account), e.account); delete e.account; }   // unknown names go to the main account
+    }
     if (e.type === 'Expense') {
       const cl = lc(e.category);
       const known = existing.get(cl);
@@ -1177,6 +1292,7 @@ function computeImportPlan() {
     if (have.get(k)) { have.set(k, have.get(k) - 1); dupes++; } else fresh.push(e);
   }
   d.fresh = fresh;
+  d.unknownAccounts = [...unknownAcc.values()];
   d.dupes = dupes;
   d.skipped = skipped;
   d.fixable = fixable;
@@ -1194,6 +1310,9 @@ function renderImportPreview() {
   const createLine = d.fixable
     ? `<label class="switch block"><input type="checkbox" id="createMissing" ${d.create ? 'checked' : ''}><span>Create the missing categories and sub-categories from this file <small class="muted">(${d.fixable} row${d.fixable === 1 ? '' : 's'} use names the app doesn’t have yet)</small></span></label>`
     : '';
+  const accLine = d.unknownAccounts && d.unknownAccounts.length
+    ? `<p class="muted sm">${d.unknownAccounts.length === 1 ? 'An account' : d.unknownAccounts.length + ' accounts'} in this file (${esc(d.unknownAccounts.join(', '))}) ${d.unknownAccounts.length === 1 ? 'doesn’t' : 'don’t'} exist here yet. Those rows will go to ${esc(accList()[0].name)}. Add the account in Settings first to keep them separate.</p>`
+    : '';
   const planLine = d.create && (d.newCatCount || d.newSubCount)
     ? `<p class="muted sm">Will add ${d.newCatCount ? `${d.newCatCount} categor${d.newCatCount === 1 ? 'y' : 'ies'}` : ''}${d.newCatCount && d.newSubCount ? ' and ' : ''}${d.newSubCount ? `${d.newSubCount} sub-categor${d.newSubCount === 1 ? 'y' : 'ies'}` : ''}: ${esc(d.newCats.map((c) => c.name + (c.subs.size ? ' (' + [...c.subs.values()].join(', ') + ')' : '')).join('; '))}.</p>`
     : '';
@@ -1205,7 +1324,7 @@ function renderImportPreview() {
         <div><b>${d.skipped.length}</b><span>skipped</span></div>
       </div>
       ${d.notes.map((n) => `<p class="note-line sm">${esc(n)}</p>`).join('')}
-      ${createLine}${planLine}
+      ${createLine}${planLine}${accLine}
       ${months.length ? `<div class="lbl">Will be added</div>${months.map((k) => `<div class="kv"><span>${esc(keyLabel(k))}</span><b>${byMonth[k]}</b></div>`).join('')}` : '<p class="muted pad">Nothing new to add — everything in this file is already in the app.</p>'}
       ${d.skipped.length ? `<div class="lbl">Skipped rows</div>${d.skipped.slice(0, 6).map((x) => `<p class="warn sm">${esc(x.sheet)} row ${x.row}: ${esc(x.reason)}</p>`).join('')}${d.skipped.length > 6 ? `<p class="muted sm">…and ${d.skipped.length - 6} more</p>` : ''}` : ''}
       <p class="muted sm">Duplicates are detected by date, description, amount and category, so importing the same file twice is safe.</p>
@@ -1271,6 +1390,33 @@ document.addEventListener('click', async (ev) => {
       if (el.classList.contains('menu-row') && performance.now() < ui.noClickUntil) break; // already handled by the slide gesture
       pickMonth(el.dataset.key);
       break;
+    case 'acc':
+      ui.account = el.dataset.v || 'all';
+      try { localStorage.setItem('el_acc', ui.account); } catch (e) { /* ignore */ }
+      haptic(6); ui.animate = false; render();
+      break;
+    case 'facc': ui.form.account = el.dataset.v; haptic(6); refreshForm(); break;
+    case 'acc-type': ui.newAccType = el.dataset.v === 'cash' ? 'cash' : 'card'; haptic(6); renderSettings($('#view')); break;
+    case 'acc-add': {
+      const name = ($('#accName') || {}).value || '';
+      const err = store.nameError(name, accList().map((a) => a.name));
+      if (err) { toast(err, 'err'); break; }
+      const limit = parseFloat(String((($('#accLimit') || {}).value || '')).replace(/,/g, ''));
+      store.addAccount(name, ui.newAccType || 'card', Number.isFinite(limit) && limit > 0 ? limit : 0);
+      ui.newAccType = 'card';
+      haptic(10); toast('Account added', 'ok');
+      renderSettings($('#view'));
+      break;
+    }
+    case 'acc-archive': {
+      const a = accOf(el.dataset.v);
+      if (!a) break;
+      store.updateAccount(a.name, { archived: !a.archived });
+      if (!a.archived && ui.account === a.name) ui.account = 'all';
+      toast(a.archived ? 'Account restored' : 'Account archived. Its entries stay in your history', 'ok');
+      renderSettings($('#view'));
+      break;
+    }
     case 'filter': ui.filter = el.dataset.f; renderActivity($('#view'), activeMonth()); break;
     case 'sync':
       store.sync().then(() => {
@@ -1376,7 +1522,7 @@ document.addEventListener('click', async (ev) => {
     case 'export-xlsx': {
       try {
         const v = store.view();
-        const bytes = buildWorkbook({ months: v.months, by: v.by, categories: v.categories });
+        const bytes = buildWorkbook({ months: v.months, by: v.by, categories: v.categories, accounts: v.accounts });
         const blob = new Blob([bytes], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
         const r = await saveFile('Expense Log.xlsx', blob);
         if (r !== 'cancelled') toast(r === 'shared' ? 'Excel file ready' : 'Excel file downloaded', 'ok');
@@ -1431,6 +1577,14 @@ document.addEventListener('click', async (ev) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target && e.target.classList && e.target.classList.contains('acc-limit')) {
+    const n = parseFloat(String(e.target.value).replace(/,/g, '').trim());
+    const val = Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;
+    store.updateAccount(e.target.dataset.name, { limit: val });
+    e.target.value = val || '';
+    toast(val ? 'Limit saved' : 'Limit removed', 'ok');
+    return;
+  }
   if (e.target && e.target.id === 'budgetInput') {
     const n = parseFloat(String(e.target.value).replace(/,/g, '').trim());
     const val = Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;

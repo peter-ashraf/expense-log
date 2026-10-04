@@ -528,3 +528,30 @@ button.ins { cursor: pointer; } button.ins:active { opacity: .6; }
 .ins-bar { display: block; height: 6px; margin-top: 8px; border-radius: 99px; background: color-mix(in srgb, var(--muted) 22%, transparent); overflow: hidden; }
 .ins-bar i { display: block; height: 100%; border-radius: 99px; background: var(--pos); }
 .ins.warn .ins-bar i { background: var(--warn); }
+
+/* ---- spending accounts ---- */
+.acc-chips { margin: 2px 0 12px; }
+.acc-chips .chip { gap: 6px; }
+.acc-row { width: 100%; text-align: left; color: inherit; font: inherit; background: none; border: 0; cursor: pointer; }
+.acc-row:active { opacity: .6; }
+.acc-row .bar-main { display: block; }
+.acc-row .bar-top { display: flex; }
+.acc-row .bar-top small { font-weight: 500; color: var(--muted); }
+.acc-row.near .bar i { background: var(--warn); }
+.acc-row.over .bar i { background: var(--neg); }
+.acc-pick { margin-top: 10px; }
+.acc-pick .chip { gap: 6px; }
+.acc-set { display: flex; align-items: center; gap: 10px; padding: 8px 0; border-top: 1px solid var(--line); }
+.acc-set:first-of-type { border-top: 0; }
+.acc-set.off { opacity: .55; }
+.acc-name { flex: 1; min-width: 0; }
+.acc-name b { display: block; font-size: 15px; }
+.acc-name small { color: var(--muted); font-size: 12.5px; }
+.acc-limit { width: 104px; height: 40px; padding: 0 10px; text-align: right; border-radius: 12px; border: 1px solid var(--line); background: var(--surface-2); font-size: 15px; outline: 0; }
+.acc-limit:focus { border-color: var(--accent); }
+.acc-new { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.acc-new .field { margin: 8px 0; }
+.acc-row .bar { display: block; }
+.acc-row .bar i { display: block; }
+.seg.two button { display: flex; align-items: center; justify-content: center; gap: 6px; }
+.acc-set .chip { padding: 7px 12px; font-size: 13px; }

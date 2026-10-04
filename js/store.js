@@ -8,7 +8,7 @@ import { uid, monthKeyOf, round2 } from './util.js';
 // view(): snap + queue applied on top, so the UI is always instant and offline-capable.
 const S = {
   cfg: null,
-  snap: { categories: { order: [], map: {} }, firstStart: 0, months: [], entries: [] },
+  snap: { categories: { order: [], map: {} }, accounts: [], firstStart: 0, months: [], entries: [] },
   queue: [],
   settings: { currency: '', theme: 'system', glass: true, lock: { method: 'off', delay: 60 } },
   status: 'idle', // idle | syncing | synced | offline | error
@@ -47,7 +47,7 @@ export async function init() {
 
 export async function connect(cfg) {
   S.cfg = cfg;
-  S.snap = { categories: { order: [], map: {} }, firstStart: 0, months: [], entries: [] };
+  S.snap = { categories: { order: [], map: {} }, accounts: [], firstStart: 0, months: [], entries: [] };
   S.queue = [];
   S.rejected = [];
   await db.set('cfg', cfg);
@@ -65,7 +65,7 @@ export async function connect(cfg) {
 export async function disconnect() {
   await db.clearAll();
   S.cfg = null;
-  S.snap = { categories: { order: [], map: {} }, firstStart: 0, months: [], entries: [] };
+  S.snap = { categories: { order: [], map: {} }, accounts: [], firstStart: 0, months: [], entries: [] };
   S.queue = [];
   S.status = 'idle';
   S.error = '';
@@ -97,7 +97,7 @@ export function deleteEntry(id) {
   let trashId = null;
   if (e) {
     trashId = uid();
-    S.trash.unshift({ trashId, deletedAt: Date.now(), data: { date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub } });
+    S.trash.unshift({ trashId, deletedAt: Date.now(), data: { date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: e.account } });
     S.trash = S.trash.slice(0, 100);
     db.set('trash', S.trash);
   }
@@ -136,6 +136,7 @@ const clean = (d) => ({
   type: d.type,
   category: d.category,
   sub: d.sub,
+  ...(d.account ? { account: d.account } : {}),
 });
 
 function enqueue(op) {
@@ -197,17 +198,57 @@ export function addSub(category, name) {
   return n;
 }
 
+// ---- accounts ------------------------------------------------------------------
+// Server list (the first one is the default) + accounts added or changed on this device that have not synced yet.
+// An older server that knows nothing about accounts just gives us the single default one.
+const DEFAULT_ACCOUNT = { name: 'Credit Card', type: 'card', limit: 0, archived: false };
+
+function mergedAccounts() {
+  const list = (S.snap.accounts && S.snap.accounts.length ? S.snap.accounts : [DEFAULT_ACCOUNT]).map((a) => ({ ...a }));
+  for (const o of S.queue) {
+    if (o.type === 'addAccount') {
+      if (!list.some((a) => a.name.toLowerCase() === o.name.toLowerCase())) list.push({ name: o.name, type: o.accType === 'cash' ? 'cash' : 'card', limit: Number(o.limit) > 0 ? Number(o.limit) : 0, archived: false });
+    } else if (o.type === 'updateAccount') {
+      const a = list.find((x) => x.name.toLowerCase() === o.name.toLowerCase());
+      if (!a) continue;
+      if (o.limit !== undefined) a.limit = Number(o.limit) > 0 ? Number(o.limit) : 0;
+      if (o.archived !== undefined) a.archived = !!o.archived;
+      if (o.accType !== undefined) a.type = o.accType === 'cash' ? 'cash' : 'card';
+    }
+  }
+  return list;
+}
+
+function resolveAccountName(list, name) {
+  if (!name) return '';
+  const a = list.find((x) => x.name.toLowerCase() === String(name).toLowerCase());
+  return a ? a.name : '';
+}
+
+export function addAccount(name, accType = 'card', limit = 0) {
+  const n = String(name).replace(/\s+/g, ' ').trim();
+  enqueue({ type: 'addAccount', id: uid(), name: n, accType, limit: Number(limit) > 0 ? round2(limit) : 0 });
+  return n;
+}
+
+export function updateAccount(name, patch) {
+  enqueue({ type: 'updateAccount', id: uid(), name, ...patch });
+}
+
 // ---- derived view -----------------------------------------------------------
 export function view() {
   if (cache) return cache;
   const map = new Map(S.snap.entries.map((e) => [e.id, e]));
   const pending = new Set();
   for (const o of S.queue) {
-    if (o.type === 'addCategory' || o.type === 'addSub') continue;
+    if (o.type === 'addCategory' || o.type === 'addSub' || o.type === 'addAccount' || o.type === 'updateAccount') continue;
     pending.add(o.id);
     if (o.type === 'delete') map.delete(o.id);
     else map.set(o.id, { id: o.id, ...o.data, amount: Number(o.data.amount) });
   }
+  const accounts = mergedAccounts();
+  const defAcc = accounts[0].name;
+  for (const e of map.values()) e.account = resolveAccountName(accounts, e.account) || defAcc;
   const by = {};
   const keys = new Set(S.snap.months);
   for (const e of map.values()) {
@@ -232,7 +273,7 @@ export function view() {
     prev = m.available;
     months[k] = m;
   });
-  cache = { months: sorted, by: months, categories: mergedCategories(), pending };
+  cache = { months: sorted, by: months, categories: mergedCategories(), accounts, pending, accountsSupported: S.snap.accounts.length > 0 || !S.lastSync };
   return cache;
 }
 
@@ -258,7 +299,7 @@ export async function sync() {
     const done = new Set([...(r.applied || []), ...(r.rejected || []).map((x) => x.opId)]);
     if (r.rejected && r.rejected.length) S.rejected = r.rejected;
     S.queue = S.queue.filter((o) => !done.has(o.opId));
-    S.snap = { categories: r.categories, firstStart: r.firstStart, months: r.months, entries: r.entries };
+    S.snap = { categories: r.categories, accounts: r.accounts || [], firstStart: r.firstStart, months: r.months, entries: r.entries };
     S.lastSync = Date.now();
     retries = 0;
     S.status = 'synced';
@@ -296,7 +337,8 @@ export function takeRejected() {
 
 export function exportCsv() {
   const v = view();
-  const rows = [['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category']];
-  v.months.slice().reverse().forEach((k) => v.by[k].entries.forEach((e) => rows.push([e.date, e.description, e.amount, e.type, e.category, e.sub])));
+  const withAcc = v.accounts.length > 1;   // one account: same columns as ever
+  const rows = [['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category'].concat(withAcc ? ['Account'] : [])];
+  v.months.slice().reverse().forEach((k) => v.by[k].entries.forEach((e) => rows.push([e.date, e.description, e.amount, e.type, e.category, e.sub].concat(withAcc ? [e.account] : []))));
   return rows;
 }

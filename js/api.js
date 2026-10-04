@@ -69,7 +69,11 @@ function seed() {
     entries.push(e(k + '-14', 'Headphones', 899, 'Expense', 'Shopping', 'Electronics'));
     entries.push(e(k + '-18', 'Fuel', 310, 'Expense', 'Transport', 'Fuel'));
   });
-  return { firstStart: 150000, months: [mk(2), mk(1), mk(0)], entries, cats: JSON.parse(JSON.stringify(CATS)) };
+  entries.push(e(mk(0) + '-04', 'Taxi', 95, 'Expense', 'Transport', 'Taxi'));
+  entries.push(e(mk(0) + '-09', 'Street food', 60, 'Expense', 'Food', 'Dining Out'));
+  entries.forEach((x) => { x.account = x.description === 'Taxi' || x.description === 'Street food' ? 'Cash' : 'Credit Card'; });
+  const accounts = [{ name: 'Credit Card', type: 'card', limit: 9000, archived: false }, { name: 'Cash', type: 'cash', limit: 1500, archived: false }];
+  return { firstStart: 150000, months: [mk(2), mk(1), mk(0)], entries, accounts, cats: JSON.parse(JSON.stringify(CATS)) };
 }
 
 function demoTransport() {
@@ -82,9 +86,11 @@ function demoTransport() {
   const payload = (s) => ({
     ok: true,
     categories: { order: Object.keys(s.cats || CATS), map: s.cats || CATS },
+    accounts: s.accounts || [{ name: 'Credit Card', type: 'card', limit: 0, archived: false }],
+    // like the real server, a blank account means the default (first) account
+    entries: s.entries.map((x) => ({ ...x, account: x.account || (s.accounts || [{ name: 'Credit Card' }])[0].name })),
     firstStart: s.firstStart,
     months: s.months.slice().sort(),
-    entries: s.entries,
     serverTime: Date.now(),
   });
   return {
@@ -104,12 +110,26 @@ function demoTransport() {
             } else if (op.type === 'addSub') {
               if (!s.cats[op.category]) throw new Error('Unknown category "' + op.category + '".');
               if (!s.cats[op.category].some((k) => k.toLowerCase() === op.name.toLowerCase())) s.cats[op.category].push(op.name);
+            } else if (op.type === 'addAccount') {
+              const nm = String(op.name || '').replace(/\s+/g, ' ').trim();
+              if (!nm) throw new Error('Name cannot be empty.');
+              if (!s.accounts) s.accounts = [{ name: 'Credit Card', type: 'card', limit: 0, archived: false }];
+              if (!s.accounts.some((a) => a.name.toLowerCase() === nm.toLowerCase())) s.accounts.push({ name: nm, type: op.accType === 'cash' ? 'cash' : 'card', limit: Number(op.limit) > 0 ? Number(op.limit) : 0, archived: false });
+            } else if (op.type === 'updateAccount') {
+              const a = (s.accounts || []).find((x) => x.name.toLowerCase() === String(op.name).toLowerCase());
+              if (!a) throw new Error('Unknown account "' + op.name + '".');
+              if (op.limit !== undefined) a.limit = Number(op.limit) > 0 ? Number(op.limit) : 0;
+              if (op.archived !== undefined) { if (a === s.accounts[0] && op.archived) throw new Error('The main account cannot be archived.'); a.archived = !!op.archived; }
+              if (op.accType !== undefined) a.type = op.accType === 'cash' ? 'cash' : 'card';
             } else if (op.type === 'delete') {
               s.entries = s.entries.filter((x) => x.id !== op.id);
             } else {
               const d = op.data;
               if (!(Number(d.amount) > 0)) throw new Error('Amount must be greater than zero.');
-              const row = { id: op.id, date: d.date, description: d.description || '', amount: Number(d.amount), type: d.type, category: d.category, sub: d.sub };
+              const accs = s.accounts || [{ name: 'Credit Card' }];
+              const acc = d.account ? accs.find((a) => a.name.toLowerCase() === String(d.account).toLowerCase()) : accs[0];
+              if (!acc) throw new Error('Unknown account "' + d.account + '".');
+              const row = { id: op.id, date: d.date, description: d.description || '', amount: Number(d.amount), type: d.type, category: d.category, sub: d.sub, account: acc.name };
               const i = s.entries.findIndex((x) => x.id === op.id);
               if (i >= 0) s.entries[i] = row; else s.entries.push(row);
               const k = row.date.slice(0, 7);

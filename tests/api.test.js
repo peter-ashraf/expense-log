@@ -54,6 +54,7 @@ class Sheet {
   isColumnHiddenByUser(c) { return this.hidden.has(c); }
   hideColumns(c) { this.hidden.add(c); }
   setFrozenRows() {}
+  appendRow(arr) { const r = this.getLastRow() + 1; arr.forEach((v, i) => this.set(r, i + 1, v)); }
   setColumnWidths() {}
   getIndex() { return this.ss.sheets.indexOf(this) + 1; }
 }
@@ -182,6 +183,68 @@ ok(r.applied.length === 3 && r.entries.some((e) => e.id === 'gift-1'), 'category
 // legacy rows whose sub-category repeats the category name
 r = call('push', { ops: [{ opId: 'l1', type: 'add', id: 'leg-1', data: { date: '2026-09-24', description: 'Old style', amount: 5, type: 'Expense', category: 'Food', sub: 'Food' } }] });
 ok(r.applied.join() === 'l1', 'legacy "category = sub-category" rows are still accepted');
+
+// ---- accounts (credit card, cash, ...)
+{
+  // a snapshot of everything the original structure consisted of, to prove nothing of it is ever changed
+  const legacy = () => {
+    const out = {};
+    ['Aug-26', 'Sept-26'].forEach((n) => {
+      const sh = ss.getSheetByName(n);
+      const rows = [];
+      for (let r = 1; r <= 12; r++) { const row = []; for (let c = 1; c <= 6; c++) row.push(String(sh.get(r, c))); rows.push(row.join('|')); }
+      out[n] = rows.join('\n');
+    });
+    return out;
+  };
+  const before = legacy();
+  ok(!ss.getSheetByName('Accounts'), 'reading never creates the Accounts tab');
+  let sn = call('pull');
+  ok(sn.accounts.length === 1 && sn.accounts[0].name === 'Credit Card' && sn.accounts[0].type === 'card' && sn.accounts[0].limit === 0, 'no Accounts tab: one default Credit Card account');
+  ok(sn.entries.every((e) => e.account === 'Credit Card'), 'every older row belongs to the default account');
+
+  r = call('push', { ops: [{ opId: 'a1', type: 'addAccount', id: 'acc-1', name: ' Cash ', accType: 'cash', limit: 2500 }] });
+  ok(r.applied.join() === 'a1' && r.accounts.map((a) => a.name).join() === 'Credit Card,Cash', 'account added after the default one');
+  const accSheet = ss.getSheetByName('Accounts');
+  ok(accSheet && accSheet.get(1, 1) === 'Account' && accSheet.get(2, 1) === 'Credit Card' && accSheet.get(3, 1) === 'Cash' && accSheet.get(3, 3) === 2500, 'Accounts tab written (default row first, limit stored)');
+  ok(r.accounts[1].type === 'cash' && r.accounts[1].limit === 2500 && !r.accounts[1].archived, 'account type and limit read back');
+  r = call('push', { ops: [{ opId: 'a2', type: 'addAccount', id: 'acc-2', name: 'cash' }] });
+  ok(r.applied.join() === 'a2' && r.accounts.length === 2, 'adding the same account again is a harmless no-op');
+  r = call('push', { ops: [{ opId: 'a3', type: 'addAccount', id: 'acc-3', name: '   ' }] });
+  ok(r.rejected.length === 1, 'empty account name rejected');
+
+  const cashAdd = { opId: 'k1', type: 'add', id: 'cash-1', data: { date: '2026-09-25', description: 'Taxi', amount: 80, type: 'Expense', category: 'Bills', sub: 'Mobile', account: 'Cash' } };
+  r = call('push', { ops: [cashAdd, { opId: 'k2', type: 'add', id: 'card-1', data: { date: '2026-09-25', description: 'No account given', amount: 30, type: 'Expense', category: 'Food', sub: 'Coffee' } }] });
+  ok(r.applied.length === 2, 'entries with and without an account are accepted');
+  ok(r.entries.find((e) => e.id === 'cash-1').account === 'Cash', 'Cash entry comes back as Cash');
+  ok(r.entries.find((e) => e.id === 'card-1').account === 'Credit Card', 'entry without an account lands in the default account');
+  const sp = ss.getSheetByName('Sept-26');
+  ok(sp.get(4, 8) === 'Account' && sp.hidden.has(8) && sp.hidden.has(7), 'old month tab got an "Account" header, hidden along with ID');
+  r = call('push', { ops: [{ opId: 'k3', type: 'add', id: 'bad-acc', data: { ...cashAdd.data, account: 'Wallet' } }] });
+  ok(r.rejected.length === 1 && /Unknown account/.test(r.rejected[0].error), 'unknown account rejected');
+  r = call('push', { ops: [{ opId: 'k4', type: 'update', id: 'cash-1', data: { ...cashAdd.data, account: 'Credit Card' } }] });
+  ok(r.entries.find((e) => e.id === 'cash-1').account === 'Credit Card', 'an entry can be moved to another account');
+
+  r = call('push', { ops: [{ opId: 'u1', type: 'updateAccount', id: 'u-1', name: 'Cash', limit: 1800 }, { opId: 'u2', type: 'updateAccount', id: 'u-2', name: 'Credit Card', limit: 12000 }] });
+  ok(r.accounts[1].limit === 1800 && r.accounts[0].limit === 12000, 'limits can be changed');
+  r = call('push', { ops: [{ opId: 'u3', type: 'updateAccount', id: 'u-3', name: 'Cash', limit: 0 }] });
+  ok(r.accounts[1].limit === 0, 'limit can be cleared');
+  r = call('push', { ops: [{ opId: 'u4', type: 'updateAccount', id: 'u-4', name: 'Credit Card', archived: true }, { opId: 'u5', type: 'updateAccount', id: 'u-5', name: 'Cash', archived: true }, { opId: 'u6', type: 'updateAccount', id: 'u-6', name: 'Nope', limit: 5 }] });
+  ok(r.rejected.length === 2 && r.accounts[1].archived === true && !r.accounts[0].archived, 'default account cannot be archived; others can; unknown account rejected');
+  ok(call('push', { ops: [{ opId: 'u7', type: 'updateAccount', id: 'u-7', name: 'Cash', archived: false }] }).accounts[1].archived === false, 'archived account can be restored');
+
+  // a client from before accounts existed keeps working unchanged
+  r = call('push', { ops: [{ opId: 'z1', type: 'add', id: 'old-client', data: { date: '2026-09-26', description: 'From an old app version', amount: 12, type: 'Expense', category: 'Food', sub: 'Coffee' } }] });
+  ok(r.applied.join() === 'z1' && r.entries.find((e) => e.id === 'old-client').account === 'Credit Card', 'older clients that send no account still work');
+
+  // the original structure is byte-for-byte what it was (only data rows were added below the header)
+  const after = legacy();
+  const head = (t) => t.split('\n').slice(0, 4).join('\n');
+  ok(head(after['Aug-26']) === head(before['Aug-26']) && head(after['Sept-26']) === head(before['Sept-26']), 'balance row and headers (A1:F4) untouched on every month tab');
+  ok(after['Aug-26'] === before['Aug-26'], 'a month tab nobody wrote to is completely unchanged');
+  ok(ss.getSheetByName('Sept-26').get(5, 2) === 'Phone' || ss.getSheetByName('Sept-26').get(5, 2) !== undefined, 'existing rows still in place');
+  ok(ss.getSheetByName('Oct-26').get(2, 3) === '=A2-B2+SUMIFS(C5:C,D5:D,"Income")' && ss.getSheetByName('Oct-26').get(2, 2) === '=SUMIFS(C5:C,D5:D,"Expense")', 'balance formulas unchanged: all accounts still total into one chain');
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

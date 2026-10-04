@@ -210,6 +210,10 @@ export function buildWorkbook(view) {
   let tableId = 0;
 
   const cats = view.categories || { order: [], map: {} };
+  const accounts = view.accounts || [];
+  const withAcc = accounts.length > 1;   // one account: the file stays exactly like the original
+  const txCols = withAcc ? ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category', 'Account'] : ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category'];
+  const lastCol = withAcc ? 'G' : 'F';
   const keys = view.months.slice();
   const monthSheetNames = keys.map(sheetNameFor);
 
@@ -279,29 +283,39 @@ export function buildWorkbook(view) {
     rows.push(`<row r="1">${['Starting Balance', 'Total Spent', 'Available Balance'].map((h, j) => sCell(sst, colName(j) + 1, h)).join('')}</row>`);
     const startCell = i === 0 ? nCell('A2', m.start, 2) : fCell('A2', `'${monthSheetNames[i - 1]}'!C2`, m.start, 2);
     rows.push(`<row r="2">${startCell}${fCell('B2', `SUMIFS(${tx}[Amount],${tx}[Type],"Expense")`, m.spent, 2)}${fCell('C2', `A2-B2+SUMIFS(${tx}[Amount],${tx}[Type],"Income")`, m.available, 2)}</row>`);
-    rows.push(`<row r="4">${['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category'].map((h, j) => sCell(sst, colName(j) + 4, h)).join('')}</row>`);
+    rows.push(`<row r="4">${txCols.map((h, j) => sCell(sst, colName(j) + 4, h)).join('')}</row>`);
     for (let j = 0; j < n; j++) {
       const r = 5 + j;
       const e = entries[j];
       rows.push(e
-        ? `<row r="${r}">${nCell('A' + r, serial(e.date), 1)}${sCell(sst, 'B' + r, e.description || '')}${nCell('C' + r, e.amount, 2)}${sCell(sst, 'D' + r, e.type)}${sCell(sst, 'E' + r, e.category)}${sCell(sst, 'F' + r, e.sub)}</row>`
-        : `<row r="${r}">${eCell('A' + r, 1)}${eCell('B' + r)}${eCell('C' + r, 2)}${eCell('D' + r)}${eCell('E' + r)}${eCell('F' + r)}</row>`);
+        ? `<row r="${r}">${nCell('A' + r, serial(e.date), 1)}${sCell(sst, 'B' + r, e.description || '')}${nCell('C' + r, e.amount, 2)}${sCell(sst, 'D' + r, e.type)}${sCell(sst, 'E' + r, e.category)}${sCell(sst, 'F' + r, e.sub)}${withAcc ? sCell(sst, 'G' + r, e.account || accounts[0].name) : ''}</row>`
+        : `<row r="${r}">${eCell('A' + r, 1)}${eCell('B' + r)}${eCell('C' + r, 2)}${eCell('D' + r)}${eCell('E' + r)}${eCell('F' + r)}${withAcc ? eCell('G' + r) : ''}</row>`);
     }
     const sheetIdx = sheets.length;
     tableId++;
     tableList.push({ sheetIdx, file: `table${tableId}.xml`, xml: tableXml(tableId, bal, 'A1:C2', ['Starting Balance', 'Total Spent', 'Available Balance'], 'TableStyleMedium2') });
     tableId++;
-    tableList.push({ sheetIdx, file: `table${tableId}.xml`, xml: tableXml(tableId, tx, `A4:F${4 + n}`, ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category'], 'TableStyleMedium9') });
+    tableList.push({ sheetIdx, file: `table${tableId}.xml`, xml: tableXml(tableId, tx, `A4:${lastCol}${4 + n}`, txCols, 'TableStyleMedium9') });
     const cf = `<conditionalFormatting sqref="A5:F${Math.max(1016, 4 + n)}"><cfRule type="expression" dxfId="0" priority="1"><formula>$D5="Income"</formula></cfRule><cfRule type="expression" dxfId="1" priority="2"><formula>$D5="Expense"</formula></cfRule></conditionalFormatting>`;
     sheets.push({
       name: sname,
       xml: sheetXml({
         views: '<sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A5" sqref="A5"/></sheetView>',
-        cols: [[1, 1, 22], [2, 2, 32], [3, 3, 22], [4, 4, 14], [5, 5, 18], [6, 6, 18]],
+        cols: [[1, 1, 22], [2, 2, 32], [3, 3, 22], [4, 4, 14], [5, 5, 18], [6, 6, 18]].concat(withAcc ? [[7, 7, 18]] : []),
         rows, extra: cf, tables: 2,
       }),
     });
   });
+
+  // ---- Accounts (only when there is more than one)
+  if (withAcc) {
+    const rows = [`<row r="1">${['Account', 'Type', 'Monthly Limit', 'Archived'].map((h, j) => sCell(sst, colName(j) + 1, h, 3)).join('')}</row>`];
+    accounts.forEach((a, i) => {
+      const r = 2 + i;
+      rows.push(`<row r="${r}">${sCell(sst, 'A' + r, a.name)}${sCell(sst, 'B' + r, a.type)}${a.limit > 0 ? nCell('C' + r, a.limit, 2) : eCell('C' + r)}${a.archived ? sCell(sst, 'D' + r, 'yes') : eCell('D' + r)}</row>`);
+    });
+    sheets.push({ name: 'Accounts', xml: sheetXml({ views: '<sheetView workbookViewId="0"><selection activeCell="A1" sqref="A1"/></sheetView>', cols: [[1, 4, 18]], rows }) });
+  }
 
   // ---- package parts
   add('[Content_Types].xml',
@@ -435,8 +449,13 @@ export async function parseWorkbook(buffer, categories) {
     const rows = parseSheetCells(xml, shared);
     // data starts under the header row ("Date" in A, "Amount" in C); default row 4
     let headerRow = 4;
+    let accCol = null;
     for (const [r, cells] of rows) {
-      if (String(cells.A || '').toLowerCase() === 'date' && String(cells.C || '').toLowerCase() === 'amount') { headerRow = r; break; }
+      if (String(cells.A || '').toLowerCase() === 'date' && String(cells.C || '').toLowerCase() === 'amount') {
+        headerRow = r;
+        for (const [col, v] of Object.entries(cells)) if (/^(account|wallet)$/i.test(String(v).trim())) accCol = col;
+        break;
+      }
     }
     const sorted = [...rows.keys()].filter((r) => r > headerRow).sort((a, b) => a - b);
     for (const r of sorted) {
@@ -457,7 +476,8 @@ export async function parseWorkbook(buffer, categories) {
       if (type === 'Expense') {
         const typedCat = String(c.E || '').trim();
         const typedSub = String(c.F || '').trim();
-        const base = { date, description: String(c.B || '').trim(), amount, type, sheet: sh.name, row: r };
+        const acct = accCol && c[accCol] ? String(c[accCol]).trim() : '';
+        const base = { date, description: String(c.B || '').trim(), amount, type, sheet: sh.name, row: r, ...(acct ? { account: acct } : {}) };
         const canon = matchCategory(categories, typedCat);
         if (!canon) { bad(`unknown category "${typedCat}"`, { ...base, category: typedCat, sub: typedSub }); continue; }
         const canonSub = matchSub(categories.map[canon], typedSub) || (typedSub.toLowerCase() === canon.toLowerCase() ? canon : null);
@@ -466,7 +486,8 @@ export async function parseWorkbook(buffer, categories) {
         category = canon;
         sub = canonSub;
       }
-      entries.push({ date, description: String(c.B || '').trim(), amount, type, category, sub, sheet: sh.name, row: r });
+      const acct2 = accCol && c[accCol] ? String(c[accCol]).trim() : '';
+      entries.push({ date, description: String(c.B || '').trim(), amount, type, category, sub, sheet: sh.name, row: r, ...(acct2 ? { account: acct2 } : {}) });
     }
   }
   return { entries, skipped, sheets: used };

@@ -5,18 +5,23 @@
  *           push  -> apply queued ops [{opId, type: add|update|delete, id, data}] idempotently, then snapshot
  *
  * Sheet layout is unchanged (Summary / Categories / one tab per month). Each month tab gets a hidden
- * column G "ID" so edits, deletes and retried uploads can never duplicate or misplace a row.
+ * column G "ID" so edits, deletes and retried uploads can never duplicate or misplace a row, and a hidden
+ * column H "Account" (blank = the default account). Spending accounts and their monthly limits live on a
+ * separate "Accounts" tab. Nothing that existed before is moved, renamed or removed.
  */
 
 var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';
 
 var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
-var HEADERS = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category', 'ID'];
+var HEADERS = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category', 'ID', 'Account'];
+var ACCOUNTS_SHEET = 'Accounts';
+var DEFAULT_ACCOUNT = 'Credit Card';
 var BALANCE_LABELS = ['Starting Balance', 'Total Spent', 'Available Balance'];
 var HEADER_ROW = 4;
 var FIRST_ROW = 5;
-var NCOLS = 7;          // A:F data + G id
+var NCOLS = 8;          // A:F data + G id + H account
 var ID_COL = 7;
+var ACC_COL = 8;
 
 // ------------------------------------------------------------------ HTTP entry points
 
@@ -66,6 +71,7 @@ function snapshot_() {
   return {
     ok: true,
     categories: { order: cats.order, map: cats.map },
+    accounts: readAccounts_(),
     firstStart: firstStart,
     months: sheets.map(function (m) { return m.key; }),
     entries: entries,
@@ -95,6 +101,8 @@ function applyOp_(op) {
   if (!op || !op.id) throw new Error('Bad operation.');
   if (op.type === 'addCategory') return addCategory_(op.name);
   if (op.type === 'addSub') return addSub_(op.category, op.name);
+  if (op.type === 'addAccount') return addAccount_(op);
+  if (op.type === 'updateAccount') return updateAccount_(op);
   var loc = findById_(op.id);
   if (op.type === 'delete') {
     if (loc) loc.sheet.deleteRow(loc.row);
@@ -203,7 +211,13 @@ function prepareHeaders_(ws) {
   if (ws.getMaxColumns() < NCOLS) ws.insertColumnsAfter(ws.getMaxColumns(), NCOLS - ws.getMaxColumns());
   ws.getRange(HEADER_ROW, 1, 1, NCOLS).setValues([HEADERS]);
   ws.getRange(HEADER_ROW, 1, 1, 6).setFontWeight('bold');
-  try { if (!ws.isColumnHiddenByUser(ID_COL)) ws.hideColumns(ID_COL); } catch (e) { /* ignore */ }
+  hideHelperColumns_(ws);
+}
+
+function hideHelperColumns_(ws) {
+  [ID_COL, ACC_COL].forEach(function (c) {
+    try { if (!ws.isColumnHiddenByUser(c)) ws.hideColumns(c); } catch (e) { /* ignore */ }
+  });
 }
 
 function writeBalanceFormulas_(ws) {
@@ -367,7 +381,7 @@ function ensureIds_(ws) {
     return [v[ID_COL - 1]];
   });
   if (changed) ws.getRange(FIRST_ROW, ID_COL, ids.length, 1).setValues(ids);
-  try { if (!ws.isColumnHiddenByUser(ID_COL)) ws.hideColumns(ID_COL); } catch (e) { /* ignore */ }
+  hideHelperColumns_(ws);
 }
 
 function readEntries_(ws) {
@@ -376,7 +390,7 @@ function readEntries_(ws) {
   vals.forEach(function (v) {
     if (!isDataRow_(v)) return;
     out.push({ id: String(v[6]), date: fmtDate_(v[0]), description: String(v[1]), amount: Number(v[2]) || 0,
-               type: String(v[3]), category: String(v[4]), sub: String(v[5]) });
+               type: String(v[3]), category: String(v[4]), sub: String(v[5]), account: String(v[7] || '') || defaultAccount_() });
   });
   return out;
 }
@@ -403,9 +417,17 @@ function sortSheet_(ws) {
   if (last > FIRST_ROW) ws.getRange(FIRST_ROW, 1, last - FIRST_ROW + 1, NCOLS).sort({ column: 1, ascending: true });
 }
 
+var _accHeaderDone = {};   // sheets whose "Account" header was checked during this request
+
 function writeRow_(ws, row, v, id) {
-  ws.getRange(row, 1, 1, NCOLS).setValues([[v.date, v.description, v.amount, v.type, v.category, v.sub, id]]);
+  ws.getRange(row, 1, 1, NCOLS).setValues([[v.date, v.description, v.amount, v.type, v.category, v.sub, id, v.account]]);
   ws.getRange(row, 1).setNumberFormat('dd-mmm-yy');
+  var name = ws.getName();
+  if (!_accHeaderDone[name]) {                     // sheets created before accounts existed get their header once
+    _accHeaderDone[name] = true;
+    if (!ws.getRange(HEADER_ROW, ACC_COL).getValue()) ws.getRange(HEADER_ROW, ACC_COL).setValue(HEADERS[ACC_COL - 1]);
+    hideHelperColumns_(ws);
+  }
 }
 
 function validate_(t) {
@@ -427,6 +449,82 @@ function validate_(t) {
     // older rows sometimes repeat the category as the sub-category; keep accepting those
     if (cats[category].indexOf(sub) < 0 && sub !== category) throw new Error('Unknown sub-category "' + sub + '".');
   }
+  var account = resolveAccount_(t.account);
   return { year: y, month0: mo - 1, date: dt, description: String(t.description || '').trim().slice(0, 200),
-           amount: amount, type: t.type, category: category, sub: sub };
+           amount: amount, type: t.type, category: category, sub: sub, account: account };
+}
+
+// ------------------------------------------------------------------ accounts (credit card, cash, ...)
+// "Accounts" tab: Account | Type | Monthly Limit | Archived.  The first row is the default account, which is what
+// every older row (blank Account cell) belongs to.
+
+var _accCache = null;
+
+function readAccounts_() {
+  if (_accCache) return _accCache;
+  var sh = SpreadsheetApp.getActive().getSheetByName(ACCOUNTS_SHEET);
+  var out = [];
+  if (sh && sh.getLastRow() >= 2) {
+    sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues().forEach(function (r) {
+      var name = String(r[0]).trim();
+      if (!name) return;
+      out.push({ name: name, type: String(r[1]).trim().toLowerCase() === 'cash' ? 'cash' : 'card',
+                 limit: Number(r[2]) > 0 ? Number(r[2]) : 0, archived: String(r[3]).trim().toLowerCase() === 'yes' });
+    });
+  }
+  if (!out.length) out.push({ name: DEFAULT_ACCOUNT, type: 'card', limit: 0, archived: false });
+  _accCache = out;
+  return out;
+}
+
+function defaultAccount_() { return readAccounts_()[0].name; }
+
+function resolveAccount_(name) {
+  name = String(name || '').trim();
+  if (!name) return defaultAccount_();
+  var list = readAccounts_();
+  for (var i = 0; i < list.length; i++) if (list[i].name.toLowerCase() === name.toLowerCase()) return list[i].name;
+  throw new Error('Unknown account "' + name + '".');
+}
+
+function ensureAccountsSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(ACCOUNTS_SHEET);
+  if (sh) return sh;
+  sh = ss.insertSheet(ACCOUNTS_SHEET);
+  sh.getRange(1, 1, 1, 4).setValues([['Account', 'Type', 'Monthly Limit', 'Archived']]).setFontWeight('bold');
+  sh.getRange(2, 1, 1, 4).setValues([[DEFAULT_ACCOUNT, 'card', '', '']]);
+  sh.setColumnWidths(1, 4, 140);
+  sh.setFrozenRows(1);
+  _accCache = null;
+  return sh;
+}
+
+function addAccount_(op) {
+  var name = cleanName_(op.name);
+  var list = readAccounts_();
+  for (var i = 0; i < list.length; i++) if (list[i].name.toLowerCase() === name.toLowerCase()) return;   // retry-safe
+  var sh = ensureAccountsSheet_();
+  var limit = Number(op.limit) > 0 ? Math.round(Number(op.limit) * 100) / 100 : '';
+  sh.appendRow([name, op.accType === 'cash' ? 'cash' : 'card', limit, '']);
+  _accCache = null;
+}
+
+function updateAccount_(op) {
+  var sh = ensureAccountsSheet_();
+  var last = sh.getLastRow();
+  var names = sh.getRange(2, 1, Math.max(last - 1, 1), 1).getValues();
+  for (var i = 0; i < names.length; i++) {
+    if (String(names[i][0]).trim().toLowerCase() !== String(op.name || '').trim().toLowerCase()) continue;
+    var row = i + 2;
+    if (op.limit !== undefined) sh.getRange(row, 3).setValue(Number(op.limit) > 0 ? Math.round(Number(op.limit) * 100) / 100 : '');
+    if (op.archived !== undefined) {
+      if (row === 2 && op.archived) throw new Error('The main account cannot be archived.');
+      sh.getRange(row, 4).setValue(op.archived ? 'yes' : '');
+    }
+    if (op.accType !== undefined) sh.getRange(row, 2).setValue(op.accType === 'cash' ? 'cash' : 'card');
+    _accCache = null;
+    return;
+  }
+  throw new Error('Unknown account "' + op.name + '".');
 }

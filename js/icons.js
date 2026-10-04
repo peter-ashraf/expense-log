@@ -12,6 +12,8 @@ const P = {
   miscellaneous: 'M5 12h.01M12 12h.01M19 12h.01',
   income: 'M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14',
   tag: 'M3 12V4h8l10 10-8 8zM7.5 8.5h.01',
+  card: 'M3 6h18v12H3zM3 10h18M7 15h3',
+  cash: 'M3 7h18v10H3zM12 14.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5zM6.5 12h.01M17.5 12h.01',
   home: 'M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z',
   list: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
   plus: 'M12 5v14M5 12h14',

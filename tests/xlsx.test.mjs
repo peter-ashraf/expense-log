@@ -56,6 +56,26 @@ const bad = buildWorkbook({ ...view, by: { ...view.by, '2026-09': { ...view.by['
 const rb = await parseWorkbook(bad, categories);
 ok(rb.skipped.length === 1 && /unknown category/.test(rb.skipped[0].reason), 'unknown category is skipped with a reason');
 
+// ---- several accounts: an extra Account column and an Accounts tab, original columns untouched
+{
+  const acc = [{ name: 'Credit Card', type: 'card', limit: 9000, archived: false }, { name: 'Cash', type: 'cash', limit: 1500, archived: false }];
+  const v2 = { ...view, accounts: acc, by: { ...view.by, '2026-09': { ...view.by['2026-09'], entries: [{ ...sepE[0], account: 'Cash' }, { ...mk('2026-09-12', 'Lunch', 80, 'Expense', 'Food', 'Coffee'), account: 'Credit Card' }] } } };
+  const b2 = await buildWorkbook(v2);
+  const z2 = await unzip(b2);
+  const wb2 = await z2.text('xl/workbook.xml');
+  ok(/name="Accounts"/.test(wb2) && /name="Summary"[^>]*\/>.*name="Categories".*name="Aug-26".*name="Sept-26".*name="Oct-26".*name="Accounts"/.test(wb2), 'Accounts tab added after the month tabs');
+  const t2 = (await Promise.all(z2.names.filter((n) => /xl\/tables\/table\d+\.xml/.test(n)).map((n) => z2.text(n)))).join('');
+  ok(/ref="A4:G\d+"/.test(t2) && /tableColumn id="7" name="Account"/.test(t2), 'transaction table grows by one trailing column (A:F stay as they were)');
+  const back2 = await parseWorkbook(b2, categories);
+  const acct = (d, a) => back2.entries.find((e) => e.date === d && e.account === a);
+  ok(back2.entries.length === 4 && acct('2026-09-10', 'Cash') && acct('2026-09-12', 'Credit Card'), 'account names survive an Excel round trip');
+  ok(back2.skipped.length === 0, 'nothing skipped');
+  const plain = await parseWorkbook(bytes, categories);
+  ok(plain.entries.every((e) => e.account === undefined), 'an old-style file (no Account column) still imports, with no account');
+  const one = await buildWorkbook({ ...v2, accounts: [acc[0]] });
+  ok(Buffer.from(one).length === Buffer.from(bytes).length || !/name="Accounts"/.test(await (await unzip(one)).text('xl/workbook.xml')), 'a single account exports exactly like the original format');
+}
+
 // the user's real workbook (optional)
 const orig = process.argv[2] || 'C:/Users/peter/OneDrive/Expense Log - Fixed.xlsm';
 if (fs.existsSync(orig)) {

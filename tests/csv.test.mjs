@@ -76,5 +76,13 @@ const win = new Uint8Array([...new TextEncoder().encode('Date,Amount,Description
 r = readCsvEntries(decodeText(win), categories);
 ok(r.entries[0].description === 'Café', 'Windows-1252 file decoded correctly');
 
+// ---- optional Account column
+{
+  const r2 = readCsvEntries('Date,Description,Amount,Type,Category,Sub-Category,Account\n2026-09-01,Taxi,50,Expense,Shopping,Clothes,Cash\n2026-09-02,Lunch,20,Expense,Food,Coffee,\n', categories);
+  ok(r2.entries.length === 2 && r2.entries[0].account === 'Cash' && r2.entries[1].account === undefined, 'CSV: Account column is read; blank means default');
+  const r3 = readCsvEntries('Date,Description,Amount,Type,Category,Sub-Category\n2026-09-01,Taxi,50,Expense,Shopping,Clothes\n', categories);
+  ok(r3.entries.length === 1 && r3.entries[0].account === undefined, 'CSV without an Account column is unchanged');
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);
