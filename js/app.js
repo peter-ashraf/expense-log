@@ -300,7 +300,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v1.8</p>
+    <p class="muted center sm">Credit Card Expenses · v1.9</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -467,23 +467,31 @@ function confirmNew() {
 let sheetClosing = false;
 
 // The system status bar takes its colour from <meta name="theme-color">; keep it in step with the dimmed backdrop.
-const themeMetas = $$('meta[name="theme-color"]');
-const systemThemeColors = themeMetas.map((m) => m.content); // the media-based defaults from index.html
-let themeOriginal = systemThemeColors.slice();
+let themeMeta = $('meta[name="theme-color"]');
+if (!themeMeta) {
+  themeMeta = document.createElement('meta');
+  themeMeta.name = 'theme-color';
+  document.head.appendChild(themeMeta);
+}
+const THEME_BG = { light: '#F4F5FA', dark: '#0A0B10' };
+let themeMode = 'system';
 let themeNow = 0;
 let themeRaf = 0;
 const SCRIM_ALPHA = 0.42;
 
+const prefersDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
+const effectiveTheme = () => (themeMode === 'light' || themeMode === 'dark' ? themeMode : (prefersDark() ? 'dark' : 'light'));
+
+// iOS only follows live changes to a single <meta name="theme-color"> (no media attribute) via setAttribute.
+function setStatusColor(hex) { themeMeta.setAttribute('content', hex); }
+
 function paintTheme(p) {
   themeNow = p;
-  if (p <= 0.001) { themeMetas.forEach((m, i) => { m.content = themeOriginal[i]; }); document.documentElement.style.backgroundColor = ''; document.body.style.backgroundColor = ''; return; }
-  const hex = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().replace('#', '');
-  const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
+  const base = THEME_BG[effectiveTheme()].replace('#', '');
+  if (p <= 0.001) { setStatusColor('#' + base); return; }
   const k = 1 - SCRIM_ALPHA * p;
-  const c = [0, 2, 4].map((i) => Math.round(parseInt(full.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
-  themeMetas.forEach((m) => { m.content = '#' + c; });
-  document.documentElement.style.backgroundColor = '#' + c;
-  document.body.style.backgroundColor = '#' + c;
+  const c = [0, 2, 4].map((i) => Math.round(parseInt(base.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
+  setStatusColor('#' + c);
 }
 
 function tweenTheme(target) {
@@ -502,18 +510,17 @@ function tweenTheme(target) {
 }
 
 // ---- appearance: light / dark / follow the phone -----------------------------------------------
-const THEME_BG = { light: '#F4F5FA', dark: '#0A0B10' };
-
 function applyTheme(mode) {
   const root = document.documentElement;
-  if (mode === 'light' || mode === 'dark') { root.setAttribute('data-theme', mode); root.style.colorScheme = mode; }
-  else { root.removeAttribute('data-theme'); root.style.colorScheme = ''; mode = 'system'; }
-  try { localStorage.setItem('el_theme', mode); } catch (e) { /* private mode */ }
-  themeOriginal = mode === 'system' ? systemThemeColors.slice() : themeMetas.map(() => THEME_BG[mode]);
-  const cs = $('meta[name="color-scheme"]');
-  if (cs) cs.content = mode === 'system' ? 'light dark' : mode;
-  paintTheme(themeNow); // re-tint the status bar for the new base colour (keeps any open-sheet dimming)
+  themeMode = mode === 'light' || mode === 'dark' ? mode : 'system';
+  if (themeMode === 'system') { root.removeAttribute('data-theme'); root.style.colorScheme = ''; }
+  else { root.setAttribute('data-theme', themeMode); root.style.colorScheme = themeMode; }
+  try { localStorage.setItem('el_theme', themeMode); } catch (e) { /* private mode */ }
+  paintTheme(themeNow); // new base colour (keeps any open-sheet dimming)
 }
+
+// When following the phone, flip the status bar the moment the phone's appearance changes.
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (themeMode === 'system') paintTheme(themeNow); });
 
 function setProgress(p) {
   p = Math.max(0, Math.min(1, p));
@@ -1218,7 +1225,11 @@ store.onChange(() => {
 
 $('#view').addEventListener('scroll', () => $('#topbar').classList.toggle('scrolled', $('#view').scrollTop > 4), { passive: true });
 window.addEventListener('online', () => store.sync());
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') store.sync(); });
+document.addEventListener('visibilitychange', () => {
+  paintTheme(themeNow); // the phone's appearance may have changed while the app was away
+  if (document.visibilityState === 'visible') store.sync();
+});
+window.addEventListener('pageshow', () => paintTheme(themeNow));
 setInterval(() => { if (document.visibilityState === 'visible') store.sync(); }, 60000);
 
 (async function boot() {
