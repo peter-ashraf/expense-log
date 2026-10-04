@@ -78,19 +78,22 @@ body {
   font-size: 16px; line-height: 1.35; -webkit-font-smoothing: antialiased; overscroll-behavior: none;
   font-variant-numeric: tabular-nums;
 }
-body.noscroll { overflow: hidden; }
 button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; touch-action: manipulation; }
 button:disabled { opacity: .5; }
 input { font: inherit; color: inherit; }
 h1, h2, h3, p { margin: 0; }
 .ic { display: block; flex: none; }
 
-#app { position: fixed; top: 0; left: 0; right: 0; margin: 0 auto; max-width: 560px; height: 100vh; height: 100dvh; background: var(--bg); overflow: hidden; --p: 0; }
+/* The page itself stays a plain, unclipped document (iOS only repaints the status bar live for that):
+   body is the positioned parent and #app fills it like an ordinary absolutely-positioned block. */
+body { position: relative; }
+#app { position: absolute; top: 0; bottom: 0; left: 0; right: 0; margin: 0 auto; max-width: 560px; background: var(--bg); overflow: clip; --p: 0; }
 #stage { position: absolute; inset: 0; display: flex; flex-direction: column; overflow: hidden; transform-origin: 50% 0;
   background: var(--bg);
-  transform: translateY(calc(var(--p) * 12px)) scale(calc(1 - var(--p) * .075));
-  border-radius: calc(var(--p) * 30px);
+  transform: none;
+  border-radius: 0;
   transition: transform .5s cubic-bezier(.32, .72, 0, 1), border-radius .5s cubic-bezier(.32, .72, 0, 1); }
+#app.dim #stage { transform: translateY(calc(var(--p) * 12px)) scale(calc(1 - var(--p) * .075)); border-radius: calc(var(--p) * 30px); }
 #app.dragging #stage, #app.dragging .scrim { transition: none !important; }
 
 /* ---------- top bar ---------- */
@@ -446,3 +449,7 @@ body.onboard #view { padding: 0 16px 24px; }
 
 /* brief fade while the page reloads so the status bar can re-read the theme */
 body.reloading #app { opacity: 0; transition: opacity .2s ease; }
+
+/* optional: turn the blur off (solid bars) if it ever interferes with the status bar */
+html.no-glass #topbar { background: var(--bg); -webkit-backdrop-filter: none; backdrop-filter: none; }
+html.no-glass #tabbar { background: var(--surface); -webkit-backdrop-filter: none; backdrop-filter: none; }
