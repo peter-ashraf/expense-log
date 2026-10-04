@@ -384,3 +384,28 @@ body.onboard #view { padding: 0 16px 24px; }
   background: color-mix(in srgb, var(--text) 10%, transparent); transform: translateY(0);
   transition: transform .24s cubic-bezier(.3, 1.25, .5, 1), height .2s ease, opacity .14s ease; }
 .menu-hl.show { opacity: 1; }
+
+/* date row + in-app calendar */
+.datechips { margin-bottom: 8px; }
+.datechips .chip { flex: 1; justify-content: center; padding: 11px 8px; }
+.datechips .chip.pick { flex: 1.25; gap: 6px; }
+.datechips .chip.on { background: var(--text); color: var(--bg); border-color: var(--text); }
+.sheet #calWrap { display: none; }
+.sheet.picking #formMain { display: none; }
+.sheet.picking #calWrap { display: block; animation: rise .32s cubic-bezier(.2, .8, .2, 1) both; }
+.sheet.picking .sheet-foot { display: none; }
+.cal-head { display: flex; align-items: center; justify-content: space-between; margin: 2px 0 10px; }
+.cal-head b { font-size: 18px; font-weight: 740; letter-spacing: -.01em; }
+.cal-nav { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; background: var(--surface); border: 1px solid var(--line); color: var(--text); transition: transform .12s; }
+.cal-nav:active { transform: scale(.92); }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+.cal-grid > i { display: block; }
+.cal-dow { text-align: center; font-size: 12px; font-weight: 700; color: var(--muted); padding: 6px 0 8px; }
+.cal-day { position: relative; height: 48px; border-radius: 16px; font-size: 17px; font-weight: 600; background: var(--surface); border: 1px solid transparent; transition: transform .1s, background .15s; }
+.cal-day:active { transform: scale(.92); }
+.cal-day.today { box-shadow: inset 0 0 0 1.5px var(--accent); color: var(--accent); }
+.cal-day.dot::after { content: ""; position: absolute; left: 50%; bottom: 6px; width: 4px; height: 4px; margin-left: -2px; border-radius: 50%; background: var(--muted); }
+.cal-day.sel { background: linear-gradient(135deg, var(--accent), var(--accent-2)); color: #fff; box-shadow: 0 8px 18px -8px color-mix(in srgb, var(--accent) 80%, transparent); }
+.cal-day.sel::after { background: #fff; }
+.cal-quick { display: flex; justify-content: center; margin-top: 14px; }
+.cal-quick .chip { color: var(--accent); }

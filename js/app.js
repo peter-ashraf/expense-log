@@ -1,13 +1,13 @@
 import * as store from './store.js';
 import { icon, catHue } from './icons.js';
-import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
+import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const ui = { tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0 };
+const ui = { tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
 // ---------------------------------------------------------------- helpers
 const cur = () => store.getState().settings.currency || '';
@@ -292,7 +292,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v1.6</p>
+    <p class="muted center sm">Credit Card Expenses · v1.7</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -348,22 +348,22 @@ function openSheet(id) {
     ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description }
     : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '' };
   ui.armedDelete = false;
-  const body = `<div class="seg" id="fType"></div>
+  const body = `<div id="formMain"><div class="seg" id="fType"></div>
       <div class="amt" id="fAmt"></div>
       <div class="keypad" id="keypad">${KEYS.map((k) => `<button data-act="key" data-k="${k}" aria-label="${k === 'del' ? 'Delete digit' : k}">${k === 'del' ? icon('backspace', 20) : k}</button>`).join('')}</div>
       <div id="fCatWrap"><div class="lbl">Category</div><div class="chips hs" id="fCats"></div>
       <div class="lbl">Sub-category</div><div class="chips hs" id="fSubs"></div></div>
-      <div class="two">
-        <label class="date-pill">${icon('calendar', 18)}<span id="fDateLbl"></span><input type="date" id="fDate" value="${esc(ui.form.date)}"></label>
-        <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label>
-      </div>`;
+      <div class="lbl">Date</div>
+      <div class="chips datechips" id="fDates"></div>
+      <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label></div>
+      <div id="calWrap"></div>`;
   const foot = `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>`;
   present(e ? 'Edit transaction' : 'New transaction',
     e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : '', body, 'compact', foot);
-  $('#fDate').addEventListener('change', (ev) => { ui.form.date = ev.target.value; refreshForm(); });
   $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; });
   ui.adding = null;
   ui.newName = '';
+  ui.picking = false;
   $('#fCatWrap').addEventListener('input', (ev) => { if (ev.target.id === 'newName') ui.newName = ev.target.value; });
   $('#fCatWrap').addEventListener('keydown', (ev) => {
     if (ev.target.id !== 'newName') return;
@@ -371,6 +371,62 @@ function openSheet(id) {
     if (ev.key === 'Escape') { ev.stopPropagation(); ui.adding = null; refreshForm(); }
   });
   refreshForm();
+}
+
+// ---- in-app calendar (shown inside the add sheet, replacing the form while a day is being chosen) ------------
+function renderCal() {
+  const v = store.view();
+  const [Y, M] = ui.calMonth.split('-').map(Number);
+  const ws = weekStart();
+  const first = new Date(Y, M - 1, 1);
+  const dim = new Date(Y, M, 0).getDate();
+  const lead = (first.getDay() - ws + 7) % 7;
+  const sel = ui.form.date;
+  const today = todayStr();
+  const marked = new Set((v.by[ui.calMonth] ? v.by[ui.calMonth].entries : []).map((e) => e.date));
+  const dows = Array.from({ length: 7 }, (_, i) => new Intl.DateTimeFormat(undefined, { weekday: 'narrow' }).format(new Date(2023, 0, 1 + ((ws + i) % 7))));
+  let cells = dows.map((d) => `<div class="cal-dow">${esc(d)}</div>`).join('');
+  for (let i = 0; i < lead; i++) cells += '<i></i>';
+  for (let d = 1; d <= dim; d++) {
+    const ds = `${Y}-${String(M).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+    cells += `<button class="cal-day ${ds === sel ? 'sel' : ''} ${ds === today ? 'today' : ''} ${marked.has(ds) ? 'dot' : ''}" data-act="cal-day" data-date="${ds}" aria-label="${esc(dateLong(ds))}">${d}</button>`;
+  }
+  $('#calWrap').innerHTML = `<div class="cal-head">
+      <button class="cal-nav" data-act="cal-prev" aria-label="Previous month">${icon('back', 18, 2.4)}</button>
+      <b>${esc(keyLabel(ui.calMonth))}</b>
+      <button class="cal-nav" data-act="cal-next" aria-label="Next month">${icon('back', 18, 2.4).replace('class="ic"', 'class="ic flip"')}</button>
+    </div>
+    <div class="cal-grid">${cells}</div>
+    <div class="cal-quick"><button class="chip" data-act="cal-today">Jump to today</button></div>`;
+}
+
+function openCal() {
+  const sheet = $('.sheet');
+  if (!sheet || !ui.form) return;
+  ui.picking = true;
+  ui.calMonth = ui.form.date.slice(0, 7);
+  sheet.classList.add('picking');
+  $('.sheet-h h2', sheet).textContent = 'Select date';
+  renderCal();
+  const body = $('.sheet-body', sheet);
+  if (body) body.scrollTop = 0;
+}
+
+function closeCal() {
+  const sheet = $('.sheet');
+  ui.picking = false;
+  if (!sheet || !ui.form) return;
+  sheet.classList.remove('picking');
+  $('.sheet-h h2', sheet).textContent = ui.form.id ? 'Edit transaction' : 'New transaction';
+  refreshForm();
+}
+
+function shiftCalMonth(delta) {
+  const [Y, M] = ui.calMonth.split('-').map(Number);
+  const d = new Date(Y, M - 1 + delta, 1);
+  ui.calMonth = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+  renderCal();
+  haptic(5);
 }
 
 function confirmNew() {
@@ -411,12 +467,14 @@ const SCRIM_ALPHA = 0.42;
 
 function paintTheme(p) {
   themeNow = p;
-  if (p <= 0.001) { themeMetas.forEach((m, i) => { m.content = themeOriginal[i]; }); return; }
+  if (p <= 0.001) { themeMetas.forEach((m, i) => { m.content = themeOriginal[i]; }); document.documentElement.style.backgroundColor = ''; document.body.style.backgroundColor = ''; return; }
   const hex = getComputedStyle(document.documentElement).getPropertyValue('--bg').trim().replace('#', '');
   const full = hex.length === 3 ? hex.split('').map((c) => c + c).join('') : hex;
   const k = 1 - SCRIM_ALPHA * p;
   const c = [0, 2, 4].map((i) => Math.round(parseInt(full.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
   themeMetas.forEach((m) => { m.content = '#' + c; });
+  document.documentElement.style.backgroundColor = '#' + c;
+  document.body.style.backgroundColor = '#' + c;
 }
 
 function tweenTheme(target) {
@@ -542,6 +600,7 @@ function closeSheet() {
   if (scrim) scrim.style.opacity = '0';
   setProgress(0);
   ui.form = null;
+  ui.picking = false;
   setTimeout(() => {
     layer.className = '';
     layer.innerHTML = '';
@@ -595,7 +654,13 @@ function refreshForm() {
       if (inp && document.activeElement !== inp) { inp.focus(); inp.scrollIntoView({ inline: 'nearest', block: 'nearest' }); }
     }
   }
-  $('#fDateLbl').textContent = dayLabel(f.date) === 'Today' || dayLabel(f.date) === 'Yesterday' ? dayLabel(f.date) : dateLong(f.date);
+  const today = todayStr();
+  const yest = shiftDate(today, -1);
+  const custom = f.date !== today && f.date !== yest;
+  $('#fDates').innerHTML =
+    `<button class="chip ${f.date === today ? 'on' : ''}" data-act="date-today">Today</button>` +
+    `<button class="chip ${f.date === yest ? 'on' : ''}" data-act="date-yesterday">Yesterday</button>` +
+    `<button class="chip pick ${custom ? 'on' : ''}" data-act="date-pick">${icon('calendar', 16)}${custom ? esc(dateShort(f.date)) : 'Pick date'}</button>`;
 }
 
 function pressKey(k) {
@@ -889,6 +954,13 @@ document.addEventListener('click', async (ev) => {
     case 'new-sub': ui.adding = 'sub'; ui.newName = ''; refreshForm(); break;
     case 'new-cancel': ui.adding = null; ui.newName = ''; refreshForm(); break;
     case 'new-ok': confirmNew(); break;
+    case 'date-today': ui.form.date = todayStr(); haptic(6); refreshForm(); break;
+    case 'date-yesterday': ui.form.date = shiftDate(todayStr(), -1); haptic(6); refreshForm(); break;
+    case 'date-pick': openCal(); break;
+    case 'cal-day': ui.form.date = el.dataset.date; haptic(8); closeCal(); break;
+    case 'cal-prev': shiftCalMonth(-1); break;
+    case 'cal-next': shiftCalMonth(1); break;
+    case 'cal-today': ui.calMonth = todayStr().slice(0, 7); renderCal(); break;
     case 'save': saveForm(); break;
     case 'delete': {
       if (!ui.armedDelete) {

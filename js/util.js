@@ -79,3 +79,26 @@ export async function saveFile(name, blob) {
   setTimeout(() => URL.revokeObjectURL(a.href), 4000);
   return 'downloaded';
 }
+
+export function shiftDate(dateStr, days) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const dt = new Date(y, m - 1, d + days);
+  return dt.getFullYear() + '-' + String(dt.getMonth() + 1).padStart(2, '0') + '-' + String(dt.getDate()).padStart(2, '0');
+}
+
+// "1 Sep" this year, "1 Sep 2025" otherwise
+export function dateShort(dateStr) {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const now = new Date().getFullYear();
+  return d + ' ' + MONTHS[m - 1].slice(0, 3) + (y === now ? '' : ' ' + y);
+}
+
+// First day of the week for the user's locale as a JS day index (0 = Sunday ... 6 = Saturday).
+export function weekStart() {
+  try {
+    const loc = new Intl.Locale(navigator.language || 'en-US');
+    const info = (loc.getWeekInfo && loc.getWeekInfo()) || loc.weekInfo;
+    if (info && info.firstDay) return info.firstDay % 7; // Intl: 1 = Monday ... 7 = Sunday
+  } catch (e) { /* fall through */ }
+  return 0;
+}
