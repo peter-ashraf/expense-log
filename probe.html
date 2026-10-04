@@ -21,12 +21,19 @@
   p { color: var(--mut); margin: 6px 0 12px; }
   .card { background: var(--card); border-radius: 18px; padding: 14px; margin: 12px 0; border: 1px solid rgba(128,128,128,.2); }
   .row { display: flex; flex-wrap: wrap; gap: 8px; }
-  button, label.btn { font: inherit; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(128,128,128,.35); background: var(--card); color: var(--fg); }
+  button { font: inherit; padding: 12px 14px; border-radius: 14px; border: 1px solid rgba(128,128,128,.35); background: var(--card); color: var(--fg); }
   button.primary { background: #5B5BF0; color: #fff; border: 0; font-weight: 700; }
   select { font: inherit; padding: 10px; border-radius: 12px; width: 100%; background: var(--card); color: var(--fg); border: 1px solid rgba(128,128,128,.35); }
   #state { font-weight: 700; }
-  #big { font-size: 30px; font-weight: 800; text-align: center; padding: 18px 8px; border-radius: 18px; background: #5B5BF0; color: #fff; display: none; }
-  #log { font: 13px/1.5 ui-monospace, monospace; color: var(--mut); white-space: pre-wrap; }
+  #big { font-size: 28px; font-weight: 800; text-align: center; padding: 18px 8px; border-radius: 18px; background: #5B5BF0; color: #fff; display: none; white-space: pre-line; margin-top: 12px; }
+  #log { font: 12px/1.5 ui-monospace, monospace; color: var(--mut); white-space: pre-wrap; max-height: 220px; overflow: auto; }
+  .res { display: grid; grid-template-columns: 1fr auto auto; gap: 8px; align-items: center; padding: 8px 0; border-bottom: 1px solid rgba(128,128,128,.2); font-size: 14px; }
+  .res small { color: var(--mut); display: block; }
+  .res button { padding: 8px 12px; min-width: 76px; font-size: 14px; }
+  .res button.ok { background: #16A34A; color: #fff; border: 0; }
+  .res button.no { background: #DC2626; color: #fff; border: 0; }
+  #report { width: 100%; box-sizing: border-box; height: 150px; font: 11px/1.4 ui-monospace, monospace; border-radius: 12px; border: 1px solid rgba(128,128,128,.35); background: var(--card); color: var(--fg); padding: 8px; }
+  #results, #reportCard { display: none; }
 </style>
 </head>
 <body>
@@ -57,28 +64,57 @@
 
   <div class="card">
     <b>Automatic run</b>
-    <p>Cycles every Method × Layout, switching dark → light with a pause. Watch the status bar at the top of the screen and note the step numbers where it changed.</p>
+    <p>Cycles every Method × Layout, switching dark → light with a pause. Watch the status bar at the top of the screen. When it finishes, mark what you saw for each step and copy the report.</p>
     <button id="run" class="primary">Run all tests</button>
     <div id="big"></div>
   </div>
 
-  <div class="card"><div id="log"></div></div>
+  <div class="card" id="results">
+    <b>What did the status bar do?</b>
+    <p>Tap a button to cycle: <b>?</b> (not sure) → <b>✓</b> (bar followed) → <b>✗</b> (bar did NOT change).</p>
+    <div id="resRows"></div>
+  </div>
+
+  <div class="card" id="reportCard">
+    <b>Report</b>
+    <p>Tap <b>Copy report</b>, then paste it in the chat.</p>
+    <div class="row" style="margin-bottom:8px">
+      <button id="copy" class="primary">Copy report</button>
+      <button id="rebuild">Refresh report</button>
+    </div>
+    <textarea id="report" readonly></textarea>
+  </div>
+
+  <div class="card"><b>Event log</b><div id="log"></div></div>
 </div>
 <script>
 (function () {
   var $ = function (s) { return document.querySelector(s); };
-  var C = { dark: { bg: '#0A0B10' }, light: { bg: '#F4F5FA' } };
+  var FAST = /[?&]fast/.test(location.search);       // used only for quick self-testing
+  var T = function (ms) { return FAST ? Math.max(30, ms / 40) : ms; };
+  var C = { dark: '#0A0B10', light: '#F4F5FA' };
+  var events = [];
+  var steps = [];
+  var marks = {};                                     // "n:dark" / "n:light" -> '?', 'ok', 'no'
+  var current = { step: 0, label: 'manual' };
+
   function meta() { return document.querySelector('meta[name="theme-color"]'); }
-  function log(t) { var l = $('#log'); l.textContent = t + '\n' + l.textContent; }
+  function metaState() { var all = document.querySelectorAll('meta[name="theme-color"]'); return all.length + ' tag(s) ' + (all[0] ? all[0].getAttribute('content') : '-'); }
+  function ts() { var d = new Date(); return d.toTimeString().slice(0, 8) + '.' + String(d.getMilliseconds()).padStart(3, '0'); }
+  function addEvent(e) {
+    e.t = ts(); events.push(e);
+    var l = $('#log'); l.textContent = e.t + '  ' + e.text + '\n' + l.textContent;
+  }
   function setLayout(v) { document.documentElement.classList.toggle('fixedmode', v === 'fixed'); }
   function nudge() {
-    var sc = document.documentElement.classList.contains('fixedmode') ? $('#wrap') : window;
-    if (sc === window) { window.scrollTo(0, 2); requestAnimationFrame(function () { window.scrollTo(0, 0); }); }
-    else { sc.scrollTop = 2; requestAnimationFrame(function () { sc.scrollTop = 0; }); }
+    var fixed = document.documentElement.classList.contains('fixedmode');
+    if (!fixed) { window.scrollTo(0, 2); requestAnimationFrame(function () { window.scrollTo(0, 0); }); }
+    else { var w = $('#wrap'); w.scrollTop = 2; requestAnimationFrame(function () { w.scrollTop = 0; }); }
   }
-  function apply(theme, method) {
-    var hex = C[theme].bg;
+  function apply(theme, method, tag) {
+    var hex = C[theme];
     var root = document.documentElement;
+    var before = metaState();
     if (method === '4') { root.setAttribute('data-theme', theme); }
     else if (method === '5') { meta().setAttribute('content', hex); }
     else if (method === '2') {
@@ -90,37 +126,122 @@
       meta().setAttribute('content', hex);
       if (method === '3') nudge();
     }
-    $('#state').textContent = 'Now: ' + theme.toUpperCase() + ' · method ' + method + ' · ' + $('#layout').value;
+    var lay = document.documentElement.classList.contains('fixedmode') ? 'fixed' : 'flow';
+    $('#state').textContent = 'Now: ' + theme.toUpperCase() + ' · method ' + method + ' · ' + lay;
+    addEvent({
+      step: tag ? tag.step : 0, theme: theme, method: method, layout: lay,
+      text: (tag ? 'step ' + tag.step + ' ' : 'manual ') + lay + ' m' + method + ' → ' + theme +
+        ' | meta ' + before + ' → ' + metaState() + ' | data-theme=' + root.getAttribute('data-theme') +
+        ' | html bg ' + getComputedStyle(root).backgroundColor
+    });
   }
+
   $('#layout').addEventListener('change', function () { setLayout(this.value); });
   $('#dark').addEventListener('click', function () { apply('dark', $('#method').value); });
   $('#light').addEventListener('click', function () { apply('light', $('#method').value); });
 
+  // ---------------------------------------------------------------- device information
+  function insets() {
+    var p = document.createElement('div');
+    p.style.cssText = 'position:fixed;left:0;top:0;width:0;visibility:hidden;padding:env(safe-area-inset-top,0px) 0 0 0';
+    document.body.appendChild(p); var top = p.offsetHeight;
+    p.style.padding = '0 0 env(safe-area-inset-bottom,0px) 0'; var bottom = p.offsetHeight;
+    p.remove(); return top + '+' + bottom;
+  }
+  function deviceInfo() {
+    var vv = window.visualViewport ? Math.round(window.visualViewport.height) : '-';
+    return [
+      'userAgent: ' + navigator.userAgent,
+      'standalone(navigator): ' + navigator.standalone + ' | display-mode standalone: ' + matchMedia('(display-mode: standalone)').matches,
+      'screen: ' + screen.width + 'x' + screen.height + ' | inner: ' + innerWidth + 'x' + innerHeight + ' | visual height: ' + vv +
+        ' | doc client height: ' + document.documentElement.clientHeight,
+      'safe-area insets (top+bottom): ' + insets(),
+      'phone appearance: ' + (matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'),
+      'status-bar-style meta: ' + (document.querySelector('meta[name="apple-mobile-web-app-status-bar-style"]') || {}).content,
+      'viewport meta: ' + document.querySelector('meta[name="viewport"]').content,
+      'theme-color at report time: ' + metaState()
+    ].join('\n');
+  }
+
+  // ---------------------------------------------------------------- results + report
+  function label(n) { var s = steps[n - 1]; return 'Step ' + n + ' · ' + s.lay + ' · method ' + s.m; }
+  function renderResults() {
+    var rows = $('#resRows'); rows.innerHTML = '';
+    steps.forEach(function (s, i) {
+      var n = i + 1;
+      var row = document.createElement('div'); row.className = 'res';
+      var name = document.createElement('div'); name.innerHTML = '<b>' + label(n) + '</b><small>' + methodName(s.m) + '</small>';
+      row.appendChild(name);
+      ['dark', 'light'].forEach(function (th) {
+        var b = document.createElement('button'); var key = n + ':' + th;
+        var draw = function () { var v = marks[key] || '?'; b.className = v === 'ok' ? 'ok' : v === 'no' ? 'no' : ''; b.textContent = (th === 'dark' ? 'Dark ' : 'Light ') + (v === 'ok' ? '✓' : v === 'no' ? '✗' : '?'); };
+        b.addEventListener('click', function () { var v = marks[key] || '?'; marks[key] = v === '?' ? 'ok' : v === 'ok' ? 'no' : '?'; draw(); buildReport(); });
+        draw(); row.appendChild(b);
+      });
+      rows.appendChild(row);
+    });
+    $('#results').style.display = 'block'; $('#reportCard').style.display = 'block';
+    buildReport();
+  }
+  function methodName(m) {
+    return { 1: 'meta changed in place + page background', 2: 'meta replaced + page background', 3: 'meta in place + background + scroll nudge', 4: 'page background only', 5: 'meta only' }[m];
+  }
+  function buildReport() {
+    var lines = ['STATUS BAR PROBE REPORT', 'created: ' + new Date().toString(), '', deviceInfo(), ''];
+    if (steps.length) {
+      lines.push('RESULTS  (✓ = status bar followed, ✗ = did not change, ? = not marked)');
+      steps.forEach(function (s, i) {
+        var n = i + 1; var d = marks[n + ':dark'] || '?', l = marks[n + ':light'] || '?';
+        var f = function (v) { return v === 'ok' ? '✓' : v === 'no' ? '✗' : '?'; };
+        lines.push(label(n) + '  [' + methodName(s.m) + ']   →dark ' + f(d) + '   →light ' + f(l));
+      });
+      lines.push('');
+    }
+    lines.push('EVENT LOG (oldest first)');
+    events.forEach(function (e) { lines.push(e.t + '  ' + e.text); });
+    $('#report').value = lines.join('\n');
+    return $('#report').value;
+  }
+  function copyText(text) {
+    var ta = $('#report');
+    var done = function () { $('#copy').textContent = 'Copied ✓'; setTimeout(function () { $('#copy').textContent = 'Copy report'; }, 2000); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () { ta.select(); ta.setSelectionRange(0, 999999); document.execCommand('copy'); done(); });
+    } else { ta.select(); ta.setSelectionRange(0, 999999); document.execCommand('copy'); done(); }
+  }
+  $('#copy').addEventListener('click', function () { copyText(buildReport()); });
+  $('#rebuild').addEventListener('click', buildReport);
+
+  // ---------------------------------------------------------------- automatic run
   var running = false;
   $('#run').addEventListener('click', function () {
     if (running) return;
     running = true;
-    var steps = [];
+    steps = []; marks = {}; events = []; $('#log').textContent = '';
     ['flow', 'fixed'].forEach(function (lay) { ['1', '2', '3', '4', '5'].forEach(function (m) { steps.push({ lay: lay, m: m }); }); });
     var big = $('#big'); big.style.display = 'block';
+    $('#results').style.display = 'none'; $('#reportCard').style.display = 'none';
     var i = 0;
     function next() {
-      if (i >= steps.length) { big.textContent = 'Done'; running = false; apply('light', '1'); setLayout('flow'); $('#layout').value = 'flow'; log('— finished —'); return; }
-      var s = steps[i++];
-      var n = i;
+      if (i >= steps.length) {
+        big.textContent = 'Done — scroll down'; running = false;
+        apply('light', '1'); setLayout('flow'); $('#layout').value = 'flow';
+        renderResults(); return;
+      }
+      var s = steps[i++]; var n = i;
       setLayout(s.lay); $('#layout').value = s.lay; $('#method').value = s.m;
-      apply('light', '1');                 // start every step from light
+      apply('light', '1', { step: n });              // start every step from light
       setTimeout(function () {
         big.textContent = 'Step ' + n + ' of ' + steps.length + '\n' + s.lay + ' · method ' + s.m + '\n→ DARK';
-        log('Step ' + n + ': ' + s.lay + ' · method ' + s.m + ' → dark');
-        apply('dark', s.m);
+        apply('dark', s.m, { step: n });
         setTimeout(function () {
           big.textContent = 'Step ' + n + ' of ' + steps.length + '\n' + s.lay + ' · method ' + s.m + '\n→ LIGHT';
-          apply('light', s.m);
-          setTimeout(next, 2600);
-        }, 3000);
-      }, 1800);
+          apply('light', s.m, { step: n });
+          setTimeout(next, T(2600));
+        }, T(3000));
+      }, T(1800));
     }
+    addEvent({ text: 'run started | ' + deviceInfo().split('\n')[1] });
     next();
   });
   apply('light', '1');
