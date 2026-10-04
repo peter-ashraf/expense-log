@@ -1,5 +1,6 @@
 import * as store from './store.js';
 import { icon, catHue } from './icons.js';
+import { computeInsights } from './insights.js';
 import { esc, num, num0, money, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 import { readCsvEntries, decodeText } from './csv.js';
@@ -323,12 +324,33 @@ function closeFlip() {
   };
   if (!card || !origin || reduceMotion || !card.animate) { setTimeout(done, reduceMotion ? 0 : 300); return; }
   if (flipAnim) flipAnim.cancel();
+  const end = flipFrom(card, origin);
   flipAnim = card.animate(
-    [{ transform: 'none' }, { transform: flipFrom(card, origin) }],
-    { duration: 560, easing: 'cubic-bezier(.55, .05, .2, 1)', fill: 'forwards' }
+    [{ transform: 'none', opacity: 1 }, { transform: end, opacity: 1, offset: 0.72 }, { transform: end, opacity: 0 }],
+    { duration: 620, easing: 'cubic-bezier(.55, .05, .2, 1)', fill: 'forwards' }
   );
+  // the real tile comes back just before the card lands, and the card melts into it (no hard swap)
+  setTimeout(() => { if (seq === flipSeq) $('#app').removeAttribute('data-flip'); }, 420);
   flipAnim.onfinish = done;
   setTimeout(done, 900); // safety net if the animation clock is throttled
+}
+
+function insightsCard(v, m) {
+  const i = v.months.indexOf(m.key);
+  const prev = i > 0 ? v.by[v.months[i - 1]] : null;
+  const r = computeInsights({
+    m, prev, today: todayStr(), fmt: num0,
+    monthName: (k) => keyLabel(k).split(' ')[0],
+  });
+  if (!r.enough) return `<section class="card"><div class="card-h"><h3>Smart insights</h3></div><p class="muted pad">Add a few more expenses in ${esc(keyLabel(m.key))} and I’ll start spotting patterns.</p></section>`;
+  return `<section class="card insights">
+      <div class="card-h"><h3>Smart insights</h3><span class="muted sm">${esc(keyLabel(m.key))}</span></div>
+      ${r.items.map((it) => `<${it.q ? 'button' : 'div'} class="ins ${it.tone}" ${it.q ? `data-act="ins-open" data-q="${esc(it.q)}"` : ''} style="${it.cat ? hueStyle(it.cat) : ''}">
+        <span class="bubble">${icon(it.icon, 20)}</span>
+        <span class="ins-t"><b>${esc(it.title)}</b><small>${esc(it.detail)}</small></span>
+        ${it.badge ? `<em>${esc(it.badge)}</em>` : ''}
+      </${it.q ? 'button' : 'div'}>`).join('')}
+    </section>`;
 }
 
 function renderInsights(view, m) {
@@ -347,6 +369,7 @@ function renderInsights(view, m) {
   const last = v.months.slice(-6);
   const maxSpent = Math.max(1, ...last.map((k) => v.by[k].spent));
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
+    ${insightsCard(v, m)}
     <section class="card">
       <div class="card-h"><h3>Spending split</h3></div>
       ${cats.length ? `<div class="donut-wrap">
@@ -428,7 +451,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v2.4</p>
+    <p class="muted center sm">Credit Card Expenses · v2.5</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -1205,6 +1228,10 @@ document.addEventListener('click', async (ev) => {
       closeMonthMenu();
       if (ui.tab !== el.dataset.tab) { ui.tab = el.dataset.tab; ui.animate = true; $('#view').innerHTML = ''; render(); }
       haptic(6);
+      break;
+    case 'ins-open':
+      ui.q = el.dataset.q || ''; ui.filter = 'Expense'; ui.tab = 'activity'; ui.animate = true; haptic(6);
+      $('#view').innerHTML = ''; render();
       break;
     case 'new': haptic(10); openSheet(null); break;
     case 'edit': openSheet(el.dataset.id); break;
