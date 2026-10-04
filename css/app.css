@@ -615,3 +615,11 @@ button.ins { cursor: pointer; } button.ins:active { opacity: .6; }
 .hero-amt .pv { filter: blur(11px); }
 html.privacy input[readonly].acc-limit, html.privacy #budgetInput[readonly] { filter: blur(4px); }
 #heroAmt { min-width: 120px; min-height: 1.1em; }
+
+/* ---- passphrase screen ---- */
+#lockPass { width: min(320px, 86vw); margin-top: 22px; display: flex; flex-direction: column; gap: 12px; }
+#lockPass[hidden] { display: none; }
+#lockPass input { height: 54px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); padding: 0 16px; font-size: 17px; color: inherit; text-align: center; outline: 0; }
+#lockPass input:focus { border-color: var(--accent); box-shadow: 0 0 0 4px color-mix(in srgb, var(--accent) 18%, transparent); }
+#lockPass .btn { margin-top: 0; }
+#lockPass.shake { animation: shake .4s; }

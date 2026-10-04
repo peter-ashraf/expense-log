@@ -6,6 +6,8 @@ import { esc, num as rawNum, num0 as rawNum0, money as rawMoney, keyLabel, keySh
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 import { readCsvEntries, decodeText } from './csv.js';
 import * as lk from './lockui.js';
+import * as vault from './vault.js';
+import { promptUnlock } from './vaultui.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -608,6 +610,65 @@ function accountsCard(st) {
     </section>`;
 }
 
+function encryptionCard() {
+  const on = vault.isEnabled();
+  return `<section class="card">
+      <div class="card-h"><h3>Encryption</h3><span class="badge ${on ? 'synced' : ''}">${on ? 'On' : 'Off'}</span></div>
+      <p class="muted sm" style="margin-top:0">${on
+        ? 'Everything saved on this phone (entries, settings, your sheet address and key) is scrambled with your passphrase. The app asks for it when it starts, and again after about 10 minutes away.'
+        : 'Scramble everything this app saves on your phone with a passphrase only you know, so nobody can read your numbers by inspecting the app’s storage. Face ID can’t do this part; it needs the passphrase.'}</p>
+      ${on ? `<button class="btn ghost" data-act="enc-lock">${icon('lock', 18)}Lock and encrypt now</button>
+        <button class="btn ghost" data-act="enc-open" data-m="change">Change passphrase</button>
+        <button class="btn ghost" data-act="enc-open" data-m="off">Turn off encryption</button>`
+        : `<button class="btn" data-act="enc-open" data-m="on">${icon('lock', 18)}Encrypt data on this phone</button>`}
+      <p class="muted sm" style="margin-top:10px">If you forget the passphrase there is no way to recover this phone’s copy. Your Google Sheet is unaffected, and you can reconnect.</p>
+    </section>`;
+}
+
+function encSheet(mode) {
+  ui.encMode = mode;
+  const title = mode === 'on' ? 'Encrypt data' : mode === 'change' ? 'Change passphrase' : 'Turn off encryption';
+  const f = (id, label, ac) => `<label class="field"><span>${label}</span><input id="${id}" type="password" autocomplete="${ac}" autocapitalize="off" spellcheck="false" placeholder="••••••••"></label>`;
+  const body = mode === 'on'
+    ? `<p class="muted pad">Choose a passphrase of at least 8 characters, such as a few random words. You’ll type it when the app starts. It is never stored, and nobody can recover it for you.</p>${f('encA', 'Passphrase', 'new-password')}${f('encB', 'Repeat passphrase', 'new-password')}`
+    : mode === 'change'
+      ? `${f('encCur', 'Current passphrase', 'current-password')}${f('encA', 'New passphrase (8+ characters)', 'new-password')}${f('encB', 'Repeat new passphrase', 'new-password')}`
+      : `<p class="muted pad">The data on this phone will be stored unscrambled again. Enter your passphrase to confirm.</p>${f('encCur', 'Passphrase', 'current-password')}`;
+  present(title, '', body, 'small', `<button class="btn primary big" data-act="enc-save" id="encBtn">${mode === 'on' ? 'Encrypt' : mode === 'change' ? 'Change passphrase' : 'Turn off'}</button>`);
+  setTimeout(() => { const i = $('#encCur') || $('#encA'); if (i) i.focus(); }, 350);
+}
+
+async function saveEncryption() {
+  const mode = ui.encMode;
+  const val = (id) => (($('#' + id) || {}).value || '');
+  const btn = $('#encBtn');
+  const fail = (m) => { toast(m, 'err'); shake(); if (btn) { btn.disabled = false; } };
+  if (btn) btn.disabled = true;
+  try {
+    if (mode === 'off') {
+      if (!(await vault.check(val('encCur')))) return fail('Wrong passphrase.');
+      vault.forget();
+      await store.persistEverything();
+      closeSheet(); renderSettings($('#view')); toast('Encryption is off', 'ok');
+      return;
+    }
+    const a = val('encA'), b = val('encB');
+    if (a.length < vault.MIN_LENGTH) return fail(`Use at least ${vault.MIN_LENGTH} characters.`);
+    if (/^\d+$/.test(a) && a.length < 12) return fail('Digits alone are easy to guess. Add letters or make it longer.');
+    if (a !== b) return fail('The two passphrases don’t match.');
+    if (mode === 'change') {
+      await vault.changePassphrase(val('encCur'), a);
+      closeSheet(); toast('Passphrase changed', 'ok');
+      return;
+    }
+    toast('Encrypting…');
+    await vault.create(a);
+    await store.persistEverything();
+    haptic(12);
+    closeSheet(); renderSettings($('#view')); toast('Your data is encrypted', 'ok');
+  } catch (err) { fail(err.message || 'Something went wrong.'); }
+}
+
 function renderSettings(view) {
   const st = store.getState();
   const n = st.queue.length;
@@ -638,6 +699,7 @@ function renderSettings(view) {
       <p class="muted sm" style="margin-top:10px">Smart insights will show how much is left, the daily amount to stay within it, and warn you when you’re heading over. Leave empty to turn it off.</p>
     </section>
     ${securityCard(st)}
+    ${encryptionCard()}
     <section class="card">
       <div class="card-h"><h3>Preferences</h3></div>
       <label class="field"><span>Currency symbol</span><input id="curInput" maxlength="4" placeholder="e.g. $, €, EGP" value="${esc(st.settings.currency)}" autocomplete="off"></label>
@@ -654,7 +716,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v3.2.2</p>
+    <p class="muted center sm">Credit Card Expenses · v3.3</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -1057,6 +1119,7 @@ function tweenTheme(target) {
 function refreshView() {
   try { sessionStorage.setItem('el_resume', JSON.stringify({ tab: ui.tab, month: ui.month })); } catch (e) { /* ignore */ }
   document.body.classList.add('reloading');
+  vault.stashForReload();
   setTimeout(() => location.reload(), 220);
 }
 
@@ -1754,6 +1817,9 @@ document.addEventListener('click', async (ev) => {
     }
     case 'lock-delay': store.saveSettings({ lock: { ...lockCfg(), delay: Number(el.dataset.v) } }); haptic(6); break;
     case 'lock-now': lk.lockApp(); break;
+    case 'enc-open': encSheet(el.dataset.m); break;
+    case 'enc-save': saveEncryption(); break;
+    case 'enc-lock': location.reload(); break;
     case 'pin-change':
       try { await lk.verifyOwner(askPin); pinSetupSheet('change'); } catch (err) { toast(err.message || 'Wrong PIN', 'err'); }
       break;
@@ -1977,12 +2043,23 @@ window.addEventListener('pageshow', () => paintTheme(themeNow));
 setInterval(() => { if (document.visibilityState === 'visible') store.sync(); }, 60000);
 
 (async function boot() {
+  let vaultOpened = false;
+  if (vault.isEnabled()) {
+    vaultOpened = await vault.takeStash();                // an automatic reload (app update) doesn't ask again
+    if (!vaultOpened) {
+      await promptUnlock({ onForgot: async () => { try { localStorage.removeItem('el_lock'); } catch (e) { /* ignore */ } await store.disconnect(); location.reload(); } });
+      vaultOpened = true;
+    }
+  }
   await store.init();
   document.documentElement.classList.toggle('privacy', !!store.getState().settings.hideBalance);
   watchPrivacy(!!store.getState().settings.hideBalance);
   applyTheme(store.getState().settings.theme || 'system');
   document.documentElement.classList.toggle('no-glass', store.getState().settings.glass === false);
   lk.initLock({
+    skipInitial: vaultOpened,
+    vaultOn: () => vault.isEnabled(),
+    relock: () => location.reload(),
     getLock: lockCfg,
     setLock: (p) => store.saveSettings({ lock: { ...lockCfg(), ...p } }),
     haptic,
@@ -2011,7 +2088,7 @@ setInterval(() => { if (document.visibilityState === 'visible') store.sync(); },
     const had = !!navigator.serviceWorker.controller;
     let reloaded = false;
     navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (had && !reloaded) { reloaded = true; location.reload(); }
+      if (had && !reloaded) { reloaded = true; vault.stashForReload(); location.reload(); }
     });
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }

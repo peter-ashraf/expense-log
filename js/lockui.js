@@ -29,7 +29,7 @@ export function initLock(opts) {
   $('#lockReset').addEventListener('click', () => {
     if (confirm('Remove the lock and disconnect this device?\n\nThis clears the local copy on this phone only. Your Google Sheet is untouched, and you can connect again afterwards.')) api.onReset();
   });
-  if (!isEnabled()) { unlockApp(); } else { lockApp(); }
+  if (!isEnabled() || opts.skipInitial) { unlockApp(); } else { lockApp(); }   // after the passphrase the first lock would be a second question
 }
 
 function setText(title, sub) {
@@ -130,13 +130,18 @@ export function unlockApp() {
 }
 
 /** Call from visibilitychange: hide the app in the app switcher, and lock after the chosen time away. */
+const RELOCK_MS = 10 * 60 * 1000;   // with encryption on, this long away asks for the passphrase again
+
 export function onVisibility() {
-  if (!isEnabled() || busy) return;
+  const vaultOn = !!(api && api.vaultOn && api.vaultOn());
+  if ((!isEnabled() && !vaultOn) || busy) return;
   if (document.visibilityState === 'hidden') {
     hiddenAt = Date.now();
-    if (!isLocked()) root.classList.add('cover');
+    if (isEnabled() && !isLocked()) root.classList.add('cover');
     return;
   }
+  if (vaultOn && hiddenAt && Date.now() - hiddenAt >= RELOCK_MS) { api.relock(); return; }
+  if (!isEnabled()) return;
   if (attempt && Date.now() - attempt.at > 1500) { attempt.ctl.abort(); attempt = null; }
   const away = Date.now() - hiddenAt;
   const need = Math.max(1000, (cfg().delay == null ? 60 : cfg().delay) * 1000);

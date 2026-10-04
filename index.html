@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="description" content="Private expense tracker that works offline and syncs to your Google Sheet.">
 <meta name="theme-color" content="#F4F5FA">
-<script>try{var t=localStorage.getItem("el_theme"),d=t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);document.documentElement.style.colorScheme=t}document.querySelector('meta[name="theme-color"]').setAttribute("content",d?"#0A0B10":"#F4F5FA");var lk=localStorage.getItem("el_lock");if(lk==="bio"||lk==="pin")document.documentElement.classList.add("locked")}catch(e){}</script>
+<script>try{var t=localStorage.getItem("el_theme"),d=t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);document.documentElement.style.colorScheme=t}document.querySelector('meta[name="theme-color"]').setAttribute("content",d?"#0A0B10":"#F4F5FA");var lk=localStorage.getItem("el_lock");if(lk==="bio"||lk==="pin"||localStorage.getItem("el_vault"))document.documentElement.classList.add("locked")}catch(e){}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -38,6 +38,7 @@
       <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M9 10v1.5M15 10v1.5M12 10v3.5h-1M9.5 16a3.5 3.5 0 0 0 5 0"/></svg>
     </div>
     <div id="lockPin" hidden></div>
+    <form id="lockPass" hidden autocomplete="off"><input id="vaultInput" type="password" placeholder="Passphrase" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Passphrase"><button class="btn primary big" id="vaultBtn" type="submit">Unlock</button></form>
     <button id="lockReset" class="lock-reset" type="button">Can’t unlock?</button>
   </div>
 </div>

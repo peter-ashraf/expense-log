@@ -1,4 +1,7 @@
 // Tiny key-value store on IndexedDB with a localStorage fallback.
+// When encryption is on (see vault.js) every value is sealed before it is written and unsealed when it is read.
+import * as vault from './vault.js';
+
 const NAME = 'expenselog';
 let dbp = null;
 
@@ -16,6 +19,15 @@ function open() {
 }
 
 export async function get(key) {
+  const raw = await rawGet(key);
+  return vault.isEnabled() ? vault.unseal(raw) : raw;
+}
+
+export async function set(key, value) {
+  await rawSet(key, vault.isEnabled() ? await vault.seal(value) : value);
+}
+
+async function rawGet(key) {
   try {
     const db = await open();
     return await new Promise((res, rej) => {
@@ -28,7 +40,7 @@ export async function get(key) {
   }
 }
 
-export async function set(key, value) {
+async function rawSet(key, value) {
   try {
     const db = await open();
     await new Promise((res, rej) => {

@@ -1,5 +1,6 @@
 import * as db from './db.js';
 import { makeTransport } from './api.js';
+import * as vault from './vault.js';
 import { uid, monthKeyOf, round2 } from './util.js';
 
 // ---- state -----------------------------------------------------------------
@@ -62,8 +63,14 @@ export async function connect(cfg) {
   }
 }
 
+// Rewrites everything saved on this phone from memory (used when encryption is switched on or off).
+export async function persistEverything() {
+  await Promise.all([db.set('cfg', S.cfg), persist(), db.set('settings', S.settings), db.set('lastSync', S.lastSync), db.set('trash', S.trash)]);
+}
+
 export async function disconnect() {
   await db.clearAll();
+  vault.forget();
   S.cfg = null;
   S.snap = { categories: { order: [], map: {} }, accounts: [], firstStart: 0, months: [], entries: [] };
   S.queue = [];
