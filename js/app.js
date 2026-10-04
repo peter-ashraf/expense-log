@@ -7,7 +7,7 @@ const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
 const reduceMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
-const ui = { tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '' };
+const ui = { tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false };
 
 // ---------------------------------------------------------------- helpers
 const cur = () => store.getState().settings.currency || '';
@@ -88,7 +88,7 @@ function renderTop() {
   const m = activeMonth();
   const left = ui.tab === 'settings'
     ? '<h1 class="title">Settings</h1>'
-    : `<button class="month-pill" data-act="months" ${v.months.length ? '' : 'disabled'}>
+    : `<button class="month-pill ${ui.menuOpen ? 'open' : ''}" data-act="months" aria-haspopup="listbox" aria-expanded="${ui.menuOpen}" ${v.months.length ? '' : 'disabled'}>
         <span>${m ? esc(keyLabel(m.key)) : 'No data'}</span>${icon('chevron', 16, 2.2)}</button>`;
   const n = st.queue.length;
   let label = '';
@@ -292,7 +292,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v1.4</p>
+    <p class="muted center sm">Credit Card Expenses · v1.5</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -408,13 +408,15 @@ function present(title, headExtra, body, cls = '', foot = '') {
   const layer = $('#layer');
   sheetClosing = false;
   layer.className = 'open';
-  layer.innerHTML = `<div class="scrim" data-act="close"></div>
+  layer.innerHTML = `<div class="scrim"></div>
     <div class="sheet ${cls}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-      <div class="grab-zone" aria-hidden="true"><div class="grab"></div></div>
-      <div class="sheet-h">
-        <button class="close" data-act="close" aria-label="Close">${icon('close', 20, 2.2)}</button>
-        <h2>${esc(title)}</h2>
-        <div class="hbtns">${headExtra}</div>
+      <div class="sheet-top">
+        <div class="grab-zone" aria-hidden="true"><div class="grab"></div></div>
+        <div class="sheet-h">
+          <button class="close" data-act="close" aria-label="Close">${icon('close', 20, 2.2)}</button>
+          <h2>${esc(title)}</h2>
+          <div class="hbtns">${headExtra}</div>
+        </div>
       </div>
       <div class="sheet-body">${body}</div>
       ${foot ? `<div class="sheet-foot">${foot}</div>` : ''}
@@ -440,7 +442,7 @@ function present(title, headExtra, body, cls = '', foot = '') {
 
 function attachDrag(sheet, scrim) {
   const app = $('#app');
-  const handle = $('.grab-zone', sheet);
+  const handle = $('.sheet-top', sheet);
   let startY = 0;
   let dy = 0;
   let vel = 0;
@@ -481,8 +483,9 @@ function attachDrag(sheet, scrim) {
     haptic(6);
   };
 
-  // Only the grey pill is a handle; the title row and the content never start a drag.
+  // The whole top strip (grey pill + title row) is the handle; its buttons stay normal taps and the content never starts a drag.
   handle.addEventListener('pointerdown', (e) => {
+    if (e.target.closest('button')) return;
     try { handle.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or already released */ }
     begin(e.clientY);
   });
@@ -604,9 +607,47 @@ function saveForm() {
   ui.animate = false;
 }
 
-function openMonths() {
+// ---- month dropdown (anchored to the month pill) ---------------------------------------------
+function toggleMonthMenu(pill) {
+  if (ui.menuOpen) closeMonthMenu(); else openMonthMenu(pill);
+}
+
+function openMonthMenu(pill) {
   const v = store.view();
-  present('Choose month', '', `<div class="mlist">${v.months.slice().reverse().map((k) => `<button class="mrow ${k === ui.month ? 'on' : ''}" data-act="pick-month" data-key="${k}"><span>${esc(keyLabel(k))}</span><b>${esc(fmt(v.by[k].available))}</b>${k === ui.month ? icon('check', 18, 2.4) : ''}</button>`).join('')}</div>`, 'small');
+  if (!v.months.length) return;
+  const root = $('#menu');
+  const app = $('#app').getBoundingClientRect();
+  const r = pill.getBoundingClientRect();
+  const width = Math.min(300, app.width - 24);
+  const left = Math.max(12, Math.min(r.left - app.left, app.width - 12 - width));
+  const top = r.bottom - app.top + 8;
+  const originX = Math.max(16, Math.min(width - 16, r.left - app.left + r.width / 2 - left));
+  const rows = v.months.slice().reverse().map((k, i) => {
+    const on = k === ui.month;
+    return `<button class="menu-row ${on ? 'on' : ''}" style="--i:${i}" role="option" aria-selected="${on}" data-act="pick-month" data-key="${k}">
+      <span class="m">${esc(keyLabel(k))}</span><b>${esc(fmt(v.by[k].available))}</b>${on ? icon('check', 18, 2.6) : '<i class="ph"></i>'}</button>`;
+  }).join('');
+  root.innerHTML = `<div class="menu-backdrop" data-act="menu-close"></div>
+    <div class="menu" role="listbox" style="left:${left}px;top:${top}px;width:${width}px;transform-origin:${originX}px 0;max-height:${Math.max(160, app.height - top - 110)}px">${rows}</div>`;
+  root.className = 'open';
+  ui.menuOpen = true;
+  renderTop();
+  const menu = $('.menu', root);
+  let started = false;
+  const go = () => { if (started || !menu.isConnected) return; started = true; menu.classList.add('in'); };
+  requestAnimationFrame(go);
+  setTimeout(go, 50);
+  haptic(6);
+}
+
+function closeMonthMenu() {
+  if (!ui.menuOpen) return;
+  ui.menuOpen = false;
+  const root = $('#menu');
+  const menu = $('.menu', root);
+  if (menu) { menu.classList.remove('in'); menu.classList.add('out'); }
+  renderTop();
+  setTimeout(() => { if (!ui.menuOpen) { root.className = ''; root.innerHTML = ''; } }, reduceMotion ? 0 : 220);
 }
 
 // ---- Excel import ----------------------------------------------------------------------------
@@ -677,15 +718,18 @@ document.addEventListener('click', async (ev) => {
   const act = el.dataset.act;
   switch (act) {
     case 'tab':
+      closeMonthMenu();
       if (ui.tab !== el.dataset.tab) { ui.tab = el.dataset.tab; ui.animate = true; $('#view').innerHTML = ''; render(); }
       haptic(6);
       break;
     case 'new': haptic(10); openSheet(null); break;
     case 'edit': openSheet(el.dataset.id); break;
     case 'close': closeSheet(); break;
-    case 'months': openMonths(); break;
+    case 'months': toggleMonthMenu(el); break;
+    case 'menu-close': closeMonthMenu(); break;
     case 'pick-month':
       ui.month = el.dataset.key; ui.animate = true;
+      closeMonthMenu();
       if ($('.sheet')) closeSheet();
       render();
       break;
@@ -776,7 +820,7 @@ document.addEventListener('click', async (ev) => {
 });
 
 document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && $('#layer').classList.contains('open')) closeSheet();
+  if (e.key === 'Escape') { if (ui.menuOpen) closeMonthMenu(); else if ($('#layer').classList.contains('open')) closeSheet(); }
   const typing = document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName) && document.activeElement.type !== 'date';
   if (ui.form && !typing && /^[0-9.]$/.test(e.key)) pressKey(e.key);
   if (ui.form && !typing && e.key === 'Backspace') pressKey('del');
