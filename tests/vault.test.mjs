@@ -62,6 +62,42 @@ ok((await V.takeStash()) === true && V.isOpen() && sessionStorage.getItem('el_de
 ok((await V.takeStash()) === false, 'the parked key can only be used once');
 ok(JSON.stringify(await V.unseal(sealed)) === JSON.stringify(secret), 'data readable after the reload hand-over');
 
+
+// ---- automatic mode: the app keeps the key itself, nothing to type
+{
+  let kept = null;
+  V._setKeyStore({ get: async () => kept, put: async (k) => { kept = k; }, del: async () => { kept = null; } });
+  V.forget();
+  ok(V.mode() === null, 'automatic: starts off');
+  await V.createDevice();
+  ok(V.isEnabled() && V.isOpen() && V.mode() === 'device', 'automatic: turning it on needs no passphrase and leaves it open');
+  ok(JSON.parse(localStorage.getItem('el_vault')).mode === 'device' && !('wrapped' in JSON.parse(localStorage.getItem('el_vault'))), 'automatic: the stored note holds no key material at all');
+  ok(kept && kept.extractable === false && kept.algorithm.name === 'AES-GCM' && kept.algorithm.length === 256, 'automatic: the key is AES-256 and cannot be exported, not even by the app');
+  const v1 = { cfg: { key: 'SECRET-API-KEY' }, amount: 99.5 };
+  const s1 = await V.seal(v1);
+  ok(!JSON.stringify(s1).includes('SECRET') && JSON.stringify(await V.unseal(s1)) === JSON.stringify(v1), 'automatic: values are sealed and read back exactly');
+
+  // a restart: the note says "on", memory is empty, the browser still has the key
+  const note = localStorage.getItem('el_vault');
+  const saved = kept;
+  V.forget();
+  ok(kept === null && !V.isEnabled(), 'automatic: turning it off removes the key and the note');
+  localStorage.setItem('el_vault', note);
+  kept = saved;
+  ok(V.isEnabled() && !V.isOpen(), 'automatic: after a restart nothing is open yet');
+  ok((await V.openDevice()) === true && V.isOpen(), 'automatic: the start-up opens it silently');
+  ok(JSON.stringify(await V.unseal(s1)) === JSON.stringify(v1), 'automatic: data sealed before the restart reads back');
+
+  // the browser lost the key
+  V.forget();
+  localStorage.setItem('el_vault', note);
+  kept = null;
+  let err = '';
+  try { await V.openDevice(); } catch (e) { err = e.message; }
+  ok(err === 'KEY_MISSING' && !V.isOpen(), 'automatic: a lost key is reported clearly (the app then starts clean from the sheet)');
+  V.forget();
+}
+
 // turning it off
 V.forget();
 ok(!V.isEnabled() && !V.isOpen() && localStorage.getItem('el_vault') === null, 'forget() removes every trace of the key');

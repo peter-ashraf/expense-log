@@ -25,7 +25,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.5';
+const APP_VERSION = '3.5.1';
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -614,17 +614,31 @@ function accountsCard(st) {
 }
 
 function encryptionCard() {
-  const on = vault.isEnabled();
-  return `<section class="card">
-      <div class="card-h"><h3>Encryption</h3><span class="badge ${on ? 'synced' : ''}">${on ? 'On' : 'Off'}</span></div>
-      <p class="muted sm" style="margin-top:0">${on
-        ? 'Everything saved on this phone (entries, settings, your sheet address and key) is scrambled with your passphrase. The app asks for it when it starts, and again after about 10 minutes away.'
-        : 'Scramble everything this app saves on your phone with a passphrase only you know, so nobody can read your numbers by inspecting the app’s storage. Face ID can’t do this part; it needs the passphrase.'}</p>
-      ${on ? `<button class="btn ghost" data-act="enc-lock">${icon('lock', 18)}Lock and encrypt now</button>
+  const m = vault.mode();
+  const on = m !== null;
+  const intro = m === 'device'
+    ? 'Everything this app saves on your phone (entries, settings, your sheet address and key) is stored scrambled. The app looks after the key itself, so there is nothing to remember and nothing extra to type.'
+    : m === 'passphrase'
+      ? 'Everything saved on this phone is scrambled with your passphrase. The app asks for it when it starts, and again after about 10 minutes away.'
+      : 'Store everything this app saves on your phone scrambled, so it can’t be read by browsing the app’s stored data. The app creates and looks after the key itself: nothing to remember, nothing extra to type.';
+  const buttons = m === 'device'
+    ? '<button class="btn ghost" data-act="enc-auto-off">Turn off encryption</button>'
+    : m === 'passphrase'
+      ? `<button class="btn ghost" data-act="enc-lock">${icon('lock', 18)}Lock and encrypt now</button>
         <button class="btn ghost" data-act="enc-open" data-m="change">Change passphrase</button>
         <button class="btn ghost" data-act="enc-open" data-m="off">Turn off encryption</button>`
-        : `<button class="btn" data-act="enc-open" data-m="on">${icon('lock', 18)}Encrypt data on this phone</button>`}
-      <p class="muted sm" style="margin-top:10px">If you forget the passphrase there is no way to recover this phone’s copy. Your Google Sheet is unaffected, and you can reconnect.</p>
+      : `<button class="btn" data-act="enc-auto-on">${icon('lock', 18)}Turn on encryption</button>
+        <button class="linkbtn" data-act="enc-open" data-m="on">Prefer a passphrase of your own? (stronger)</button>`;
+  const note = m === 'device'
+    ? 'This hides your numbers from anyone looking through the app’s stored data. It can’t stop someone who can run code inside the unlocked app. If the phone clears this app’s data, the local copy is gone; your Google Sheet is unaffected.'
+    : m === 'passphrase'
+      ? 'If you forget the passphrase there is no way to recover this phone’s copy. Your Google Sheet is unaffected, and you can reconnect.'
+      : 'A passphrase is stronger, because the key then exists only in your head, but you have to type it.';
+  return `<section class="card">
+      <div class="card-h"><h3>Encryption</h3><span class="badge ${on ? 'synced' : ''}">${on ? (m === 'device' ? 'On · automatic' : 'On · passphrase') : 'Off'}</span></div>
+      <p class="muted sm" style="margin-top:0">${intro}</p>
+      ${buttons}
+      <p class="muted sm" style="margin-top:10px">${note}</p>
     </section>`;
 }
 
@@ -1901,6 +1915,19 @@ document.addEventListener('click', async (ev) => {
     case 'enc-open': encSheet(el.dataset.m); break;
     case 'enc-save': saveEncryption(); break;
     case 'enc-lock': location.reload(); break;
+    case 'enc-auto-on':
+      try {
+        await vault.createDevice();
+        await store.persistEverything();
+        haptic(12); renderSettings($('#view')); toast('Your data is encrypted', 'ok');
+      } catch (err) { vault.forget(); toast('Could not turn on encryption on this device.', 'err'); }
+      break;
+    case 'enc-auto-off':
+      if (!confirm('Turn off encryption?\n\nThe data on this phone will be stored unscrambled again.')) break;
+      vault.forget();
+      await store.persistEverything();
+      renderSettings($('#view')); toast('Encryption is off', 'ok');
+      break;
     case 'update-now': toast('Updating…'); hardReload(() => vault.stashForReload()); break;
     case 'pin-change':
       try { await lk.verifyOwner(askPin); pinSetupSheet('change'); } catch (err) { toast(err.message || 'Wrong PIN', 'err'); }
@@ -2126,7 +2153,10 @@ setInterval(() => { if (document.visibilityState === 'visible') store.sync(); },
 
 (async function boot() {
   let vaultOpened = false;
-  if (vault.isEnabled()) {
+  let keyLost = false;
+  if (vault.isEnabled() && vault.mode() === 'device') {
+    try { await vault.openDevice(); } catch (e) { keyLost = true; await store.disconnect(); }   // the browser dropped the key: the local copy can't be read, so start clean (the sheet still has everything)
+  } else if (vault.isEnabled()) {
     vaultOpened = await vault.takeStash();                // an automatic reload (app update) doesn't ask again
     if (!vaultOpened) {
       await promptUnlock({ onForgot: async () => { try { localStorage.removeItem('el_lock'); } catch (e) { /* ignore */ } await store.disconnect(); location.reload(); } });
@@ -2134,13 +2164,14 @@ setInterval(() => { if (document.visibilityState === 'visible') store.sync(); },
     }
   }
   await store.init();
+  if (keyLost) setTimeout(() => toast('This phone’s encrypted copy could not be opened, so it was cleared. Reconnect to load everything again from your sheet.', 'err'), 800);
   document.documentElement.classList.toggle('privacy', !!store.getState().settings.hideBalance);
   watchPrivacy(!!store.getState().settings.hideBalance);
   applyTheme(store.getState().settings.theme || 'system');
   document.documentElement.classList.toggle('no-glass', store.getState().settings.glass === false);
   lk.initLock({
     skipInitial: vaultOpened,
-    vaultOn: () => vault.isEnabled(),
+    vaultOn: () => vault.isEnabled() && vault.mode() === 'passphrase',
     relock: () => location.reload(),
     getLock: lockCfg,
     setLock: (p) => store.saveSettings({ lock: { ...lockCfg(), ...p } }),

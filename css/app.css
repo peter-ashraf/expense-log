@@ -637,3 +637,11 @@ html.privacy input[readonly].acc-limit, html.privacy #budgetInput[readonly] { fi
 .page-title { font-size: 28px; font-weight: 800; letter-spacing: -.03em; margin: 4px 4px 14px; }
 .month-pill.back { gap: 6px; }
 .sync-card { margin-bottom: 0; }
+
+/* ---- the bars and the page stay put; only the content scrolls ----
+   iOS applies "no bounce" to the page only when it is set on the root element, and a scroller that doesn't contain its
+   own overscroll hands the pull on to the page. */
+html { overscroll-behavior: none; }
+#view { overscroll-behavior-y: contain; }
+#topbar, #tabbar { touch-action: none; }
+.linkbtn { display: block; width: 100%; margin-top: 12px; padding: 8px; text-align: center; color: var(--accent); font-weight: 650; font-size: 14px; }

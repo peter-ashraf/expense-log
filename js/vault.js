@@ -23,6 +23,55 @@ let dekRaw = null;      // kept only to re-wrap on passphrase change; cleared on
 const readMeta = () => { try { return JSON.parse(localStorage.getItem(META)); } catch (e) { return null; } };
 
 export const isEnabled = () => !!readMeta();
+/** 'device' = the app keeps the key itself (nothing to remember); 'passphrase' = locked with a passphrase; null = off. */
+export const mode = () => { const m = readMeta(); return m ? (m.mode || 'passphrase') : null; };
+
+// ---- automatic mode ------------------------------------------------------------------------------
+// A random AES-256 key is created by the browser as NOT extractable (its bytes can't be read back, not even by this
+// code) and kept in its own small IndexedDB. Everything the app stores is sealed with it. Nothing for the user to
+// remember. It hides the data from anyone looking through the app's stored data; it cannot stop someone who can run code
+// inside the unlocked app, because the app itself must be able to use the key.
+function idbKeystore() {
+  const open = () => new Promise((res, rej) => {
+    const r = indexedDB.open('expenselog-keys', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('k');
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => rej(r.error);
+  });
+  const run = async (kind, fn) => {
+    const db = await open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('k', kind);
+      const req = fn(t.objectStore('k'));
+      t.oncomplete = () => { db.close(); res(req && req.result); };
+      t.onerror = () => { db.close(); rej(t.error); };
+      t.onabort = () => { db.close(); rej(t.error); };
+    });
+  };
+  return { get: () => run('readonly', (s) => s.get('dek')), put: (k) => run('readwrite', (s) => s.put(k, 'dek')), del: () => run('readwrite', (s) => s.delete('dek')) };
+}
+let keystore = null;
+const store = () => keystore || (keystore = idbKeystore());
+export function _setKeyStore(ks) { keystore = ks; }      // for tests
+
+/** Turns automatic encryption on. Leaves the vault open. */
+export async function createDevice() {
+  const key = await crypto.subtle.generateKey({ name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+  await store().put(key);
+  localStorage.setItem(META, JSON.stringify({ v: 2, mode: 'device' }));
+  dek = key;
+  dekRaw = null;
+}
+
+/** Opens automatic encryption at start-up. Throws 'KEY_MISSING' when the browser no longer has the key. */
+export async function openDevice() {
+  let key = null;
+  try { key = await store().get(); } catch (e) { key = null; }
+  if (!key) throw new Error('KEY_MISSING');
+  dek = key;
+  dekRaw = null;
+  return true;
+}
 export const isOpen = () => !!dek;
 export const MIN_LENGTH = 8;
 
@@ -89,9 +138,11 @@ export async function check(pass) {
 
 /** Removes encryption: forgets the key and its wrapped copy. Only call after the data has been unsealed. */
 export function forget() {
+  const wasDevice = mode() === 'device';
   dek = null;
   dekRaw = null;
   try { localStorage.removeItem(META); sessionStorage.removeItem('el_dek_tmp'); } catch (e) { /* ignore */ }
+  if (wasDevice) { try { store().del().catch(() => {}); } catch (e) { /* ignore */ } }
 }
 
 // ---- sealing values ------------------------------------------------------------------------------
