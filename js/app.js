@@ -292,7 +292,7 @@ function renderOnboarding(prefill = {}) {
   $('#topbar').innerHTML = '';
   $('#tabbar').innerHTML = '';
   $('#view').innerHTML = `<div class="onb">
-    <div class="logo">${icon('income', 34, 2)}</div>
+    <img class="logo" src="icons/icon.svg" alt="" width="72" height="72">
     <h1>Your money,<br>always with you.</h1>
     <p>Log expenses anywhere — even offline. Everything syncs to your Google Sheet when you’re back online.</p>
     <form id="connectForm" autocomplete="off">

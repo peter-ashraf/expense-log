@@ -1,7 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#5B5BF0"/><stop offset="1" stop-color="#8B5CF6"/></linearGradient></defs>
-  <rect width="512" height="512" rx="116" fill="url(#g)"/>
-  <g fill="none" stroke="#fff" stroke-width="30" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M256 120v190M190 250l66 66 66-66M160 392h192"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><style>svg{--bg:#5B5BF0;--body:#FFFFFF;--card:#C9CAFF;--tab:#FBBF24;--dot:#5B5BF0}@media (prefers-color-scheme:dark){svg{--bg:#14162A;--body:#8E8EFF;--card:#4B4C9E;--tab:#FBBF24;--dot:#14162A}}</style><rect width="512" height="512" rx="116" fill="var(--bg)"/><rect x="108" y="128" width="264" height="70" rx="26" fill="var(--card)"/><rect x="80" y="166" width="320" height="226" rx="48" fill="var(--body)"/><rect x="296" y="246" width="138" height="88" rx="44" fill="var(--tab)"/><circle cx="352" cy="290" r="15" fill="var(--dot)"/></svg>
