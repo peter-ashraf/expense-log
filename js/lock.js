@@ -49,8 +49,9 @@ export async function bioEnroll() {
 }
 
 /** Asks for Face ID / Touch ID. Resolves when the user was verified. */
-export async function bioVerify(credId) {
+export async function bioVerify(credId, signal) {
   const a = await navigator.credentials.get({
+    ...(signal ? { signal } : {}),
     publicKey: {
       challenge: rand(32),
       allowCredentials: [{ type: 'public-key', id: b64u.dec(credId), transports: ['internal'] }],

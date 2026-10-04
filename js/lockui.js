@@ -6,7 +6,8 @@ const root = document.documentElement;
 
 let api = null;                 // { getLock, setLock, haptic, onReset }
 let hiddenAt = 0;
-let busy = false;               // a Face ID / Touch ID prompt is on screen
+let busy = false;               // enrolling or re-verifying from Settings (not the lock screen)
+let attempt = null;             // the Face ID / Touch ID request started from the lock screen, if any
 let entry = '';
 let fails = 0;
 let blockedUntil = Number((() => { try { return localStorage.getItem('el_lock_until'); } catch (e) { return 0; } })()) || 0; // survives closing the app
@@ -84,17 +85,29 @@ async function pinKey(k) {
   renderPin();
 }
 
+// An automatic attempt (no tap behind it) can be left waiting forever by iOS without ever being refused. That must
+// never block the next tap: a tap always replaces an older attempt, and every attempt gives up after 30 seconds.
 export async function tryBio(auto) {
-  if (busy || !isLocked() || method() !== 'bio') return;
-  busy = true;
+  if (!isLocked() || method() !== 'bio') return;
+  if (attempt) {
+    if (auto || Date.now() - attempt.at < 1200) return;      // don't stack automatic tries, or double-fire a quick tap
+    attempt.ctl.abort();
+    attempt = null;
+  }
+  const ctl = new AbortController();
+  const mine = { ctl, auto, at: Date.now() };
+  attempt = mine;
+  const timer = setTimeout(() => ctl.abort(), 30000);
   try {
-    await L.bioVerify(cfg().credId);
+    await L.bioVerify(cfg().credId, ctl.signal);
     unlockApp();
   } catch (e) {
+    if (attempt !== mine) return;                            // a newer attempt took over; let it speak
     const cancelled = e && (e.name === 'NotAllowedError' || e.name === 'AbortError');
     setText('Locked', cancelled ? (auto ? 'Tap anywhere to unlock' : 'Cancelled. Tap anywhere to try again') : 'Couldn’t verify. Tap anywhere to try again');
   } finally {
-    busy = false;
+    clearTimeout(timer);
+    if (attempt === mine) attempt = null;
   }
 }
 
@@ -124,6 +137,7 @@ export function onVisibility() {
     if (!isLocked()) root.classList.add('cover');
     return;
   }
+  if (attempt && Date.now() - attempt.at > 1500) { attempt.ctl.abort(); attempt = null; }
   const away = Date.now() - hiddenAt;
   const need = Math.max(1000, (cfg().delay == null ? 60 : cfg().delay) * 1000);
   if (isLocked()) { if (method() === 'bio') setTimeout(() => tryBio(true), 250); }
