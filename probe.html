@@ -269,6 +269,7 @@
   $('#run').addEventListener('click', function () {
     if (running) return;
     running = true;
+    try { localStorage.removeItem('probe_theme'); } catch (e) { /* ignore */ }
     steps = []; marks = {}; events = []; taps = []; $('#log').textContent = '';
     $('#seen').style.display = 'block';
     ['flow', 'fixed'].forEach(function (lay) { ['1', '2', '3', '4', '5'].forEach(function (m) { steps.push({ lay: lay, m: m }); }); });
@@ -298,7 +299,9 @@
     addEvent({ text: 'run started | ' + deviceInfo().split('\n')[1] });
     next();
   });
-  apply('light', '1');
+  var startTheme = 'light';
+  try { if (localStorage.getItem('probe_theme') === 'dark') startTheme = 'dark'; } catch (e) { /* ignore */ }
+  apply(startTheme, '1');                                  // keep whatever the reload experiment asked for
 })();
 </script>
 </body>
