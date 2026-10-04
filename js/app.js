@@ -353,7 +353,7 @@ function openSheet(id) {
 
 // ---- iOS-style sheet presentation ------------------------------------------------------------
 // Opens with a spring slide-up while the app behind scales back; dragging follows the finger
-// (from the header, or from anywhere once the content is scrolled to the top); a flick or a long
+// (by the grey pill only); a flick or a long
 // pull dismisses it, a short pull springs back.
 let sheetClosing = false;
 
@@ -365,12 +365,11 @@ function present(title, headExtra, body, cls = '', foot = '') {
   layer.className = 'open';
   layer.innerHTML = `<div class="scrim" data-act="close"></div>
     <div class="sheet ${cls}" role="dialog" aria-modal="true" aria-label="${esc(title)}">
-      <div class="drag"><div class="grab"></div>
-        <div class="sheet-h">
-          <button class="close" data-act="close" aria-label="Close">${icon('close', 20, 2.2)}</button>
-          <h2>${esc(title)}</h2>
-          <div class="hbtns">${headExtra}</div>
-        </div>
+      <div class="grab-zone" aria-hidden="true"><div class="grab"></div></div>
+      <div class="sheet-h">
+        <button class="close" data-act="close" aria-label="Close">${icon('close', 20, 2.2)}</button>
+        <h2>${esc(title)}</h2>
+        <div class="hbtns">${headExtra}</div>
       </div>
       <div class="sheet-body">${body}</div>
       ${foot ? `<div class="sheet-foot">${foot}</div>` : ''}
@@ -396,8 +395,7 @@ function present(title, headExtra, body, cls = '', foot = '') {
 
 function attachDrag(sheet, scrim) {
   const app = $('#app');
-  const handle = $('.drag', sheet);
-  const body = $('.sheet-body', sheet);
+  const handle = $('.grab-zone', sheet);
   let startY = 0;
   let dy = 0;
   let vel = 0;
@@ -438,38 +436,14 @@ function attachDrag(sheet, scrim) {
     haptic(6);
   };
 
-  // 1) the header / grabber: pointer drag (touch-action: none)
+  // Only the grey pill is a handle; the title row and the content never start a drag.
   handle.addEventListener('pointerdown', (e) => {
-    if (e.target.closest('button')) return;
     try { handle.setPointerCapture(e.pointerId); } catch (err) { /* synthetic or already released */ }
     begin(e.clientY);
   });
   handle.addEventListener('pointermove', (e) => { if (active) move(e.clientY); });
   handle.addEventListener('pointerup', end);
   handle.addEventListener('pointercancel', end);
-
-  // 2) the content: once scrolled to the very top, pulling down drags the whole sheet
-  let t0 = 0;
-  let tracking = false;
-  let pulling = false;
-  body.addEventListener('touchstart', (e) => {
-    t0 = e.touches[0].clientY;
-    tracking = body.scrollTop <= 0;
-    pulling = false;
-  }, { passive: true });
-  body.addEventListener('touchmove', (e) => {
-    const y = e.touches[0].clientY;
-    if (!pulling) {
-      if (!(tracking && body.scrollTop <= 0 && y - t0 > 6)) return;
-      pulling = true;
-      begin(y);
-    }
-    e.preventDefault(); // we own the gesture now; stop the page from scrolling/bouncing
-    move(y);
-  }, { passive: false });
-  const touchDone = () => { if (pulling) { pulling = false; end(); } tracking = false; };
-  body.addEventListener('touchend', touchDone);
-  body.addEventListener('touchcancel', touchDone);
 }
 
 function closeSheet() {
@@ -666,7 +640,13 @@ function fitApp() {
   const gap = standalone && window.innerHeight > window.innerWidth
     ? Math.max(screen.width, screen.height) - window.innerHeight : 0;
   document.documentElement.style.setProperty('--safe-b', gap > 8 ? '0px' : 'env(safe-area-inset-bottom, 0px)');
-  fitApp.info = `view ${window.innerWidth}×${window.innerHeight} · screen ${screen.width}×${screen.height} · gap ${gap} · ${standalone ? 'app' : 'browser'}`;
+  const probe = document.createElement('div');
+  probe.style.cssText = 'position:fixed;left:0;top:0;width:0;padding:env(safe-area-inset-top,0px) 0 env(safe-area-inset-bottom,0px) 0;visibility:hidden';
+  document.body.appendChild(probe);
+  const inset = probe.offsetHeight;
+  probe.remove();
+  const vv = window.visualViewport ? Math.round(window.visualViewport.height) : '-';
+  fitApp.info = `inner ${window.innerWidth}×${window.innerHeight} · visual ${vv} · screen ${screen.width}×${screen.height} · doc ${document.documentElement.clientHeight} · app ${Math.round(app.getBoundingClientRect().height)} · insets(top+bottom) ${inset} · gap ${gap} · ${standalone ? 'app' : 'browser'}`;
 }
 fitApp();
 window.addEventListener('resize', fitApp);
