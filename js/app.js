@@ -350,6 +350,8 @@ function insightsCard(v, m) {
     const i = v.months.indexOf(m.key);
     r = computeInsights({
       m, prev: i > 0 ? v.by[v.months[i - 1]] : null, today: todayStr(), fmt: num0,
+      budget: Number(store.getState().settings.budget) || 0,
+      history: v.months.flatMap((k) => v.by[k].entries.filter((e) => e.type === 'Expense')),
       monthName: (k) => keyLabel(k).split(' ')[0],
     });
   }
@@ -361,7 +363,7 @@ function insightsCard(v, m) {
       ${head}
       ${r.items.map((it) => { const link = it.q && !all; return `<${link ? 'button' : 'div'} class="ins ${it.tone}" ${link ? `data-act="ins-open" data-q="${esc(it.q)}"` : ''} style="${it.cat ? hueStyle(it.cat) : ''}">
         <span class="bubble">${icon(it.icon, 20)}</span>
-        <span class="ins-t"><b>${esc(it.title)}</b><small>${esc(it.detail)}</small></span>
+        <span class="ins-t"><b>${esc(it.title)}</b><small>${esc(it.detail)}</small>${it.bar != null ? `<span class="ins-bar"><i style="width:${Math.min(100, it.bar * 100).toFixed(1)}%"></i></span>` : ''}</span>
         ${it.badge ? `<em>${esc(it.badge)}</em>` : ''}
       </${link ? 'button' : 'div'}>`; }).join('')}
     </section>`;
@@ -448,6 +450,11 @@ function renderSettings(view) {
       <label class="switch block"><input type="checkbox" id="glassSwitch" ${st.settings.glass === false ? '' : 'checked'}><span>Glass bars <small class="muted">(blurred top bar and tab bar)</small></span></label>
       <button class="btn ghost" data-act="refresh-view">Status bar not matching? Refresh</button>
     </section>
+    <section class="card">
+      <div class="card-h"><h3>Monthly budget</h3><span class="badge ${Number(st.settings.budget) > 0 ? 'synced' : ''}">${Number(st.settings.budget) > 0 ? 'On' : 'Off'}</span></div>
+      <label class="field"><span>Spending limit per month</span><input id="budgetInput" type="text" inputmode="decimal" placeholder="e.g. 15000" value="${Number(st.settings.budget) > 0 ? esc(String(st.settings.budget)) : ''}" autocomplete="off"></label>
+      <p class="muted sm" style="margin-top:10px">Smart insights will show how much is left, the daily amount to stay within it, and warn you when you’re heading over. Leave empty to turn it off.</p>
+    </section>
     ${securityCard(st)}
     <section class="card">
       <div class="card-h"><h3>Preferences</h3></div>
@@ -465,7 +472,7 @@ function renderSettings(view) {
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
     </section>
-    <p class="muted center sm">Credit Card Expenses · v2.6</p>
+    <p class="muted center sm">Credit Card Expenses · v2.7</p>
     <p class="muted center xs">${esc(fitApp.info || '')}</p>
   </div>`;
   $('#curInput').addEventListener('change', (e) => store.saveSettings({ currency: e.target.value.trim() }));
@@ -1424,6 +1431,15 @@ document.addEventListener('click', async (ev) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'budgetInput') {
+    const n = parseFloat(String(e.target.value).replace(/,/g, '').trim());
+    const val = Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;
+    store.saveSettings({ budget: val });
+    e.target.value = val || '';
+    toast(val ? 'Budget saved' : 'Budget turned off', 'ok');
+    renderSettings($('#view'));
+    return;
+  }
   if (e.target && e.target.id === 'glassSwitch') {
     store.saveSettings({ glass: e.target.checked });
     document.documentElement.classList.toggle('no-glass', !e.target.checked);

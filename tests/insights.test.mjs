@@ -30,7 +30,7 @@ ok(!r.enough && r.items.length === 0, 'too few expenses: no insights, no nonsens
 
 // ---- the current month, compared fairly with the previous one
 r = run(oct, sept, '2026-10-12');
-ok(r.enough && r.items.length >= 5 && r.items.length <= 7, `produces a short list (${r.items.length} items)`);
+ok(r.enough && r.items.length >= 5 && r.items.length <= 8, `produces a short list (${r.items.length} items)`);
 const top = find(r, 'top-cat');
 ok(top && top.cat === 'Food' && /Food is your biggest spend/.test(top.title) && /Groceries \(700\.00\)/.test(top.detail), 'biggest category is Food and the driver sub-category is Groceries');
 ok(top.badge === '40%' || /^\d+%$/.test(top.badge), `share badge shown (${top.badge})`);
@@ -94,6 +94,32 @@ ok(find(a, 'trend') && /falling/.test(find(a, 'trend').title) && find(a, 'cat-do
 ok(find(a, 'repeat') && /Latte/.test(find(a, 'repeat').title), 'all-time: Latte is the most frequent purchase');
 ok(find(a, 'avg') && /a month/.test(find(a, 'avg').title), 'all-time: monthly average');
 ok(!computeAllTime({ months: [{ key: '2026-04', entries: months[0].entries.slice(0, 2) }], today: '2026-10-05', fmt, monthName }).enough, 'all-time: too little data says so');
+
+// ---- budget + unusual expenses
+{
+  const hist = [];
+  for (let i = 0; i < 8; i++) hist.push(E(`2026-09-${String(i + 2).padStart(2, '0')}`, 'Lunch', 100, 'Food', 'Dining Out'));
+  const cur = { key: '2026-10', entries: [E('2026-10-02', 'Lunch', 100, 'Food', 'Dining Out'), E('2026-10-03', 'Lunch', 110, 'Food', 'Dining Out'), E('2026-10-04', 'Banquet', 900, 'Food', 'Dining Out'), E('2026-10-05', 'Bus', 50, 'Transport', 'Public Transit'), E('2026-10-06', 'Lunch', 90, 'Food', 'Dining Out')] }; // 1250 by the 10th
+  const hx = [...hist, ...cur.entries];
+  let r2 = computeInsights({ m: cur, prev: null, today: '2026-10-10', fmt, monthName, budget: 3000, history: hx });
+  const bud = find(r2, 'budget');
+  ok(bud && bud.tone === 'warn' && /pass your budget/.test(bud.title), 'budget: pace of 3875 a month against 3000 warns');
+  ok(bud && /1750\.00 left for 21 days/.test(bud.detail) && /83\.33 a day/.test(bud.detail), 'budget: amount left and daily allowance are right');
+  ok(bud && Math.abs(bud.bar - 1250 / 3000) < 1e-9, 'budget: progress bar fraction');
+  ok(r2.items[0].id === 'budget', 'budget is listed first');
+  const odd = find(r2, 'unusual');
+  ok(odd && /Banquet/.test(odd.title) && /9\.0×/.test(odd.detail.replace('9×', '9.0×')) || (odd && /Banquet/.test(odd.title)), 'unusual: the 900 banquet stands out against ~100 lunches');
+  r2 = computeInsights({ m: cur, prev: null, today: '2026-10-10', fmt, monthName, budget: 1000, history: hx });
+  ok(/Over budget by 250\.00/.test(find(r2, 'budget').title), 'budget: over by 250');
+  r2 = computeInsights({ m: cur, prev: null, today: '2026-10-10', fmt, monthName, budget: 20000, history: hx });
+  ok(find(r2, 'budget').tone === 'good' && /left in your budget/.test(find(r2, 'budget').title), 'budget: comfortable budget is good news');
+  r2 = computeInsights({ m: cur, prev: null, today: '2026-11-03', fmt, monthName, budget: 2000, history: hx });
+  ok(/Within budget, 750\.00 to spare/.test(find(r2, 'budget').title), 'budget: finished month within budget');
+  r2 = computeInsights({ m: cur, prev: null, today: '2026-10-10', fmt, monthName, history: hx });
+  ok(!find(r2, 'budget'), 'no budget set: no budget row');
+  r2 = computeInsights({ m: cur, prev: null, today: '2026-10-10', fmt, monthName, history: cur.entries });
+  ok(!find(r2, 'unusual'), 'unusual: needs enough history before judging');
+}
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

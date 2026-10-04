@@ -22,10 +22,11 @@ function groupBy(list, keyFn) {
  * m     : { key: '2026-10', entries: [...] }          the month being viewed
  * prev  : the previous month (same shape) or null
  * today : 'YYYY-MM-DD'
+ * budget  : monthly spending limit (0 = none); history: every expense on record, for spotting unusual ones
  * fmt   : amount formatter, monthName: (key) => 'September'
  * Returns { enough: boolean, items: [{ id, icon, cat, tone, title, detail, badge, q }] }
  */
-export function computeInsights({ m, prev, today, fmt, monthName }) {
+export function computeInsights({ m, prev, today, fmt, monthName, budget = 0, history = [] }) {
   const exp = m.entries.filter((e) => e.type === 'Expense');
   const income = sum(m.entries.filter((e) => e.type === 'Income'));
   const spent = sum(exp);
@@ -107,7 +108,7 @@ export function computeInsights({ m, prev, today, fmt, monthName }) {
     if (up) {
       const brandNew = up.was === 0;
       const d = brandNew ? 1 : (up.now - up.was) / up.was;
-      if (brandNew || d >= 0.2) add({ id: 'cat-up', icon: up.cat, cat: up.cat, tone: 'warn', q: up.cat, title: brandNew ? `${up.cat} is new compared with ${prevName}` : `${up.cat} is up ${pct(d)}% on ${prevName}`, detail: brandNew ? `${fmt(up.now)} ${when || 'this month'}, and nothing ${isCurrent ? 'by this day' : 'in'} ${prevName}.` : `${fmt(up.now)} ${when} versus ${fmt(up.was)} ${isCurrent ? 'by this day last month' : 'last month'} (+${fmt(up.now - up.was)}).`, badge: brandNew ? 'new' : `+${pct(d)}%` });
+      if (brandNew || d >= 0.2) add({ id: 'cat-up', icon: up.cat, cat: up.cat, tone: 'warn', q: up.cat, title: brandNew ? `${up.cat} is new compared with ${prevName}` : `${up.cat} is up ${pct(d)}% on ${prevName}`, detail: brandNew ? `${fmt(up.now)} ${when || 'this month'}, and nothing ${isCurrent ? 'by this day in' : 'in'} ${prevName}.` : `${fmt(up.now)} ${when} versus ${fmt(up.was)} ${isCurrent ? 'by this day last month' : 'last month'} (+${fmt(up.now - up.was)}).`, badge: brandNew ? 'new' : `+${pct(d)}%` });
     }
     if (down) {
       const d = (down.was - down.now) / down.was;
@@ -152,10 +153,48 @@ export function computeInsights({ m, prev, today, fmt, monthName }) {
     else if (kept < 0) add({ id: 'over', icon: 'income', tone: 'warn', title: 'Spending is above your income', detail: `${fmt(spent - income)} more went out than came in this month.` });
   }
 
+  // 11) budget
+  if (budget > 0) {
+    const left = budget - spent;
+    const ratio = spent / budget;
+    if (left < 0) add({ id: 'budget', icon: 'chart', tone: 'warn', bar: ratio, title: `Over budget by ${fmt(-left)}`, detail: `You’ve spent ${fmt(spent)} of your ${fmt(budget)} limit${isCurrent && dim - day > 0 ? `, with ${dim - day} day${dim - day === 1 ? '' : 's'} still to go` : ''}.`, badge: `${pct(ratio)}%` });
+    else if (isCurrent) {
+      const daysLeft = dim - day;
+      const projected = day >= 5 ? (spent / day) * dim : null;
+      const risk = projected !== null && projected > budget;
+      add({
+        id: 'budget', icon: 'chart', tone: risk ? 'warn' : 'good', bar: ratio,
+        title: risk ? `At this pace you’ll pass your budget` : `${fmt(left)} left in your budget`,
+        detail: risk
+          ? `${fmt(left)} left for ${daysLeft} day${daysLeft === 1 ? '' : 's'}. To stay within it, keep to ${fmt(left / Math.max(1, daysLeft))} a day (you’re averaging ${fmt(spent / day)}).`
+          : `${daysLeft > 0 ? `That’s ${fmt(left / daysLeft)} a day for the ${daysLeft} day${daysLeft === 1 ? '' : 's'} left.` : 'The month is almost over.'}${projected !== null ? ` You’re on track to finish around ${fmt(projected)}.` : ''}`,
+        badge: `${pct(ratio)}%`,
+      });
+    } else add({ id: 'budget', icon: 'chart', tone: 'good', bar: ratio, title: `Within budget, ${fmt(left)} to spare`, detail: `${fmt(spent)} spent of your ${fmt(budget)} limit.`, badge: `${pct(ratio)}%` });
+  }
+
+  // 12) an expense that stands out from what you usually spend in that category
+  if (history.length) {
+    const medians = new Map();
+    groupBy(history, (e) => e.category).forEach((g) => {
+      if (g.n < 6) return;
+      const xs = g.items.map((e) => e.amount).sort((a, b) => a - b);
+      medians.set(g.key, xs[Math.floor(xs.length / 2)]);
+    });
+    const odd = exp
+      .map((e) => ({ e, med: medians.get(e.category) }))
+      .filter((x) => x.med > 0 && x.e.amount >= x.med * 3 && x.e.amount >= spent * 0.08)
+      .sort((a, b) => b.e.amount / b.med - a.e.amount / a.med)[0];
+    if (odd) {
+      const label = (odd.e.description || '').trim() || odd.e.sub;
+      add({ id: 'unusual', icon: odd.e.category, cat: odd.e.category, tone: 'warn', q: label, title: `${label} stands out`, detail: `${fmt(odd.e.amount)} is about ${Math.round((odd.e.amount / odd.med) * 10) / 10}× a typical ${odd.e.category} purchase (usually around ${fmt(odd.med)}).`, badge: 'unusual' });
+    }
+  }
+
   // keep the list short and put the most useful first
-  const order = ['pace', 'top-cat', 'vs-prev', 'cat-up', 'cat-down', 'saved', 'over', 'subs', 'repeat', 'weekday', 'top-sub', 'free'];
+  const order = ['budget', 'pace', 'unusual', 'top-cat', 'vs-prev', 'cat-up', 'cat-down', 'saved', 'over', 'subs', 'repeat', 'weekday', 'top-sub', 'free'];
   items.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id));
-  return { enough: true, items: items.slice(0, 7) };
+  return { enough: true, items: items.slice(0, 8) };
 }
 
 /**

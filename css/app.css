@@ -524,3 +524,7 @@ button.ins { cursor: pointer; } button.ins:active { opacity: .6; }
 .seg.two button { font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .seg.two button.on { background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
 .ins-seg + .ins { border-top: 0; }
+
+.ins-bar { display: block; height: 6px; margin-top: 8px; border-radius: 99px; background: color-mix(in srgb, var(--muted) 22%, transparent); overflow: hidden; }
+.ins-bar i { display: block; height: 100%; border-radius: 99px; background: var(--pos); }
+.ins.warn .ins-bar i { background: var(--warn); }
