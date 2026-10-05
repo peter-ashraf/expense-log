@@ -650,6 +650,7 @@ html { overscroll-behavior: none; }
 .slide-ready { position: relative; isolation: isolate; }
 .slide-ind { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; box-sizing: border-box; border: 1px solid transparent;
   will-change: transform; transition: transform .42s cubic-bezier(.3, 1.2, .4, 1), width .42s cubic-bezier(.3, 1.2, .4, 1), height .3s ease, background-color .3s ease, border-color .3s ease; }
+.slide-probe, .slide-probe > * { transition: none !important; }
 .slide-ready > .on { background: transparent !important; border-color: transparent !important; }
 .slide-ready > .chip { position: relative; background: transparent; border-color: transparent; }
 .slide-ready > .chip::before { content: ''; position: absolute; inset: 0; z-index: -2; border-radius: inherit; background: var(--surface); border: 1px solid var(--line); transition: opacity .25s; }
