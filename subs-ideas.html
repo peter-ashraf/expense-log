@@ -30,20 +30,36 @@ section.demo p.how { color:var(--muted); font-size:13.5px; margin:4px 0 12px; }
 .btn.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
 
 /* 1 wallet */
-.wallet { position:relative; height:var(--h, 330px); transition:height .45s cubic-bezier(.3,1.2,.4,1); }
-.wcard { position:absolute; left:0; right:0; height:190px; border-radius:22px; color:#fff; padding:16px 18px; cursor:pointer; perspective:900px;
-  transition:transform .5s cubic-bezier(.3,1.15,.4,1), top .5s cubic-bezier(.3,1.15,.4,1), box-shadow .3s; box-shadow:0 -6px 18px -10px rgba(0,0,0,.45); }
-.wcard .face { position:absolute; inset:0; border-radius:22px; padding:16px 18px; backface-visibility:hidden; -webkit-backface-visibility:hidden; transition:transform .6s cubic-bezier(.3,1.1,.4,1);
-  background: linear-gradient(135deg, color-mix(in srgb, var(--c) 92%, #fff), var(--c) 45%, color-mix(in srgb, var(--c) 60%, #000)); }
-.wcard .back { transform:rotateY(180deg); }
+.wallet { position:relative; height:var(--h, 330px); transition:height .55s cubic-bezier(.2,1.15,.3,1); }
+.wcard { position:absolute; left:0; right:0; aspect-ratio:1.586; border-radius:16px; color:#fff; cursor:pointer; perspective:1200px;
+  transition:transform .55s cubic-bezier(.2,1.15,.3,1), top .55s cubic-bezier(.2,1.15,.3,1), filter .3s; }
+.wcard:active { filter:brightness(.97); }
+.wcard .face { position:absolute; inset:0; border-radius:16px; padding:14px 16px; overflow:hidden; backface-visibility:hidden; -webkit-backface-visibility:hidden;
+  transition:transform .7s cubic-bezier(.2,1,.3,1);
+  background:
+    radial-gradient(120% 90% at 0% 0%, color-mix(in srgb, var(--c) 70%, #fff 30%) 0%, transparent 55%),
+    linear-gradient(160deg, var(--c), color-mix(in srgb, var(--c) 55%, #000 45%));
+  box-shadow: inset 0 0 0 .5px rgba(255,255,255,.28), inset 0 1px 0 rgba(255,255,255,.25), 0 1px 2px rgba(0,0,0,.18), 0 14px 28px -14px rgba(0,0,0,.55); }
+/* fine grain + soft sheen, like a real printed card */
+.wcard .face::before { content:''; position:absolute; inset:0; opacity:.13; mix-blend-mode:overlay; pointer-events:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+.wcard .face::after { content:''; position:absolute; inset:-40% -10% auto -10%; height:80%; pointer-events:none;
+  background:linear-gradient(175deg, rgba(255,255,255,.22), rgba(255,255,255,0) 60%); transform:rotate(-8deg); }
+.wcard .back { transform:rotateY(180deg); background:linear-gradient(160deg, color-mix(in srgb, var(--c) 60%, #000 40%), color-mix(in srgb, var(--c) 35%, #000 65%)); }
 .wcard.flip .front { transform:rotateY(-180deg); } .wcard.flip .back { transform:rotateY(0); }
-.wcard .top { display:flex; justify-content:space-between; align-items:center; }
-.wcard .name { font-size:18px; font-weight:800; } .wcard .amt { font-size:20px; font-weight:800; }
-.wcard .glyph { position:absolute; right:14px; bottom:6px; font-size:84px; font-weight:900; opacity:.16; line-height:1; }
-.wcard .row { display:flex; justify-content:space-between; margin-top:8px; font-size:13px; opacity:.92; }
-.wcard .back .btns { position:absolute; left:16px; right:16px; bottom:14px; display:flex; gap:8px; }
-.wcard .back button { flex:1; border:0; border-radius:12px; padding:10px; font-weight:750; background:rgba(255,255,255,.22); color:#fff; cursor:pointer; }
-.wcard .back button.main { background:#fff; color:var(--c); }
+.wcard .top { position:relative; z-index:1; display:flex; align-items:center; gap:10px; height:30px; }
+.wcard .mark { width:30px; height:30px; border-radius:8px; background:rgba(255,255,255,.95); color:var(--c); display:grid; place-items:center; font-weight:900; font-size:15px; box-shadow:0 1px 2px rgba(0,0,0,.2); }
+.wcard .name { font-size:16px; font-weight:700; letter-spacing:-.01em; flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.wcard .fld { text-align:right; }
+.wcard .fld i, .wcard .grid i { display:block; font-style:normal; font-size:9.5px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; opacity:.7; }
+.wcard .fld b { font-size:17px; font-weight:700; letter-spacing:-.01em; font-variant-numeric:tabular-nums; }
+.wcard .grid { position:absolute; z-index:1; left:16px; right:16px; bottom:14px; display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
+.wcard .grid b { font-size:14px; font-weight:650; font-variant-numeric:tabular-nums; }
+.wcard .grid div:last-child { text-align:right; }
+.wcard .back .grid { bottom:auto; top:58px; }
+.wcard .back .btns { position:absolute; z-index:1; left:16px; right:16px; bottom:14px; display:flex; gap:8px; }
+.wcard .back button { flex:1; border:0; border-radius:10px; padding:10px; font-weight:700; font-size:14px; background:rgba(255,255,255,.16); color:#fff; cursor:pointer; backdrop-filter:blur(8px); }
+.wcard .back button.main { background:#fff; color:color-mix(in srgb, var(--c) 80%, #000); }
 .wtotal { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
 .wtotal .big { font-size:30px; font-weight:800; letter-spacing:-.02em; }
 
@@ -110,9 +126,9 @@ section.demo p.how { color:var(--muted); font-size:13.5px; margin:4px 0 12px; }
 .sd.today { background:var(--accent); color:#fff; } .sd.today b { color:#fff; }
 .sd .dot { width:16px; height:16px; border-radius:50%; margin:4px auto 0; background:var(--c); color:#fff; font-size:9px; font-weight:800; display:grid; place-items:center; }
 .sd.sel { outline:2px solid var(--accent); }
-.wcard .r7 { display:flex; gap:6px; margin-top:12px; }
-.wcard .r7 button { border:0; border-radius:99px; padding:4px 10px; background:rgba(255,255,255,.2); color:#fff; font-size:14px; cursor:pointer; }
-.wcard .r7 button.on { background:#fff; }
+.wcard .r7 { position:absolute; z-index:2; left:16px; top:56px; display:flex; gap:6px; }
+.wcard .r7 button { border:0; border-radius:99px; padding:3px 9px; background:rgba(255,255,255,.14); font-size:13px; cursor:pointer; backdrop-filter:blur(6px); box-shadow:inset 0 0 0 .5px rgba(255,255,255,.3); }
+.wcard .r7 button.on { background:rgba(255,255,255,.9); }
 </style>
 </head>
 <body>
@@ -182,26 +198,29 @@ function makeWallet(el, list, opts = {}) {
   const state = opts.state || {};
   function layout() {
     const cards = [...el.children];
-    const peek = 46;
+    if (!cards.length) return;
+    const ch = cards[0].offsetHeight || 210, peek = 56;
     cards.forEach((c, i) => {
       const id = c.dataset.id;
       if (open === null) { c.style.top = i * peek + 'px'; c.style.transform = 'none'; c.style.zIndex = i; }
-      else if (id === open) { c.style.top = '0px'; c.style.transform = 'translateY(0) scale(1)'; c.style.zIndex = 100; }
-      else { const j = cards.filter((x) => x.dataset.id !== open).indexOf(c); c.style.top = 205 + j * 12 + 'px'; c.style.transform = `scale(${0.94 - j * 0.015})`; c.style.zIndex = 50 - j; }
+      else if (id === open) { c.style.top = '0px'; c.style.transform = 'none'; c.style.zIndex = 100; }
+      else { const j = cards.filter((x) => x.dataset.id !== open).indexOf(c); c.style.top = ch + 18 + j * 9 + 'px'; c.style.transform = `scale(${(1 - (j + 1) * 0.025).toFixed(3)})`; c.style.zIndex = 50 - j; }
       c.classList.toggle('flip', id === open && flipped);
     });
-    el.style.setProperty('--h', open === null ? (190 + (cards.length - 1) * peek) + 'px' : (205 + (cards.length - 1) * 12 + 30) + 'px');
+    el.style.setProperty('--h', open === null ? (ch + (cards.length - 1) * peek) + 'px' : (ch + 18 + (cards.length - 2) * 9 + 56) + 'px');
   }
+  const ord = (d) => d + (d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th');
   el.innerHTML = list.map((s) => `<div class="wcard" data-id="${s.id}" style="--c:${s.c}">
-      <div class="face front"><div class="top"><span class="name">${s.name}</span><span class="amt">${fmt(s.amt)}</span></div>
-        <div class="row"><span>Renews ${untilTxt(s.day)}</span><span>Credit Card</span></div>
+      <div class="face front">
+        <div class="top"><span class="mark">${s.l}</span><span class="name">${s.name}</span><span class="fld"><i>Monthly</i><b>${fmt(s.amt)}</b></span></div>
         ${opts.rate ? `<div class="r7">${['🔥', '😐', '💤'].map((e) => `<button data-r="${e}" class="${state[s.id] === e ? 'on' : ''}">${e}</button>`).join('')}</div>` : ''}
-        <div class="glyph">${s.l}</div></div>
-      <div class="face back"><div class="top"><span class="name">${s.name}</span><span class="amt">${fmt(s.amt)}</span></div>
-        <div class="row"><span>Every month on the ${s.day}${s.day === 1 ? 'st' : s.day === 2 ? 'nd' : 'th'}</span></div>
-        <div class="row"><span>A year</span><b>${fmt(Math.round(s.amt * 12))}</b></div>
-        <div class="row"><span>A day</span><b>${fmt(Math.round(s.amt / 30 * 10) / 10)}</b></div>
-        <div class="btns"><button class="main" data-paid="1">Log as paid</button><button data-skip="1">Skip month</button></div></div>
+        <div class="grid"><div><i>Next</i><b>${untilTxt(s.day)}</b></div><div><i>Account</i><b>Card</b></div><div><i>Per year</i><b>${fmt(Math.round(s.amt * 12))}</b></div></div>
+      </div>
+      <div class="face back">
+        <div class="top"><span class="mark">${s.l}</span><span class="name">${s.name}</span><span class="fld"><i>Renews</i><b>${ord(s.day)}</b></span></div>
+        <div class="grid"><div><i>Monthly</i><b>${fmt(s.amt)}</b></div><div><i>Per day</i><b>${fmt(Math.round(s.amt / 30 * 10) / 10)}</b></div><div><i>Per year</i><b>${fmt(Math.round(s.amt * 12))}</b></div></div>
+        <div class="btns"><button class="main" data-paid="1">Log as paid</button><button data-skip="1">Skip month</button></div>
+      </div>
     </div>`).join('');
   el.addEventListener('click', (e) => {
     const c = e.target.closest('.wcard');
