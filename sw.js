@@ -1,4 +1,4 @@
-const CACHE = 'expense-log-v39';
+const CACHE = 'expense-log-v40';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'css/app.css',
