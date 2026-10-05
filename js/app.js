@@ -26,7 +26,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.7.3';
+const APP_VERSION = '3.8.0';
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -40,6 +40,24 @@ const liveAccts = () => accList().filter((a) => !a.archived);
 const multiAcc = () => liveAccts().length > 1;
 const accOf = (name) => accList().find((a) => a.name === name) || null;
 const accHue = (a) => (a && a.type === 'cash' ? 150 : 255);
+const isCash = (a) => !!a && a.type === 'cash';
+// Cash has no monthly limit. The number stored for a cash account is the amount it started with; what is on hand now is
+// that minus the cash spent plus the cash received, over every month. (Setting "cash on me now" just works out the start.)
+function cashFlow(a) {
+  const v = store.view();
+  let spent = 0, income = 0;
+  v.months.forEach((k) => v.by[k].entries.forEach((e) => { if (e.account === a.name) { if (e.type === 'Expense') spent += e.amount; else if (e.type === 'Income') income += e.amount; } }));
+  return { spent, income };
+}
+function cashLeft(a) {
+  if (!(a.limit > 0)) return null;
+  const f = cashFlow(a);
+  return Math.round((a.limit - f.spent + f.income) * 100) / 100;
+}
+function cashStartFor(a, now) {
+  const f = cashFlow(a);
+  return Math.max(0.01, Math.round((now + f.spent - f.income) * 100) / 100);
+}
 const sumBy = (list, type) => list.reduce((n, e) => n + (e.type === type ? e.amount : 0), 0);
 
 // A month limited to the selected account (the same shape as a normal month), or the month itself for "All".
@@ -62,10 +80,10 @@ function accChips() {
 
 // What the insights compare spending against: the account's own limit, or the overall budget / the limits added up.
 function budgetFor() {
-  if (ui.account !== 'all') { const a = accOf(ui.account); return a ? a.limit || 0 : 0; }
+  if (ui.account !== 'all') { const a = accOf(ui.account); return a && !isCash(a) ? a.limit || 0 : 0; }
   const own = Number(store.getState().settings.budget) || 0;
   if (own > 0) return own;
-  const live = liveAccts();
+  const live = liveAccts().filter((a) => !isCash(a));
   return live.length && live.every((a) => a.limit > 0) ? live.reduce((n, a) => n + a.limit, 0) : 0;
 }
 
@@ -253,13 +271,17 @@ function renderHome(view, m) {
   const cats = catTotals(m).slice(0, 5);
   const top = cats.length ? cats[0][1] : 1;
   const acc = m.scoped ? accOf(ui.account) : null;
-  const lim = acc ? acc.limit : 0;
-  const heroLabel = acc ? `${acc.name} · ${lim > 0 ? 'left this month' : 'spent this month'}` : 'Available balance';
-  const heroAmount = acc ? (lim > 0 ? lim - m.spent : m.spent) : m.available;
-  const heroSub = acc
-    ? (lim > 0 ? (m.spent > lim ? `Over the ${fmt(lim)} limit by ${fmt(m.spent - lim)}` : `Monthly limit ${fmt(lim)}`) : 'No limit set. You can add one in Settings')
-    : `Opened the month with ${fmt(m.start)}`;
-  const meterShown = acc ? lim > 0 : true;
+  const cash = isCash(acc);
+  const cashNow = cash ? cashLeft(acc) : null;
+  const lim = acc && !cash ? acc.limit : 0;
+  const heroLabel = cash ? `${acc.name} · ${cashNow !== null ? 'on hand' : 'spent this month'}` : acc ? `${acc.name} · ${lim > 0 ? 'left this month' : 'spent this month'}` : 'Available balance';
+  const heroAmount = cash ? (cashNow !== null ? cashNow : m.spent) : acc ? (lim > 0 ? lim - m.spent : m.spent) : m.available;
+  const heroSub = cash
+    ? (cashNow !== null ? `${fmt(m.spent)} spent this month` : 'Enter the cash you have on you in Settings to track what is left')
+    : acc
+      ? (lim > 0 ? (m.spent > lim ? `Over the ${fmt(lim)} limit by ${fmt(m.spent - lim)}` : `Monthly limit ${fmt(lim)}`) : 'No limit set. You can add one in Settings')
+      : `Opened the month with ${fmt(m.start)}`;
+  const meterShown = acc ? lim > 0 : true;   // (cash never shows a limit meter)
   const meterPct = acc ? Math.max(0, Math.min(100, (m.spent / (lim || 1)) * 100)) : pct;
   const meterCap = acc ? `${dots(Math.round((m.spent / (lim || 1)) * 100))}% of the limit used` : `${dots(Math.round(pct))}% of available funds spent`;
   const rawM = rawMonth();
@@ -277,11 +299,13 @@ function renderHome(view, m) {
       <div class="card-h"><h3>Accounts</h3></div>
       ${liveAccts().map((a) => {
         const sp = sumBy(rawM.entries.filter((e) => e.account === a.name), 'Expense');
-        const r = a.limit > 0 ? sp / a.limit : 0;
+        const left = isCash(a) ? cashLeft(a) : null;
+        const lm = isCash(a) ? 0 : a.limit;
+        const r = lm > 0 ? sp / lm : 0;
         return `<button class="bar-row acc-row ${r > 1 ? 'over' : r > 0.85 ? 'near' : ''}" data-act="acc" data-v="${esc(a.name)}" style="--h:${accHue(a)}">
           <span class="bubble sm">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}</span>
-          <span class="bar-main"><span class="bar-top"><span>${esc(a.name)}</span><b>${esc(num(sp))}${a.limit > 0 ? `<small> / ${esc(num0(a.limit))}</small>` : ''}</b></span>
-          <span class="bar"><i style="width:${a.limit > 0 ? Math.min(100, Math.max(3, r * 100)).toFixed(1) : 0}%"></i></span></span></button>`;
+          <span class="bar-main"><span class="bar-top"><span>${esc(a.name)}</span><b>${left !== null ? `${esc(num(left))}<small> on hand</small>` : `${esc(num(sp))}${lm > 0 ? `<small> / ${esc(num0(lm))}</small>` : ''}`}</b></span>
+          <span class="bar"><i style="width:${lm > 0 ? Math.min(100, Math.max(3, r * 100)).toFixed(1) : 0}%"></i></span></span></button>`;
       }).join('')}
     </section>` : '';
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
@@ -600,7 +624,7 @@ function accountsCard(st) {
   const rows = v.accounts.map((a, i) => `<div class="acc-set ${a.archived ? 'off' : ''}">
       <span class="bubble sm" style="--h:${accHue(a)}">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}</span>
       <span class="acc-name"><b>${esc(a.name)}</b><small>${a.type === 'cash' ? 'Cash' : 'Card'}${i === 0 ? ' · main' : ''}${a.archived ? ' · archived' : ''}</small></span>
-      <input class="acc-limit" inputmode="decimal" placeholder="No limit" data-name="${esc(a.name)}" value="${priv() ? MASK : a.limit > 0 ? esc(String(a.limit)) : ''}" ${priv() ? 'readonly' : ''} aria-label="Monthly limit for ${esc(a.name)}" autocomplete="off">
+      <input class="acc-limit" inputmode="decimal" placeholder="${a.type === 'cash' ? 'Cash on hand' : 'No limit'}" data-name="${esc(a.name)}" value="${priv() ? MASK : a.type === 'cash' ? (cashLeft(a) !== null ? esc(String(cashLeft(a))) : '') : a.limit > 0 ? esc(String(a.limit)) : ''}" ${priv() ? 'readonly' : ''} aria-label="${a.type === 'cash' ? 'Cash on hand for' : 'Monthly limit for'} ${esc(a.name)}" autocomplete="off">
       ${i === 0 ? '' : `<button class="chip" data-act="acc-archive" data-v="${esc(a.name)}">${a.archived ? 'Restore' : 'Archive'}</button>`}
     </div>`).join('');
   return `<section class="card">
@@ -610,9 +634,9 @@ function accountsCard(st) {
       <div class="lbl">Add an account</div>
       <div class="seg two"><button class="${t === 'card' ? 'on' : ''}" data-act="acc-type" data-v="card">${icon('card', 18)}Card</button><button class="${t === 'cash' ? 'on' : ''}" data-act="acc-type" data-v="cash">${icon('cash', 18)}Cash</button></div>
       <div class="acc-new"><label class="field"><span>Name</span><input id="accName" maxlength="30" placeholder="e.g. Cash" autocomplete="off"></label>
-      <label class="field"><span>Monthly limit</span><input id="accLimit" inputmode="decimal" placeholder="Optional" autocomplete="off"></label></div>
+      <label class="field"><span>${t === 'cash' ? 'Cash on hand now' : 'Monthly limit'}</span><input id="accLimit" inputmode="decimal" placeholder="Optional" autocomplete="off"></label></div>
       <button class="btn" data-act="acc-add">${icon('plus', 18)}Add account</button>
-      <p class="muted sm" style="margin-top:10px">Every entry belongs to one account. Limits are per month. Totals and the balance in your sheet still add up all accounts together.</p>
+      <p class="muted sm" style="margin-top:10px">Every entry belongs to one account. Card limits are per month. For Cash, enter what you have on you and the app counts it down as you spend. Totals and the balance in your sheet still add up all accounts together.</p>
     </section>`;
 }
 
@@ -2117,6 +2141,13 @@ document.addEventListener('change', (e) => {
   if (e.target && e.target.classList && e.target.classList.contains('acc-limit')) {
     const n = parseFloat(String(e.target.value).replace(/,/g, '').trim());
     const val = Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;
+    const acct = accOf(e.target.dataset.name);
+    if (isCash(acct)) {
+      store.updateAccount(acct.name, { limit: val ? cashStartFor(acct, val) : 0 });
+      e.target.value = val || '';
+      toast(val ? 'Cash on hand updated' : 'Cash tracking removed', 'ok');
+      return;
+    }
     store.updateAccount(e.target.dataset.name, { limit: val });
     e.target.value = val || '';
     toast(val ? 'Limit saved' : 'Limit removed', 'ok');
