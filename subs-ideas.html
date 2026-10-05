@@ -1,0 +1,422 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Subscription ideas</title>
+<style>
+:root { --bg:#F4F5FA; --surface:#fff; --text:#0E1224; --muted:#6B7085; --line:rgba(14,18,36,.09); --accent:#5B5BF0; --pos:#2E9E62; --neg:#D9534F; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0A0B10; --surface:#151722; --text:#F2F3F8; --muted:#8A8FA6; --line:rgba(255,255,255,.09); } }
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+html { scroll-behavior:smooth; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+.wrap { max-width:480px; margin:0 auto; padding:calc(env(safe-area-inset-top) + 12px) 16px 60px; }
+h1 { font-size:28px; margin:4px 0 2px; letter-spacing:-.02em; }
+.sub { color:var(--muted); margin:0 0 10px; font-size:14px; }
+nav { position:sticky; top:0; z-index:50; display:flex; gap:6px; overflow-x:auto; padding:10px 16px; margin:0 -16px 6px; background:color-mix(in srgb, var(--bg) 88%, transparent); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); scrollbar-width:none; }
+nav::-webkit-scrollbar { display:none; }
+nav a { flex:none; text-decoration:none; color:var(--text); background:var(--surface); border:1px solid var(--line); border-radius:99px; padding:7px 12px; font-size:13px; font-weight:650; }
+nav a.star { background:var(--accent); color:#fff; border-color:transparent; }
+section.demo { margin:22px 0 34px; scroll-margin-top:60px; }
+section.demo h2 { font-size:20px; margin:0; letter-spacing:-.01em; }
+section.demo h2 small { font-size:12px; color:var(--accent); font-weight:700; margin-left:6px; vertical-align:middle; }
+section.demo p.how { color:var(--muted); font-size:13.5px; margin:4px 0 12px; }
+.panel { background:var(--surface); border:1px solid var(--line); border-radius:24px; padding:14px; position:relative; overflow:hidden; }
+.logo { width:38px; height:38px; border-radius:12px; display:grid; place-items:center; color:#fff; font-weight:800; font-size:16px; flex:none; background:var(--c); }
+.muted { color:var(--muted); } .b { font-weight:750; }
+.toast { position:fixed; left:50%; bottom:26px; transform:translate(-50%, 30px); opacity:0; background:var(--text); color:var(--bg); padding:10px 16px; border-radius:99px; font-weight:600; transition:.3s; pointer-events:none; z-index:99; max-width:90vw; text-align:center; }
+.toast.show { transform:translate(-50%,0); opacity:1; }
+.btn { border:0; background:var(--accent); color:#fff; border-radius:99px; padding:8px 14px; font-weight:700; font-size:13px; cursor:pointer; }
+.btn.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+
+/* 1 wallet */
+.wallet { position:relative; height:var(--h, 330px); transition:height .45s cubic-bezier(.3,1.2,.4,1); }
+.wcard { position:absolute; left:0; right:0; height:190px; border-radius:22px; color:#fff; padding:16px 18px; cursor:pointer; perspective:900px;
+  transition:transform .5s cubic-bezier(.3,1.15,.4,1), top .5s cubic-bezier(.3,1.15,.4,1), box-shadow .3s; box-shadow:0 -6px 18px -10px rgba(0,0,0,.45); }
+.wcard .face { position:absolute; inset:0; border-radius:22px; padding:16px 18px; backface-visibility:hidden; -webkit-backface-visibility:hidden; transition:transform .6s cubic-bezier(.3,1.1,.4,1);
+  background: linear-gradient(135deg, color-mix(in srgb, var(--c) 92%, #fff), var(--c) 45%, color-mix(in srgb, var(--c) 60%, #000)); }
+.wcard .back { transform:rotateY(180deg); }
+.wcard.flip .front { transform:rotateY(-180deg); } .wcard.flip .back { transform:rotateY(0); }
+.wcard .top { display:flex; justify-content:space-between; align-items:center; }
+.wcard .name { font-size:18px; font-weight:800; } .wcard .amt { font-size:20px; font-weight:800; }
+.wcard .glyph { position:absolute; right:14px; bottom:6px; font-size:84px; font-weight:900; opacity:.16; line-height:1; }
+.wcard .row { display:flex; justify-content:space-between; margin-top:8px; font-size:13px; opacity:.92; }
+.wcard .back .btns { position:absolute; left:16px; right:16px; bottom:14px; display:flex; gap:8px; }
+.wcard .back button { flex:1; border:0; border-radius:12px; padding:10px; font-weight:750; background:rgba(255,255,255,.22); color:#fff; cursor:pointer; }
+.wcard .back button.main { background:#fff; color:var(--c); }
+.wtotal { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
+.wtotal .big { font-size:30px; font-weight:800; letter-spacing:-.02em; }
+
+/* 2 calendar */
+.cal { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; }
+.cal .dow { text-align:center; font-size:11px; color:var(--muted); font-weight:700; padding-bottom:2px; }
+.cal .d { aspect-ratio:1/1.12; border-radius:12px; background:color-mix(in srgb, var(--text) 4%, transparent); position:relative; display:flex; flex-direction:column; align-items:center; padding-top:3px; font-size:11px; color:var(--muted); cursor:pointer; transition:transform .2s; }
+.cal .d.today { outline:2px solid var(--accent); color:var(--accent); font-weight:800; }
+.cal .d.sel { background:color-mix(in srgb, var(--accent) 16%, transparent); transform:scale(1.06); }
+.cal .d.hot { box-shadow:0 0 0 1px color-mix(in srgb, var(--neg) 50%, transparent), 0 0 16px -2px color-mix(in srgb, var(--neg) 60%, transparent); }
+.cal .coins { position:absolute; bottom:5px; display:flex; flex-direction:column-reverse; align-items:center; }
+.coin { width:20px; height:20px; border-radius:50%; background:var(--c); color:#fff; font-size:10px; font-weight:800; display:grid; place-items:center; margin-top:-8px; border:2px solid var(--surface); animation:drop .5s cubic-bezier(.3,1.5,.5,1) both; }
+@keyframes drop { from { transform:translateY(-26px); opacity:0; } }
+.daylist { margin-top:12px; min-height:52px; }
+.daylist .it { display:flex; align-items:center; gap:10px; padding:8px 0; border-top:1px solid var(--line); animation:fade .3s both; }
+.daylist .it:first-child { border-top:0; }
+@keyframes fade { from { opacity:0; transform:translateY(6px); } }
+
+/* 3 bubbles */
+.tank { position:relative; height:380px; border-radius:22px; background:radial-gradient(circle at 50% 30%, color-mix(in srgb, var(--accent) 10%, var(--surface)), var(--surface)); touch-action:none; overflow:hidden; border:1px solid var(--line); }
+.ball { position:absolute; left:0; top:0; border-radius:50%; display:flex; flex-direction:column; align-items:center; justify-content:center; color:#fff; font-weight:800; text-align:center; cursor:grab; will-change:transform; user-select:none;
+  background:radial-gradient(circle at 32% 28%, rgba(255,255,255,.55), var(--c) 45%, color-mix(in srgb, var(--c) 65%, #000)); box-shadow:0 10px 24px -10px var(--c), inset -4px -6px 12px rgba(0,0,0,.25); }
+.ball small { font-size:10px; font-weight:700; opacity:.9; }
+.ball.big-open { z-index:5; }
+.bin { position:absolute; z-index:20; left:50%; top:10px; background:var(--surface); transform:translateX(-50%); padding:8px 14px; border-radius:99px; border:2px dashed var(--muted); color:var(--muted); font-size:12px; font-weight:700; transition:.2s; pointer-events:none; }
+.bin.hot { border-color:var(--neg); color:var(--neg); transform:translateX(-50%) scale(1.12); background:color-mix(in srgb, var(--neg) 10%, transparent); }
+.tankbar { display:flex; justify-content:space-between; align-items:center; margin-top:10px; }
+
+/* 4 treemap */
+.tm { position:relative; height:320px; border-radius:18px; overflow:hidden; }
+.tile { position:absolute; border:2px solid var(--surface); border-radius:14px; color:#fff; padding:8px 10px; overflow:hidden; cursor:pointer; transition:left .5s cubic-bezier(.3,1.1,.4,1), top .5s cubic-bezier(.3,1.1,.4,1), width .5s cubic-bezier(.3,1.1,.4,1), height .5s cubic-bezier(.3,1.1,.4,1), opacity .3s;
+  background:linear-gradient(150deg, color-mix(in srgb, var(--c) 85%, #fff), var(--c)); }
+.tile.small { padding:6px; } .tile.small b { font-size:11px; } .tile.small span { display:none; }
+.tile b { display:block; font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; } .tile span { font-size:12px; opacity:.9; } .tile .pct { position:absolute; right:10px; bottom:6px; font-size:22px; font-weight:800; opacity:.35; }
+.tmhead { display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; min-height:34px; }
+
+/* 5 ribbon */
+.ribbon { overflow-x:auto; scrollbar-width:none; scroll-snap-type:x proximity; border-radius:18px; }
+.ribbon::-webkit-scrollbar { display:none; }
+.rtrack { position:relative; height:220px; }
+.rday { position:absolute; bottom:0; width:44px; height:28px; text-align:center; font-size:11px; color:var(--muted); scroll-snap-align:center; }
+.rday.today { color:var(--accent); font-weight:800; }
+.rday.today::before { content:''; position:absolute; left:50%; bottom:26px; height:180px; border-left:2px dashed color-mix(in srgb, var(--accent) 50%, transparent); }
+.rlogo { position:absolute; transform:translate(-50%, 0); display:flex; flex-direction:column; align-items:center; gap:3px; font-size:10px; font-weight:700; }
+.rlogo .logo { width:32px; height:32px; border-radius:10px; font-size:14px; box-shadow:0 6px 14px -6px var(--c); }
+.rnow { display:flex; justify-content:space-between; margin-bottom:8px; }
+
+/* 6 rating */
+.rate-row { display:flex; align-items:center; gap:10px; padding:10px 0; border-top:1px solid var(--line); transition:opacity .3s; }
+.rate-row:first-child { border-top:0; }
+.rate-row.cut { opacity:.5; }
+.emo { display:flex; gap:4px; margin-left:auto; }
+.emo button { width:34px; height:34px; border-radius:50%; border:1px solid var(--line); background:transparent; font-size:16px; cursor:pointer; transition:transform .2s; }
+.emo button.on { background:color-mix(in srgb, var(--c) 22%, transparent); border-color:var(--c); transform:scale(1.12); }
+.meter6 { height:10px; border-radius:99px; background:color-mix(in srgb, var(--text) 8%, transparent); overflow:hidden; display:flex; margin:10px 0 6px; }
+.meter6 i { display:block; height:100%; transition:width .4s; }
+.savebox { margin-top:12px; padding:12px 14px; border-radius:16px; background:color-mix(in srgb, var(--pos) 12%, transparent); color:var(--pos); font-weight:650; }
+
+/* 7 combo */
+.strip7 { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; padding:2px 0 10px; margin-bottom:6px; }
+.strip7::-webkit-scrollbar { display:none; }
+.sd { flex:none; width:40px; border-radius:12px; padding:5px 0 6px; text-align:center; font-size:11px; color:var(--muted); background:color-mix(in srgb, var(--text) 4%, transparent); cursor:pointer; transition:.2s; }
+.sd b { display:block; font-size:14px; color:var(--text); }
+.sd.today { background:var(--accent); color:#fff; } .sd.today b { color:#fff; }
+.sd .dot { width:16px; height:16px; border-radius:50%; margin:4px auto 0; background:var(--c); color:#fff; font-size:9px; font-weight:800; display:grid; place-items:center; }
+.sd.sel { outline:2px solid var(--accent); }
+.wcard .r7 { display:flex; gap:6px; margin-top:12px; }
+.wcard .r7 button { border:0; border-radius:99px; padding:4px 10px; background:rgba(255,255,255,.2); color:#fff; font-size:14px; cursor:pointer; }
+.wcard .r7 button.on { background:#fff; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Subscription ideas</h1>
+<p class="sub">Seven interactive previews, all using the same sample data. Nothing is saved. Today is pretended to be Oct 5.</p>
+<nav>
+  <a class="star" href="#d7">★ My pick</a><a href="#d1">1 Wallet</a><a href="#d2">2 Calendar</a><a href="#d3">3 Bubbles</a><a href="#d4">4 Treemap</a><a href="#d5">5 Timeline</a><a href="#d6">6 Worth it?</a>
+</nav>
+
+<section class="demo" id="d7"><h2>★ My pick <small>Wallet + strip + rating</small></h2>
+<p class="how">A strip of days on top (tap a day with a dot), a stack of cards below (tap one to bring it forward, tap again to flip it), and a quick rating on each card.</p>
+<div class="panel"><div class="strip7" id="strip7"></div><div class="wtotal"><div><div class="muted" style="font-size:12px">Fun money this month</div><div class="big" id="tot7"></div></div><div class="muted" id="next7" style="font-size:13px;text-align:right"></div></div><div class="wallet" id="wallet7"></div></div></section>
+
+<section class="demo" id="d1"><h2>1 · Card wallet</h2>
+<p class="how">Like Apple Wallet. Tap a card to pull it out of the stack, tap it again to flip it over, tap the background to put it back.</p>
+<div class="panel"><div class="wtotal"><div><div class="muted" style="font-size:12px">Every month</div><div class="big" id="tot1"></div></div><div class="muted" style="font-size:13px" id="cnt1"></div></div><div class="wallet" id="wallet1"></div></div></section>
+
+<section class="demo" id="d2"><h2>2 · Renewal calendar</h2>
+<p class="how">Each renewal drops in as a coin on its day; expensive days glow. Tap a day to see what is charged.</p>
+<div class="panel"><div class="cal" id="cal"></div><div class="daylist" id="daylist"></div></div></section>
+
+<section class="demo" id="d3"><h2>3 · Physics bubbles</h2>
+<p class="how">Bubble size = yearly cost. Drag and fling them; tilt your phone after tapping “Use tilt”. Drop one on the bin to skip it this month (tap “Reset” to bring them back).</p>
+<div class="tank" id="tank"><div class="bin" id="bin">Skip this month</div></div>
+<div class="tankbar"><span class="muted" id="tankinfo" style="font-size:13px"></span><span><button class="btn ghost" id="tiltBtn">Use tilt</button> <button class="btn ghost" id="resetBtn">Reset</button></span></div></section>
+
+<section class="demo" id="d4"><h2>4 · Treemap</h2>
+<p class="how">Area = share of your fun money, grouped by kind. Tap a group to zoom in, tap “All” to zoom out.</p>
+<div class="panel"><div class="tmhead"><b id="tmtitle">All subscriptions</b><button class="btn ghost" id="tmback" style="visibility:hidden">All</button></div><div class="tm" id="tm"></div></div></section>
+
+<section class="demo" id="d5"><h2>5 · Timeline ribbon</h2>
+<p class="how">The next 30 days, scroll sideways. Logos sit on their renewal day, the line climbs with what you will have paid.</p>
+<div class="panel"><div class="rnow"><span class="muted" style="font-size:13px">Paid so far, from today</span><b id="rsum">0</b></div><div class="ribbon" id="ribbon"><div class="rtrack" id="rtrack"></div></div></div></section>
+
+<section class="demo" id="d6"><h2>6 · Is it worth it?</h2>
+<p class="how">Rate each one: 🔥 love it, 😐 meh, 💤 barely use it. The bar shows where your money goes, and 💤 ones become cancel candidates with the yearly saving.</p>
+<div class="panel"><div class="meter6" id="meter6"></div><div class="muted" style="font-size:12px" id="legend6"></div><div id="rate6" style="margin-top:8px"></div><div class="savebox" id="save6" style="display:none"></div></div></section>
+
+<p class="muted" style="font-size:12px;text-align:center">Sample data · design preview only</p>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+const TODAY = 5, DAYS = 31;
+const SUBS = [
+  { id: 'cl', name: 'Claude', amt: 999.99, day: 2, c: '#D97757', l: 'C', kind: 'AI' },
+  { id: 'nf', name: 'Netflix', amt: 190, day: 1, c: '#E50914', l: 'N', kind: 'Video' },
+  { id: 'sh', name: 'Shahid VIP', amt: 120, day: 25, c: '#7B4DFF', l: 'ش', kind: 'Video' },
+  { id: 'sp', name: 'Spotify', amt: 99, day: 12, c: '#1DB954', l: 'S', kind: 'Music' },
+  { id: 'yt', name: 'YouTube Premium', amt: 75, day: 12, c: '#FF3D3D', l: '▶', kind: 'Video' },
+  { id: 'ps', name: 'PlayStation Plus', amt: 260, day: 18, c: '#2D6BE4', l: 'P', kind: 'Gaming' },
+  { id: 'ic', name: 'iCloud+', amt: 50, day: 8, c: '#3A8DFF', l: '☁', kind: 'Storage' },
+];
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: n % 1 ? 2 : 0 });
+const until = (d) => (d >= TODAY ? d - TODAY : d + DAYS - TODAY);
+const untilTxt = (d) => { const n = until(d); return n === 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${n} days`; };
+const total = SUBS.reduce((n, s) => n + s.amt, 0);
+const buzz = (ms = 8) => navigator.vibrate && navigator.vibrate(ms);
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 1700); buzz(); }
+const byNext = [...SUBS].sort((a, b) => until(a.day) - until(b.day));
+
+// ---------- shared: wallet stack (used by 1 and 7)
+function makeWallet(el, list, opts = {}) {
+  let open = null, flipped = false;
+  const state = opts.state || {};
+  function layout() {
+    const cards = [...el.children];
+    const peek = 46;
+    cards.forEach((c, i) => {
+      const id = c.dataset.id;
+      if (open === null) { c.style.top = i * peek + 'px'; c.style.transform = 'none'; c.style.zIndex = i; }
+      else if (id === open) { c.style.top = '0px'; c.style.transform = 'translateY(0) scale(1)'; c.style.zIndex = 100; }
+      else { const j = cards.filter((x) => x.dataset.id !== open).indexOf(c); c.style.top = 205 + j * 12 + 'px'; c.style.transform = `scale(${0.94 - j * 0.015})`; c.style.zIndex = 50 - j; }
+      c.classList.toggle('flip', id === open && flipped);
+    });
+    el.style.setProperty('--h', open === null ? (190 + (cards.length - 1) * peek) + 'px' : (205 + (cards.length - 1) * 12 + 30) + 'px');
+  }
+  el.innerHTML = list.map((s) => `<div class="wcard" data-id="${s.id}" style="--c:${s.c}">
+      <div class="face front"><div class="top"><span class="name">${s.name}</span><span class="amt">${fmt(s.amt)}</span></div>
+        <div class="row"><span>Renews ${untilTxt(s.day)}</span><span>Credit Card</span></div>
+        ${opts.rate ? `<div class="r7">${['🔥', '😐', '💤'].map((e) => `<button data-r="${e}" class="${state[s.id] === e ? 'on' : ''}">${e}</button>`).join('')}</div>` : ''}
+        <div class="glyph">${s.l}</div></div>
+      <div class="face back"><div class="top"><span class="name">${s.name}</span><span class="amt">${fmt(s.amt)}</span></div>
+        <div class="row"><span>Every month on the ${s.day}${s.day === 1 ? 'st' : s.day === 2 ? 'nd' : 'th'}</span></div>
+        <div class="row"><span>A year</span><b>${fmt(Math.round(s.amt * 12))}</b></div>
+        <div class="row"><span>A day</span><b>${fmt(Math.round(s.amt / 30 * 10) / 10)}</b></div>
+        <div class="btns"><button class="main" data-paid="1">Log as paid</button><button data-skip="1">Skip month</button></div></div>
+    </div>`).join('');
+  el.addEventListener('click', (e) => {
+    const c = e.target.closest('.wcard');
+    const r = e.target.closest('[data-r]');
+    if (r && c) { e.stopPropagation(); state[c.dataset.id] = r.dataset.r; r.parentNode.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === r)); toast(r.dataset.r === '💤' ? 'Marked as barely used' : 'Rated'); opts.onRate && opts.onRate(); return; }
+    if (e.target.closest('[data-paid]')) { toast(`${list.find((s) => s.id === c.dataset.id).name} logged as paid`); open = null; flipped = false; layout(); return; }
+    if (e.target.closest('[data-skip]')) { toast('Skipped this month'); open = null; flipped = false; layout(); return; }
+    if (!c) { open = null; flipped = false; layout(); return; }
+    if (open === c.dataset.id) flipped = !flipped; else { open = c.dataset.id; flipped = false; }
+    buzz(5); layout();
+  });
+  layout();
+  return { openCard(id) { open = id; flipped = false; layout(); } };
+}
+
+// ---------- 1 wallet
+$('tot1').textContent = fmt(total);
+$('cnt1').textContent = `${SUBS.length} subscriptions`;
+makeWallet($('wallet1'), byNext);
+
+// ---------- 2 calendar
+(function () {
+  const first = new Date(2026, 9, 1).getDay(); // Oct 2026
+  const lead = (first + 6) % 7;
+  let html = ['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d) => `<div class="dow">${d}</div>`).join('');
+  for (let i = 0; i < lead; i++) html += '<div></div>';
+  for (let d = 1; d <= DAYS; d++) {
+    const on = SUBS.filter((s) => s.day === d);
+    const sum = on.reduce((n, s) => n + s.amt, 0);
+    html += `<div class="d ${d === TODAY ? 'today' : ''} ${sum > 250 ? 'hot' : ''}" data-d="${d}">${d}<div class="coins">${on.map((s, i) => `<span class="coin" style="--c:${s.c};animation-delay:${0.15 + d * 0.025 + i * 0.08}s">${s.l}</span>`).join('')}</div></div>`;
+  }
+  $('cal').innerHTML = html;
+  const show = (d) => {
+    document.querySelectorAll('#cal .d').forEach((x) => x.classList.toggle('sel', +x.dataset.d === d));
+    const on = SUBS.filter((s) => s.day === d);
+    $('daylist').innerHTML = on.length ? on.map((s) => `<div class="it"><span class="logo" style="--c:${s.c}">${s.l}</span><div><div class="b">${s.name}</div><div class="muted" style="font-size:12px">Oct ${d} · ${untilTxt(d)}</div></div><b style="margin-left:auto">${fmt(s.amt)}</b></div>`).join('')
+      : `<div class="muted" style="font-size:13px;padding-top:6px">Nothing charged on Oct ${d}.</div>`;
+  };
+  $('cal').addEventListener('click', (e) => { const d = e.target.closest('.d'); if (d) { buzz(4); show(+d.dataset.d); } });
+  show(12);
+})();
+
+// ---------- 3 physics bubbles
+(function () {
+  const tank = $('tank'), bin = $('bin');
+  let W = tank.clientWidth, H = tank.clientHeight, gx = 0, gy = 0.35, balls = [], drag = null;
+  const maxY = Math.max(...SUBS.map((s) => s.amt * 12));
+  function build() {
+    tank.querySelectorAll('.ball').forEach((b) => b.remove());
+    balls = SUBS.map((s, i) => {
+      const r = 26 + Math.sqrt(s.amt * 12 / maxY) * 46;
+      const el = document.createElement('div'); el.className = 'ball'; el.style.setProperty('--c', s.c);
+      el.style.width = el.style.height = r * 2 + 'px';
+      el.innerHTML = `<span style="font-size:${Math.max(13, r * .45)}px">${s.l}</span><small>${fmt(Math.round(s.amt * 12))}/yr</small>`;
+      tank.appendChild(el);
+      return { s, el, r, x: 40 + Math.random() * (W - 80), y: 30 + i * 20, vx: (Math.random() - .5) * 4, vy: 0, gone: false };
+    });
+    info();
+  }
+  const info = () => { const live = balls.filter((b) => !b.gone); $('tankinfo').textContent = `${live.length} left · ${fmt(Math.round(live.reduce((n, b) => n + b.s.amt * 12, 0)))} a year`; };
+  function step() {
+    W = tank.clientWidth; H = tank.clientHeight;
+    for (const b of balls) {
+      if (b.gone) continue;
+      if (b !== (drag && drag.b)) { b.vx += gx; b.vy += gy; b.vx *= 0.995; b.vy *= 0.995; b.x += b.vx; b.y += b.vy; }
+      if (b.x < b.r) { b.x = b.r; b.vx *= -0.6; } if (b.x > W - b.r) { b.x = W - b.r; b.vx *= -0.6; }
+      if (b.y < b.r) { b.y = b.r; b.vy *= -0.6; } if (b.y > H - b.r) { b.y = H - b.r; b.vy *= -0.6; b.vx *= 0.98; }
+    }
+    for (let i = 0; i < balls.length; i++) for (let j = i + 1; j < balls.length; j++) {
+      const a = balls[i], c = balls[j]; if (a.gone || c.gone) continue;
+      const dx = c.x - a.x, dy = c.y - a.y, d = Math.hypot(dx, dy) || 1, min = a.r + c.r;
+      if (d < min) { const o = (min - d) / 2, nx = dx / d, ny = dy / d; a.x -= nx * o; a.y -= ny * o; c.x += nx * o; c.y += ny * o;
+        const p = (a.vx - c.vx) * nx + (a.vy - c.vy) * ny; if (p > 0) { a.vx -= p * nx * .9; a.vy -= p * ny * .9; c.vx += p * nx * .9; c.vy += p * ny * .9; } }
+    }
+    for (const b of balls) if (!b.gone) b.el.style.transform = `translate(${b.x - b.r}px, ${b.y - b.r}px)`;
+    requestAnimationFrame(step);
+  }
+  const overBin = (b) => { const r = bin.getBoundingClientRect(), t = tank.getBoundingClientRect(); return b.y - b.r * .5 < r.bottom - t.top && Math.abs(b.x - (r.left + r.width / 2 - t.left)) < r.width / 2 + b.r * .4; };
+  tank.addEventListener('pointerdown', (e) => {
+    const el = e.target.closest('.ball'); if (!el) return;
+    const b = balls.find((x) => x.el === el); const t = tank.getBoundingClientRect();
+    drag = { b, ox: e.clientX - t.left - b.x, oy: e.clientY - t.top - b.y, lx: e.clientX, ly: e.clientY, moved: false };
+    tank.setPointerCapture(e.pointerId); el.style.cursor = 'grabbing';
+  });
+  tank.addEventListener('pointermove', (e) => {
+    if (!drag) return; const t = tank.getBoundingClientRect(), b = drag.b;
+    b.vx = (e.clientX - drag.lx); b.vy = (e.clientY - drag.ly); drag.lx = e.clientX; drag.ly = e.clientY;
+    if (Math.abs(b.vx) + Math.abs(b.vy) > 2) drag.moved = true;
+    b.x = e.clientX - t.left - drag.ox; b.y = e.clientY - t.top - drag.oy;
+    bin.classList.toggle('hot', overBin(b));
+  });
+  const up = () => {
+    if (!drag) return; const b = drag.b; b.el.style.cursor = '';
+    if (overBin(b)) { b.gone = true; b.el.style.transition = 'transform .35s, opacity .35s'; b.el.style.opacity = '0'; b.el.style.transform += ' scale(.2)'; toast(`${b.s.name} skipped this month`); info(); }
+    else if (!drag.moved) toast(`${b.s.name} · ${fmt(b.s.amt)} a month · renews ${untilTxt(b.s.day)}`);
+    bin.classList.remove('hot'); drag = null;
+  };
+  tank.addEventListener('pointerup', up); tank.addEventListener('pointercancel', up);
+  $('resetBtn').onclick = () => { build(); };
+  $('tiltBtn').onclick = async () => {
+    try {
+      if (typeof DeviceOrientationEvent !== 'undefined' && DeviceOrientationEvent.requestPermission) { const r = await DeviceOrientationEvent.requestPermission(); if (r !== 'granted') { toast('Tilt not allowed'); return; } }
+      window.addEventListener('deviceorientation', (e) => { gx = Math.max(-1, Math.min(1, (e.gamma || 0) / 30)) * 0.5; gy = Math.max(-1, Math.min(1, ((e.beta || 45) - 20) / 40)) * 0.5; });
+      $('tiltBtn').textContent = 'Tilt on'; toast('Tilt your phone');
+    } catch (err) { toast('Tilt is not available here'); }
+  };
+  build(); requestAnimationFrame(step);
+})();
+
+// ---------- 4 treemap
+(function () {
+  const KC = { AI: '#D97757', Video: '#E5484D', Music: '#1DB954', Gaming: '#2D6BE4', Storage: '#3A8DFF' };
+  const groups = Object.entries(SUBS.reduce((g, s) => { (g[s.kind] = g[s.kind] || []).push(s); return g; }, {}))
+    .map(([k, items]) => ({ k, items: items.sort((a, b) => b.amt - a.amt), amt: items.reduce((n, s) => n + s.amt, 0) })).sort((a, b) => b.amt - a.amt);
+  // simple squarified-ish: alternate slicing direction
+  function lay(items, x, y, w, h, vertical) {
+    const sum = items.reduce((n, i) => n + i.amt, 0); let off = 0; const out = [];
+    items.forEach((it, idx) => {
+      const f = it.amt / sum;
+      if (idx === items.length - 1) { out.push({ it, x: vertical ? x : x + off, y: vertical ? y + off : y, w: vertical ? w : w - off, h: vertical ? h - off : h }); return; }
+      if (vertical) { const hh = h * f; out.push({ it, x, y: y + off, w, h: hh }); off += hh; }
+      else { const ww = w * f; out.push({ it, x: x + off, y, w: ww, h }); off += ww; }
+    });
+    return out;
+  }
+  function layDeep(items, x, y, w, h) {   // first item gets its own slice, the rest recurse in the other direction
+    if (items.length <= 1) return lay(items, x, y, w, h, h > w);
+    const sum = items.reduce((n, i) => n + i.amt, 0), f = items[0].amt / sum, vertical = h > w;
+    const a = vertical ? { x, y, w, h: h * f } : { x, y, w: w * f, h };
+    const rest = vertical ? [x, y + h * f, w, h * (1 - f)] : [x + w * f, y, w * (1 - f), h];
+    return [{ it: items[0], ...a }, ...layDeep(items.slice(1), ...rest)];
+  }
+  const tm = $('tm');
+  let zoom = null;
+  function draw() {
+    const W = tm.clientWidth, H = tm.clientHeight;
+    const nodes = zoom ? layDeep(zoom.items, 0, 0, W, H).map((n) => ({ ...n, key: n.it.id, c: n.it.c, title: n.it.name, sub: `${fmt(n.it.amt)} a month · ${fmt(Math.round(n.it.amt * 12))} a year`, pct: Math.round(n.it.amt / zoom.amt * 100) }))
+      : layDeep(groups, 0, 0, W, H).map((n) => ({ ...n, key: 'g' + n.it.k, c: KC[n.it.k], title: n.it.k, sub: `${n.it.items.length} · ${fmt(n.it.amt)}/mo`, pct: Math.round(n.it.amt / total * 100), grp: n.it }));
+    const keep = new Set(nodes.map((n) => n.key));
+    [...tm.children].forEach((el) => { if (!keep.has(el.dataset.key)) el.remove(); });
+    nodes.forEach((n, i) => {
+      let el = tm.querySelector(`[data-key="${n.key}"]`);
+      if (!el) { el = document.createElement('div'); el.className = 'tile'; el.dataset.key = n.key; el.style.opacity = 0; el.style.left = W / 2 + 'px'; el.style.top = H / 2 + 'px'; el.style.width = el.style.height = '0px'; tm.appendChild(el); }
+      el.style.setProperty('--c', n.c);
+      el.innerHTML = `<b>${n.title}</b><span>${n.sub}</span><span class="pct">${n.pct}%</span>`;
+      el._grp = n.grp; el.classList.toggle('small', n.w < 90 || n.h < 60);
+      requestAnimationFrame(() => { el.style.opacity = 1; el.style.left = n.x + 'px'; el.style.top = n.y + 'px'; el.style.width = n.w + 'px'; el.style.height = n.h + 'px'; });
+    });
+    $('tmtitle').textContent = zoom ? `${zoom.k} · ${fmt(zoom.amt)} a month` : `All · ${fmt(total)} a month`;
+    $('tmback').style.visibility = zoom ? 'visible' : 'hidden';
+  }
+  tm.addEventListener('click', (e) => { const t = e.target.closest('.tile'); if (!t) return; if (!zoom && t._grp) { zoom = t._grp; buzz(5); draw(); } else if (zoom) toast(t.querySelector('b').textContent + ' · ' + t.querySelector('span').textContent); });
+  $('tmback').onclick = () => { zoom = null; draw(); };
+  draw(); window.addEventListener('resize', draw);
+})();
+
+// ---------- 5 ribbon
+(function () {
+  const COL = 44, H = 220, base = 190;
+  const days = Array.from({ length: 31 }, (_, i) => ((TODAY - 1 + i) % DAYS) + 1);  // today .. +30
+  const items = SUBS.map((s) => ({ s, i: days.indexOf(s.day) })).sort((a, b) => a.i - b.i);
+  const totalAhead = items.reduce((n, x) => n + x.s.amt, 0);
+  let html = days.map((d, i) => `<div class="rday ${i === 0 ? 'today' : ''}" style="left:${i * COL}px">${i === 0 ? 'Today' : (d === 1 ? 'Nov ' : '') + d}</div>`).join('');
+  // cumulative line
+  let run = 0; const pts = [[COL / 2, base]];
+  days.forEach((d, i) => { SUBS.filter((s) => s.day === d).forEach((s) => { pts.push([i * COL + COL / 2, base - run / totalAhead * 120]); run += s.amt; pts.push([i * COL + COL / 2, base - run / totalAhead * 120]); }); });
+  pts.push([days.length * COL - COL / 2, base - run / totalAhead * 120]);
+  html += `<svg width="${days.length * COL}" height="${H}" style="position:absolute;left:0;top:0;pointer-events:none"><polyline points="${pts.map((p) => p.join(',')).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" opacity=".7"/></svg>`;
+  const stack = {};
+  items.forEach(({ s, i }) => { const k = stack[i] = (stack[i] || 0) + 1; html += `<div class="rlogo" style="left:${i * COL + COL / 2}px;top:${8 + (k - 1) * 52}px"><span class="logo" style="--c:${s.c}">${s.l}</span>${fmt(s.amt)}</div>`; });
+  $('rtrack').style.width = days.length * COL + 'px';
+  $('rtrack').innerHTML = html;
+  const rib = $('ribbon');
+  const upd = () => { const idx = Math.floor((rib.scrollLeft + rib.clientWidth * 0.5) / COL); const paid = items.filter((x) => x.i <= idx).reduce((n, x) => n + x.s.amt, 0); $('rsum').textContent = `${fmt(paid)} by ${days[Math.min(idx, days.length - 1)] === TODAY ? 'today' : (idx >= 27 ? 'Nov ' : 'Oct ') + days[Math.min(idx, days.length - 1)]}`; };
+  rib.addEventListener('scroll', upd, { passive: true }); upd();
+})();
+
+// ---------- 6 worth it
+(function () {
+  const rating = { cl: '🔥', nf: '😐', sp: '🔥', ps: '💤' };
+  const col = { '🔥': '#F97316', '😐': '#A1A1AA', '💤': '#6366F1', '': 'transparent' };
+  function draw() {
+    $('rate6').innerHTML = SUBS.map((s) => `<div class="rate-row ${rating[s.id] === '💤' ? 'cut' : ''}" style="--c:${s.c}"><span class="logo" style="--c:${s.c}">${s.l}</span><div><div class="b">${s.name}</div><div class="muted" style="font-size:12px">${fmt(s.amt)} a month</div></div>
+      <div class="emo">${['🔥', '😐', '💤'].map((e) => `<button data-id="${s.id}" data-e="${e}" class="${rating[s.id] === e ? 'on' : ''}">${e}</button>`).join('')}</div></div>`).join('');
+    const sums = { '🔥': 0, '😐': 0, '💤': 0, '': 0 };
+    SUBS.forEach((s) => { sums[rating[s.id] || ''] += s.amt; });
+    $('meter6').innerHTML = ['🔥', '😐', '💤', ''].map((k) => `<i style="width:${(sums[k] / total * 100).toFixed(1)}%;background:${col[k] === 'transparent' ? 'color-mix(in srgb, var(--text) 10%, transparent)' : col[k]}"></i>`).join('');
+    $('legend6').textContent = `🔥 ${fmt(sums['🔥'])} · 😐 ${fmt(sums['😐'])} · 💤 ${fmt(sums['💤'])}${sums[''] ? ` · not rated ${fmt(sums[''])}` : ''}`;
+    const cut = SUBS.filter((s) => rating[s.id] === '💤');
+    $('save6').style.display = cut.length ? 'block' : 'none';
+    $('save6').textContent = `Cancel candidates: ${cut.map((s) => s.name).join(', ')}. You would save ${fmt(Math.round(cut.reduce((n, s) => n + s.amt, 0) * 12))} a year.`;
+  }
+  $('rate6').addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; rating[b.dataset.id] = rating[b.dataset.id] === b.dataset.e ? '' : b.dataset.e; buzz(5); draw(); });
+  draw();
+})();
+
+// ---------- 7 my pick
+(function () {
+  $('tot7').textContent = fmt(total);
+  const n = byNext[0]; $('next7').innerHTML = `Next: <b>${n.name}</b><br>${untilTxt(n.day)} · ${fmt(n.amt)}`;
+  let html = '';
+  for (let i = 0; i < 21; i++) {
+    const d = ((TODAY - 1 + i) % DAYS) + 1, on = SUBS.filter((s) => s.day === d);
+    const dow = ['S', 'M', 'T', 'W', 'T', 'F', 'S'][new Date(2026, 9, d).getDay()];
+    html += `<div class="sd ${i === 0 ? 'today' : ''}" data-d="${d}">${dow}<b>${d}</b>${on.length ? `<span class="dot" style="--c:${on[0].c}">${on.length > 1 ? on.length : on[0].l}</span>` : '<span class="dot" style="background:transparent"></span>'}</div>`;
+  }
+  $('strip7').innerHTML = html;
+  const w = makeWallet($('wallet7'), byNext, { rate: true, state: { cl: '🔥' } });
+  $('strip7').addEventListener('click', (e) => {
+    const d = e.target.closest('.sd'); if (!d) return;
+    document.querySelectorAll('#strip7 .sd').forEach((x) => x.classList.toggle('sel', x === d));
+    const s = SUBS.find((x) => x.day === +d.dataset.d);
+    if (s) { w.openCard(s.id); buzz(5); } else toast('Nothing renews that day');
+  });
+})();
+</script>
+</body>
+</html>
