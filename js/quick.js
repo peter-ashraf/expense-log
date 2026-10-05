@@ -107,7 +107,7 @@ const KW = [
   { re: /\b(flight|airline|egyptair|hotel|booking\.com|airbnb|tour|visa fee|airport)\b|طيران|فندق|رحله|سفر|مطار/, cat: 'Travel', subs: ['Flights', 'Hotels', 'Tours'] },
 ];
 
-const INCOME_RE = /\b(salary|paycheck|pay ?day|bonus|refund(?:ed)?|reimburs\w*|income|received|deposit(?:ed)?|credited|got paid|freelance|cashback)\b|مرتب|راتب|قبضت|استلمت|مكافاه|دخل|ايراد|استرجاع|رجع لي|تحويل وارد/;
+const INCOME_RE = /\b(salary|paycheck|pay ?day|bonus|refund(?:ed)?|reimburs\w*|income|received|deposit(?:ed)?|credited|got paid|freelance|cashback)\b|مرتب|راتب|قبضت|استلمت|مكافاه|(?:^|\s)(?:ال)?دخل(?:ي)?(?=\s|$)|دخلت (?:ال)?(?:فلوس|مبلغ|مرتب)|ايراد|استرجاع|رجع لي|تحويل وارد/;
 const CASH_RE = /\b(cash|in cash)\b|\bكاش\b|نقدي|نقدا|كاش/;
 const CARD_RE = /\b(card|visa|mastercard|master card|credit|apple ?pay|debit)\b|كارت|فيزا|ماستر|كريدت|بطاق/;
 

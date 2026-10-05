@@ -25,7 +25,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.5.6';
+const APP_VERSION = '3.6.0';
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -1027,9 +1027,25 @@ function quickHint(msg) { const h = $('#qHint'); if (h) h.textContent = msg; }
 
 let micWanted = false;         // the person has not tapped stop yet
 
+// iPhone gives the speech engine silence on the 2nd try unless the microphone is already open (tested on a real phone).
+// So the mic is opened when Speak is tapped and closed again shortly after: never held for the whole session.
+let micStream = null, micTimer = null;
+async function holdMic() {
+  clearTimeout(micTimer);
+  if (micStream && micStream.active) return;
+  try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true }); } catch (e) { micStream = null; }
+}
+function releaseMic() {
+  clearTimeout(micTimer);
+  if (micStream) { micStream.getTracks().forEach((t) => t.stop()); micStream = null; }
+}
+document.addEventListener('visibilitychange', () => { if (document.hidden) releaseMic(); });
+
 function stopMic() {
   micWanted = false;
-  if (rec) { try { rec.abort(); } catch (e) { /* ignore */ } rec = null; }
+  clearTimeout(micTimer);
+  micTimer = setTimeout(releaseMic, 15000);     // a quick second try stays smooth; after 15 s the mic is closed
+  if (rec) { try { rec.stop(); } catch (e) { /* ignore */ } rec = null; }
   const b = $('#qMic');
   if (b) { b.classList.remove('on'); b.lastChild.textContent = 'Speak'; }
 }
@@ -1044,9 +1060,9 @@ const MIC_ERRORS = {
 
 function startMic() {
   if (!SpeechRec || !ui.quick) return;
-  if (rec) { stopMic(); return; }
+  if (rec || micWanted) { stopMic(); return; }
   micWanted = true;
-  listenOnce();
+  holdMic().then(() => { if (micWanted && !rec) listenOnce(); });
 }
 
 // iPhone ends a session at the first pause even in "continuous" mode, so the next one starts by itself until you tap stop.
