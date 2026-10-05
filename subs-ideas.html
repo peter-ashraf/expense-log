@@ -146,7 +146,7 @@ section.demo p.how { color:var(--muted); font-size:13.5px; margin:4px 0 12px; }
 <body>
 <div class="wrap">
 <h1>Subscription ideas</h1>
-<p class="sub"><b style="color:var(--accent)">Build 5 · new close animation</b><br>Seven interactive previews, all using the same sample data. Nothing is saved. Today is pretended to be Oct 5.</p>
+<p class="sub"><b style="color:var(--accent)">Build 6 · slower de-stacking</b><br>Seven interactive previews, all using the same sample data. Nothing is saved. Today is pretended to be Oct 5.</p>
 <nav>
   <a class="star" href="#d7">★ My pick</a><a href="#d1">1 Wallet</a><a href="#d2">2 Calendar</a><a href="#d3">3 Bubbles</a><a href="#d4">4 Treemap</a><a href="#d5">5 Timeline</a><a href="#d6">6 Worth it?</a>
 </nav>
@@ -245,7 +245,7 @@ function makeWallet(el, list, opts = {}) {
     c.style.transform = `translate(${dx}px, ${dy}px) scale(${sc})`;
     c.classList.add('flip');
     // like Wallet: the cards under it slide away down the screen, so it later returns into an empty gap
-    below(c).forEach((b, k) => { b.style.transitionDelay = k * 25 + 'ms'; b.style.transform = `translateY(${innerHeight}px)`; });
+    below(c).forEach((b, k) => { b.style.transition = 'transform .95s cubic-bezier(.45,0,.2,1)'; b.style.transitionDelay = k * 60 + 'ms'; b.style.transform = `translateY(${innerHeight}px)`; });
     dim.classList.add('on'); dim._w = api;
     document.documentElement.style.overflow = 'hidden';
     buzz(6);
@@ -266,7 +266,7 @@ function makeWallet(el, list, opts = {}) {
       void c.offsetWidth; c.style.transition = '';
       // then the cards below come back up and settle over its lower part
       const bl = below(c);
-      bl.forEach((b, k) => { b.style.transitionDelay = k * 30 + 'ms'; b.style.transform = ''; });
+      bl.forEach((b, k) => { b.style.transition = ''; b.style.transitionDelay = k * 30 + 'ms'; b.style.transform = ''; });
       setTimeout(() => { bl.forEach((b) => { b.style.transitionDelay = ''; }); busy = false; }, 560 + bl.length * 30);
     }, 640);
   }
