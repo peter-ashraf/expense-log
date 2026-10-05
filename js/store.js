@@ -149,6 +149,14 @@ const clean = (d) => ({
 function enqueue(op) {
   op.opId = uid();
   op.ts = Date.now();
+  if (op.type === 'saveSubscription' || op.type === 'deleteSubscription') {
+    // only the latest pending change per subscription matters; a never-uploaded one that is deleted just disappears
+    const known = (S.snap.subscriptions || []).some((x) => x.id === op.id);
+    S.queue = S.queue.filter((o) => !((o.type === 'saveSubscription' || o.type === 'deleteSubscription') && o.id === op.id));
+    if (op.type === 'saveSubscription' || known) S.queue.push(op);
+    persist(); emit(); scheduleSync();
+    return;
+  }
   const i = S.queue.findIndex((o) => o.id === op.id && o.type !== 'delete');
   if (op.type === 'update') {
     if (i >= 0) S.queue[i].data = op.data; // fold into pending add/update
@@ -242,13 +250,45 @@ export function updateAccount(name, patch) {
   enqueue({ type: 'updateAccount', id: uid(), name, ...patch });
 }
 
+// ---- subscriptions -----------------------------------------------------------
+// Server list + changes made on this device that have not synced yet. An older server script sends no list at all.
+function mergedSubs() {
+  const list = (S.snap.subscriptions || []).map((x) => ({ ...x }));
+  for (const o of S.queue) {
+    if (o.type === 'saveSubscription') {
+      const i = list.findIndex((x) => x.id === o.id);
+      const v = { id: o.id, ...o.data, amount: Number(o.data.amount), day: Number(o.data.day) };
+      if (i >= 0) list[i] = v; else list.push(v);
+    } else if (o.type === 'deleteSubscription') {
+      const i = list.findIndex((x) => x.id === o.id);
+      if (i >= 0) list.splice(i, 1);
+    }
+  }
+  return list;
+}
+
+export function saveSubscription(sub) {
+  const id = sub.id || uid();
+  const data = {
+    name: String(sub.name || '').replace(/\s+/g, ' ').trim(), amount: round2(sub.amount), day: Math.round(Number(sub.day)),
+    category: sub.category || '', sub: sub.sub || '', account: sub.account || '', logo: sub.logo || '', color: sub.color || '',
+    rating: sub.rating || '', paused: !!sub.paused, skipped: sub.skipped || '',
+  };
+  enqueue({ type: 'saveSubscription', id, data });
+  return id;
+}
+
+export function deleteSubscription(id) {
+  enqueue({ type: 'deleteSubscription', id });
+}
+
 // ---- derived view -----------------------------------------------------------
 export function view() {
   if (cache) return cache;
   const map = new Map(S.snap.entries.map((e) => [e.id, e]));
   const pending = new Set();
   for (const o of S.queue) {
-    if (o.type === 'addCategory' || o.type === 'addSub' || o.type === 'addAccount' || o.type === 'updateAccount') continue;
+    if (o.type === 'addCategory' || o.type === 'addSub' || o.type === 'addAccount' || o.type === 'updateAccount' || o.type === 'saveSubscription' || o.type === 'deleteSubscription') continue;
     pending.add(o.id);
     if (o.type === 'delete') map.delete(o.id);
     else map.set(o.id, { id: o.id, ...o.data, amount: Number(o.data.amount) });
@@ -280,7 +320,7 @@ export function view() {
     prev = m.available;
     months[k] = m;
   });
-  cache = { months: sorted, by: months, categories: mergedCategories(), accounts, pending, accountsSupported: S.snap.accounts.length > 0 || !S.lastSync };
+  cache = { months: sorted, by: months, categories: mergedCategories(), accounts, pending, accountsSupported: S.snap.accounts.length > 0 || !S.lastSync, subs: mergedSubs(), subsSupported: Array.isArray(S.snap.subscriptions) || !S.lastSync };
   return cache;
 }
 
@@ -306,7 +346,7 @@ export async function sync() {
     const done = new Set([...(r.applied || []), ...(r.rejected || []).map((x) => x.opId)]);
     if (r.rejected && r.rejected.length) S.rejected = r.rejected;
     S.queue = S.queue.filter((o) => !done.has(o.opId));
-    S.snap = { categories: r.categories, accounts: r.accounts || [], firstStart: r.firstStart, months: r.months, entries: r.entries };
+    S.snap = { categories: r.categories, accounts: r.accounts || [], subscriptions: r.subscriptions, firstStart: r.firstStart, months: r.months, entries: r.entries };
     S.lastSync = Date.now();
     retries = 0;
     S.status = 'synced';

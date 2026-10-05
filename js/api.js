@@ -73,7 +73,12 @@ function seed() {
   entries.push(e(mk(0) + '-09', 'Street food', 60, 'Expense', 'Food', 'Dining Out'));
   entries.forEach((x) => { x.account = x.description === 'Taxi' || x.description === 'Street food' ? 'Cash' : 'Credit Card'; });
   const accounts = [{ name: 'Credit Card', type: 'card', limit: 9000, archived: false }, { name: 'Cash', type: 'cash', limit: 1500, archived: false }];
-  return { firstStart: 150000, months: [mk(2), mk(1), mk(0)], entries, accounts, cats: JSON.parse(JSON.stringify(CATS)) };
+  const subscriptions = [
+    { id: 'demo-sub-nf', name: 'Netflix', amount: 149.99, day: 6, category: 'Subscriptions', sub: 'Netflix', account: 'Credit Card', logo: 'netflix', color: '#E50914', rating: '', paused: false, skipped: '' },
+    { id: 'demo-sub-sp', name: 'Spotify', amount: 99, day: 14, category: 'Subscriptions', sub: '', account: 'Credit Card', logo: 'spotify', color: '#1DB954', rating: '🔥', paused: false, skipped: '' },
+    { id: 'demo-sub-gym', name: 'Gym', amount: 320, day: 11, category: 'Health', sub: 'Gym', account: 'Credit Card', logo: '', color: '#F97316', rating: '', paused: false, skipped: '' },
+  ];
+  return { firstStart: 150000, months: [mk(2), mk(1), mk(0)], entries, accounts, subscriptions, cats: JSON.parse(JSON.stringify(CATS)) };
 }
 
 function demoTransport() {
@@ -87,6 +92,7 @@ function demoTransport() {
     ok: true,
     categories: { order: Object.keys(s.cats || CATS), map: s.cats || CATS },
     accounts: s.accounts || [{ name: 'Credit Card', type: 'card', limit: 0, archived: false }],
+    subscriptions: s.subscriptions || [],
     // like the real server, a blank account means the default (first) account
     entries: s.entries.map((x) => ({ ...x, account: x.account || (s.accounts || [{ name: 'Credit Card' }])[0].name })),
     firstStart: s.firstStart,
@@ -121,6 +127,21 @@ function demoTransport() {
               if (op.limit !== undefined) a.limit = Number(op.limit) > 0 ? Number(op.limit) : 0;
               if (op.archived !== undefined) { if (a === s.accounts[0] && op.archived) throw new Error('The main account cannot be archived.'); a.archived = !!op.archived; }
               if (op.accType !== undefined) a.type = op.accType === 'cash' ? 'cash' : 'card';
+            } else if (op.type === 'saveSubscription') {
+              const d = op.data || {};
+              const nm = String(d.name || '').replace(/\s+/g, ' ').trim();
+              if (!nm) throw new Error('Name cannot be empty.');
+              if (!(Number(d.amount) > 0)) throw new Error('Amount must be greater than zero.');
+              if (!(Number(d.day) >= 1 && Number(d.day) <= 31)) throw new Error('Renewal day must be 1 to 31.');
+              const accs = s.accounts || [{ name: 'Credit Card' }];
+              const acc = d.account ? accs.find((a) => a.name.toLowerCase() === String(d.account).toLowerCase()) : accs[0];
+              if (!acc) throw new Error('Unknown account "' + d.account + '".');
+              const row = { id: op.id, ...d, name: nm, amount: Number(d.amount), day: Math.round(Number(d.day)), account: acc.name, paused: !!d.paused };
+              s.subscriptions = s.subscriptions || [];
+              const i = s.subscriptions.findIndex((x) => x.id === op.id);
+              if (i >= 0) s.subscriptions[i] = row; else s.subscriptions.push(row);
+            } else if (op.type === 'deleteSubscription') {
+              s.subscriptions = (s.subscriptions || []).filter((x) => x.id !== op.id);
             } else if (op.type === 'delete') {
               s.entries = s.entries.filter((x) => x.id !== op.id);
             } else {

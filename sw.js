@@ -1,9 +1,10 @@
-const CACHE = 'expense-log-v45';
+const CACHE = 'expense-log-v46';
 const SHELL = [
   './', 'index.html', 'manifest.webmanifest',
   'css/app.css',
   'js/app.js', 'js/store.js', 'js/api.js', 'js/db.js', 'js/util.js', 'js/icons.js', 'js/xlsx.js', 'js/csv.js', 'js/lock.js', 'js/lockui.js',
-  'js/insights.js', 'js/quick.js', 'js/vault.js', 'js/vaultui.js', 'js/refresh.js', 'js/slide.js',
+  'js/insights.js', 'js/quick.js', 'js/vault.js', 'js/vaultui.js', 'js/refresh.js', 'js/slide.js', 'js/subs.js',
+  'icons/brands/1password.svg', 'icons/brands/applemusic.svg', 'icons/brands/appletv.svg', 'icons/brands/audible.svg', 'icons/brands/claude.svg', 'icons/brands/crunchyroll.svg', 'icons/brands/deezer.svg', 'icons/brands/discord.svg', 'icons/brands/dropbox.svg', 'icons/brands/duolingo.svg', 'icons/brands/epicgames.svg', 'icons/brands/expressvpn.svg', 'icons/brands/github.svg', 'icons/brands/googledrive.svg', 'icons/brands/hbomax.svg', 'icons/brands/icloud.svg', 'icons/brands/netflix.svg', 'icons/brands/nordvpn.svg', 'icons/brands/notion.svg', 'icons/brands/patreon.svg', 'icons/brands/perplexity.svg', 'icons/brands/playstation.svg', 'icons/brands/protonvpn.svg', 'icons/brands/soundcloud.svg', 'icons/brands/spotify.svg', 'icons/brands/steam.svg', 'icons/brands/telegram.svg', 'icons/brands/tidal.svg', 'icons/brands/twitch.svg', 'icons/brands/x.svg', 'icons/brands/youtube.svg', 'icons/brands/youtubemusic.svg',
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/apple-touch-icon-dark.png',
 ];
 

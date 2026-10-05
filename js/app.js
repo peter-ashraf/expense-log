@@ -10,6 +10,7 @@ import * as vault from './vault.js';
 import { promptUnlock } from './vaultui.js';
 import { hardReload } from './refresh.js';
 import { initSlide } from './slide.js';
+import { renderSubsPage, homeStrip, resetSubsUI } from './subs.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -26,7 +27,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.8.0';
+const APP_VERSION = '3.9.0';
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -321,6 +322,7 @@ function renderHome(view, m) {
       ${meterShown ? `<div class="meter"><i style="width:${meterPct.toFixed(1)}%"></i></div>
       <div class="meter-cap">${esc(meterCap)}</div>` : ''}
     </section>
+    ${m.scoped ? '' : homeStrip(fmt)}
     ${streakCard}
     ${accCard}
     ${cats.length ? `<section class="card">
@@ -714,7 +716,7 @@ async function saveEncryption() {
 }
 
 // ---------------------------------------------------------------- settings: a short top level, then one page per topic
-const SET_TITLES = { accounts: 'Accounts & budget', appearance: 'Appearance', security: 'Privacy & security', data: 'Data', about: 'About' };
+const SET_TITLES = { subs: 'Subscriptions', accounts: 'Accounts & budget', appearance: 'Appearance', security: 'Privacy & security', data: 'Data', about: 'About' };
 
 function srow(page, ic, hue, title, sub) {
   return `<button class="srow" data-act="settings-go" data-p="${page}">
@@ -733,6 +735,8 @@ function settingsHome(st) {
   const live = v.accounts.filter((a) => !a.archived);
   const budget = Number(st.settings.budget) || 0;
   const accSub = `${live.length} account${live.length === 1 ? '' : 's'}${budget > 0 ? ` · budget ${num0(budget)}` : ''}`;
+  const liveSubs = v.subs.filter((x) => !x.paused);
+  const subsSub = liveSubs.length ? `${liveSubs.length} · ${num0(liveSubs.reduce((n, x) => n + x.amount, 0))} a month` : 'Netflix, Spotify and the rest';
   const theme = { light: 'Light', dark: 'Dark', system: 'Match my phone' }[st.settings.theme || 'system'];
   const lock = lockCfg();
   const lockLabel = { bio: 'Face ID', pin: 'PIN', off: 'No lock' }[lock.method || 'off'] || 'No lock';
@@ -750,6 +754,7 @@ function settingsHome(st) {
     <p class="set-h">General</p>
     <div class="slist">
       ${srow('accounts', 'card', 255, 'Accounts & budget', accSub)}
+      ${srow('subs', 'subscriptions', 20, 'Subscriptions', subsSub)}
       ${srow('appearance', 'sun', 40, 'Appearance', theme)}
     </div>
     <p class="set-h">Protection</p>
@@ -768,6 +773,7 @@ function renderSettings(view) {
   const st = store.getState();
   const p = SET_TITLES[ui.settingsPage] ? ui.settingsPage : null;
   if (!p) { ui.settingsPage = null; view.innerHTML = settingsHome(st); return; }
+  if (p === 'subs') { renderSubsPage(view, { fmt, toast, animate: ui.animate }); return; }
   const demo = st.cfg && st.cfg.demo;
   const head = `<h2 class="page-title">${esc(SET_TITLES[p])}</h2>`;
   let body = '';
@@ -1871,8 +1877,10 @@ document.addEventListener('click', async (ev) => {
   if (!el) return;
   const act = el.dataset.act;
   switch (act) {
+    case 'open-subs': resetSubsUI(); ui.tab = 'settings'; ui.settingsPage = 'subs'; ui.animate = true; haptic(6); $('#view').innerHTML = ''; render(); break;
     case 'tab':
       closeMonthMenu();
+      resetSubsUI();
       {
         const going = el.dataset.tab;
         const backToTop = going === 'settings' && ui.tab === 'settings' && ui.settingsPage;   // tapping Settings again goes back to the top level
@@ -1881,7 +1889,7 @@ document.addEventListener('click', async (ev) => {
       haptic(6);
       break;
     case 'settings-go': ui.settingsPage = el.dataset.p; ui.animate = true; haptic(6); $('#view').innerHTML = ''; render(); break;
-    case 'settings-back': ui.settingsPage = null; ui.animate = true; haptic(6); $('#view').innerHTML = ''; render(); break;
+    case 'settings-back': resetSubsUI(); ui.settingsPage = null; ui.animate = true; haptic(6); $('#view').innerHTML = ''; render(); break;
     case 'ins-scope':
       ui.insScope = el.dataset.v === 'all' ? 'all' : 'month'; ui.animate = false; haptic(6);
       try { localStorage.setItem('el_ins', ui.insScope); } catch (e) { /* ignore */ }

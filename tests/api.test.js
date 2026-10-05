@@ -237,6 +237,26 @@ ok(r.applied.join() === 'l1', 'legacy "category = sub-category" rows are still a
   r = call('push', { ops: [{ opId: 'z1', type: 'add', id: 'old-client', data: { date: '2026-09-26', description: 'From an old app version', amount: 12, type: 'Expense', category: 'Food', sub: 'Coffee' } }] });
   ok(r.applied.join() === 'z1' && r.entries.find((e) => e.id === 'old-client').account === 'Credit Card', 'older clients that send no account still work');
 
+  // subscriptions (own tab; never touches month tabs)
+  ok(Array.isArray(r.subscriptions) && r.subscriptions.length === 0 && !ss.getSheetByName('Subscriptions'), 'no Subscriptions tab yet: empty list, nothing created on read');
+  const sub = { opId: 'v1', type: 'saveSubscription', id: 'sub-nf', data: { name: ' Netflix ', amount: 190, day: 1, category: 'Subscriptions', sub: 'Netflix', account: 'cash', logo: 'netflix', color: '#E50914' } };
+  r = call('push', { ops: [sub] });
+  ok(r.applied.join() === 'v1' && r.subscriptions.length === 1 && r.subscriptions[0].name === 'Netflix' && r.subscriptions[0].account === 'Cash' && r.subscriptions[0].day === 1, 'subscription saved on its own tab (name trimmed, account resolved)');
+  ok(ss.getSheetByName('Subscriptions').get(1, 1) === 'ID' && ss.getSheetByName('Subscriptions').get(1, 12) === 'Skipped', 'Subscriptions tab has its header');
+  r = call('push', { ops: [{ ...sub, opId: 'v1b' }] });
+  ok(r.subscriptions.length === 1, 'retried save does not duplicate');
+  r = call('push', { ops: [{ opId: 'v2', type: 'saveSubscription', id: 'sub-nf', data: { ...sub.data, amount: 220, rating: '💤', skipped: '2026-10', paused: true } }] });
+  const nf = r.subscriptions[0];
+  ok(nf.amount === 220 && nf.rating === '💤' && nf.skipped === '2026-10' && nf.paused === true, 'edit, rating, skip and pause stored');
+  r = call('push', { ops: [
+    { opId: 'v3', type: 'saveSubscription', id: 'sub-bad1', data: { name: '', amount: 5, day: 3 } },
+    { opId: 'v4', type: 'saveSubscription', id: 'sub-bad2', data: { name: 'X', amount: 0, day: 3 } },
+    { opId: 'v5', type: 'saveSubscription', id: 'sub-bad3', data: { name: 'X', amount: 5, day: 32 } },
+    { opId: 'v6', type: 'saveSubscription', id: 'sub-bad4', data: { name: 'X', amount: 5, day: 3, account: 'Nope' } }] });
+  ok(r.rejected.length === 4 && r.subscriptions.length === 1, 'bad subscriptions rejected (no name, zero amount, day 32, unknown account)');
+  r = call('push', { ops: [{ opId: 'v7', type: 'deleteSubscription', id: 'sub-nf' }, { opId: 'v8', type: 'deleteSubscription', id: 'ghost' }] });
+  ok(r.applied.length === 2 && r.subscriptions.length === 0, 'subscription deleted; deleting a missing one is harmless');
+
   // the original structure is byte-for-byte what it was (only data rows were added below the header)
   const after = legacy();
   const head = (t) => t.split('\n').slice(0, 4).join('\n');

@@ -7,7 +7,8 @@
  * Sheet layout is unchanged (Summary / Categories / one tab per month). Each month tab gets a hidden
  * column G "ID" so edits, deletes and retried uploads can never duplicate or misplace a row, and a hidden
  * column H "Account" (blank = the default account). Spending accounts and their monthly limits live on a
- * separate "Accounts" tab. Nothing that existed before is moved, renamed or removed.
+ * separate "Accounts" tab, recurring subscriptions on a "Subscriptions" tab. Nothing that existed before is
+ * moved, renamed or removed.
  */
 
 var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';
@@ -16,6 +17,8 @@ var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'O
 var HEADERS = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category', 'ID', 'Account'];
 var ACCOUNTS_SHEET = 'Accounts';
 var DEFAULT_ACCOUNT = 'Credit Card';
+var SUBS_SHEET = 'Subscriptions';
+var SUBS_HEADERS = ['ID', 'Name', 'Amount', 'Day', 'Category', 'Sub-Category', 'Account', 'Logo', 'Color', 'Rating', 'Paused', 'Skipped'];
 var BALANCE_LABELS = ['Starting Balance', 'Total Spent', 'Available Balance'];
 var HEADER_ROW = 4;
 var FIRST_ROW = 5;
@@ -72,6 +75,7 @@ function snapshot_() {
     ok: true,
     categories: { order: cats.order, map: cats.map },
     accounts: readAccounts_(),
+    subscriptions: readSubs_(),
     firstStart: firstStart,
     months: sheets.map(function (m) { return m.key; }),
     entries: entries,
@@ -103,6 +107,8 @@ function applyOp_(op) {
   if (op.type === 'addSub') return addSub_(op.category, op.name);
   if (op.type === 'addAccount') return addAccount_(op);
   if (op.type === 'updateAccount') return updateAccount_(op);
+  if (op.type === 'saveSubscription') return saveSub_(op);
+  if (op.type === 'deleteSubscription') return deleteSub_(op);
   var loc = findById_(op.id);
   if (op.type === 'delete') {
     if (loc) loc.sheet.deleteRow(loc.row);
@@ -527,4 +533,63 @@ function updateAccount_(op) {
     return;
   }
   throw new Error('Unknown account "' + op.name + '".');
+}
+
+// ------------------------------------------------------------------ subscriptions (Netflix, Spotify, ...)
+// "Subscriptions" tab, one row each: ID | Name | Amount | Day | Category | Sub-Category | Account | Logo | Color |
+// Rating | Paused | Skipped. Nothing is ever charged automatically: the app only logs a normal entry when asked.
+// "Skipped" holds the month (YYYY-MM) that was skipped, if any.
+
+function readSubs_() {
+  var sh = SpreadsheetApp.getActive().getSheetByName(SUBS_SHEET);
+  var out = [];
+  if (!sh || sh.getLastRow() < 2) return out;
+  sh.getRange(2, 1, sh.getLastRow() - 1, SUBS_HEADERS.length).getValues().forEach(function (r) {
+    var id = String(r[0]).trim(), name = String(r[1]).trim();
+    if (!id || !name) return;
+    var sk = r[11] instanceof Date ? Utilities.formatDate(r[11], 'UTC', 'yyyy-MM') : String(r[11] || '').trim();
+    out.push({ id: id, name: name, amount: Number(r[2]) || 0, day: Math.min(31, Math.max(1, Math.round(Number(r[3]) || 1))),
+               category: String(r[4] || ''), sub: String(r[5] || ''), account: String(r[6] || ''), logo: String(r[7] || ''),
+               color: String(r[8] || ''), rating: String(r[9] || ''), paused: String(r[10]).trim().toLowerCase() === 'yes', skipped: sk });
+  });
+  return out;
+}
+
+function ensureSubsSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(SUBS_SHEET);
+  if (sh) return sh;
+  sh = ss.insertSheet(SUBS_SHEET);
+  sh.getRange(1, 1, 1, SUBS_HEADERS.length).setValues([SUBS_HEADERS]).setFontWeight('bold');
+  sh.setFrozenRows(1);
+  sh.getRange(1, 12, sh.getMaxRows(), 1).setNumberFormat('@');   // keep "2026-10" as text, not a date
+  return sh;
+}
+
+function saveSub_(op) {
+  var d = op.data || {};
+  var name = String(d.name || '').replace(/\s+/g, ' ').trim();
+  if (!name) throw new Error('Name cannot be empty.');
+  if (name.length > 40) throw new Error('Name is too long (40 characters max).');
+  var amount = Math.round(Number(d.amount) * 100) / 100;
+  if (!(amount > 0)) throw new Error('Amount must be greater than zero.');
+  var day = Math.round(Number(d.day));
+  if (!(day >= 1 && day <= 31)) throw new Error('Renewal day must be 1 to 31.');
+  var account = resolveAccount_(d.account);
+  var row = [op.id, name, amount, day, String(d.category || ''), String(d.sub || ''), account, String(d.logo || ''),
+             String(d.color || ''), String(d.rating || ''), d.paused ? 'yes' : '', String(d.skipped || '')];
+  var sh = ensureSubsSheet_();
+  var last = sh.getLastRow();
+  if (last >= 2) {
+    var ids = sh.getRange(2, 1, last - 1, 1).getValues();
+    for (var i = 0; i < ids.length; i++) if (String(ids[i][0]) === String(op.id)) { sh.getRange(i + 2, 1, 1, row.length).setValues([row]); return; }
+  }
+  sh.appendRow(row);
+}
+
+function deleteSub_(op) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(SUBS_SHEET);
+  if (!sh || sh.getLastRow() < 2) return;
+  var ids = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  for (var i = ids.length - 1; i >= 0; i--) if (String(ids[i][0]) === String(op.id)) sh.deleteRow(i + 2);
 }
