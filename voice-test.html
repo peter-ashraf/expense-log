@@ -63,7 +63,9 @@
     <button class="chip on" data-lang="ar-EG">عربي (مصر)</button>
     <button class="chip" data-lang="en-US">English</button>
   </div>
-  <label class="sw"><input type="checkbox" id="reset" checked> Reset the microphone before each try (fixes “hears nothing the second time”) · صفّر المايك قبل كل مرة</label>
+  <label class="sw">Stop / restart method · طريقة الإيقاف:
+    <select id="mode"><option value="stop">A · stop() + new engine (current)</option><option value="abort">B · abort() + new engine</option><option value="reuse">C · stop() + same engine again</option><option value="reuseabort">D · abort() + same engine again</option></select></label>
+  <label class="sw"><input type="checkbox" id="reset"> Reset the microphone before each try (fixes “hears nothing the second time”) · صفّر المايك قبل كل مرة</label>
   <label class="sw"><input type="checkbox" id="cont" checked> Keep listening for long sentences (tap again to stop) · كمّل سماع للجمل الطويلة</label>
   <div class="row"><button class="main" id="mic">اضغط واتكلم · Tap and speak</button></div>
   <div id="heard"><i>اللي الموبايل سمعه هيظهر هنا · What the phone heard appears here</i></div>
@@ -175,18 +177,25 @@ document.querySelectorAll('#langs .chip').forEach((b) => b.addEventListener('cli
   log(`language set to ${lang}`);
 }));
 
+let shared = null, sharedUsed = false;
 let wanted = false;   // the person has not tapped stop yet
 function listen(base) {
-  const r = new SR();
+  const mode = $('#mode').value;
+  const reuse = mode === 'reuse' || mode === 'reuseabort';
+  const r = (reuse && shared) ? shared : new SR();
+  if (reuse) shared = r;
+  r.__base = base; r.__got = false;
+  log(`engine: ${reuse && r === shared && sharedUsed ? 'reused' : 'new'} · method ${mode}`); sharedUsed = true;
   r.lang = lang; r.interimResults = true; r.continuous = $('#cont').checked; r.maxAlternatives = 1;
-  let gotAny = false;
+  if (r.__wired) { r.lang = lang; r.continuous = $('#cont').checked; try { r.start(); rec = r; log('start() called'); } catch (e) { log(`start() threw: ${e.name}: ${e.message}`); rec = null; wanted = false; } return; }
+  r.__wired = true;
   ['audiostart', 'soundstart', 'speechstart', 'speechend', 'soundend', 'audioend', 'nomatch'].forEach((e) => r.addEventListener(e, () => log(`event: ${e}`)));
   r.onstart = () => { log(`event: start (lang ${r.lang}, continuous ${r.continuous})`); $('#mic').classList.add('on'); $('#mic').textContent = '… بسمعك · Listening, tap to stop'; };
   r.onresult = (ev) => {
-    gotAny = true;
+    r.__got = true;
     let heard = '', fin = false, conf = '';
     for (let i = 0; i < ev.results.length; i++) { heard += (i ? ' ' : '') + ev.results[i][0].transcript.trim(); if (ev.results[i].isFinal) { fin = true; conf = (ev.results[i][0].confidence || 0).toFixed(2); } }
-    heard = (base ? base + ' ' : '') + heard;
+    heard = (r.__base ? r.__base + ' ' : '') + heard;
     $('#heard').textContent = heard;
     lastHeard = heard;
     log(`result${fin ? ' (final, confidence ' + conf + ')' : ''}: “${heard}”`);
@@ -197,7 +206,7 @@ function listen(base) {
     log('event: end');
     rec = null;
     // iPhone ends a session at the first pause, even in "continuous" mode: carry on by itself until stop is tapped
-    if (wanted && gotAny) { log('carrying on after the pause'); try { listen(lastHeard); return; } catch (e) { log(`restart failed: ${e.name}`); } }
+    if (wanted && r.__got) { log('carrying on after the pause'); try { listen(lastHeard); return; } catch (e) { log(`restart failed: ${e.name}`); } }
     wanted = false; $('#mic').classList.remove('on'); $('#mic').textContent = 'اضغط واتكلم · Tap and speak';
   };
   try { r.start(); rec = r; log('start() called'); }
@@ -218,7 +227,7 @@ async function releaseMic() {
 }
 $('#mic').addEventListener('click', () => {
   if (!SR) return;
-  if (rec || wanted) { log('tapped stop'); wanted = false; if (!rec) $('#mic').textContent = 'اضغط واتكلم · Tap and speak'; try { if (rec) rec.stop(); } catch (e) { /* ignore */ } return; }
+  if (rec || wanted) { log('tapped stop'); wanted = false; if (!rec) $('#mic').textContent = 'اضغط واتكلم · Tap and speak'; try { if (rec) { const m = $('#mode').value; if (m === 'abort' || m === 'reuseabort') rec.abort(); else rec.stop(); } } catch (e) { /* ignore */ } return; }
   wanted = true; lastHeard = '';
   if (!$('#reset').checked) { listen(''); return; }
   releaseMic().then(() => { if (wanted) listen(''); });
