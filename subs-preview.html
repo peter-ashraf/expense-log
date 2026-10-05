@@ -30,6 +30,28 @@ svg.orbit { width:100%; display:block; touch-action:none; user-select:none; }
 .bub.sleepy { opacity:.35; }
 .bub.ghost circle { fill-opacity:.12; stroke-dasharray:4 4; }
 .hint { text-align:center; font-size:12px; color:var(--muted); margin-top:6px; }
+.space { position:relative; height:330px; border-radius:28px; overflow:hidden; touch-action:none; user-select:none; -webkit-user-select:none; cursor:grab;
+  background: radial-gradient(ellipse at 50% 55%, #2a2466 0%, #120f2e 45%, #07060f 100%); box-shadow: inset 0 0 60px rgba(0,0,0,.6); }
+.space::before { content:''; position:absolute; inset:0; background-image: radial-gradient(1px 1px at 12% 20%, #fff8, transparent), radial-gradient(1px 1px at 78% 14%, #fff9, transparent), radial-gradient(1.5px 1.5px at 30% 80%, #fff6, transparent), radial-gradient(1px 1px at 88% 70%, #fff8, transparent), radial-gradient(1px 1px at 55% 35%, #fff5, transparent), radial-gradient(1px 1px at 8% 60%, #fff7, transparent), radial-gradient(1.5px 1.5px at 66% 90%, #fff6, transparent), radial-gradient(1px 1px at 42% 8%, #fff8, transparent); }
+.rings { position:absolute; inset:0; width:100%; height:100%; }
+.sun { position:absolute; left:50%; top:50%; width:92px; height:92px; margin:-60px 0 0 -46px; border-radius:50%; z-index:500; display:grid; place-items:center; text-align:center; color:#fff; cursor:pointer;
+  background: radial-gradient(circle at 38% 32%, #fff6c9, #ffb547 35%, #ff7a2f 70%, #c2410c); box-shadow: 0 0 40px 10px rgba(255,150,60,.45), 0 0 90px 30px rgba(255,120,40,.18); animation: breathe 4s ease-in-out infinite; }
+@keyframes breathe { 50% { box-shadow: 0 0 52px 14px rgba(255,150,60,.55), 0 0 110px 40px rgba(255,120,40,.22); } }
+.sun .big { font-size:17px; font-weight:800; letter-spacing:-.02em; text-shadow:0 1px 6px rgba(120,40,0,.5); }
+.sun .cap { font-size:9.5px; line-height:1.15; opacity:.92; }
+.sun .mode { display:inline-block; margin-top:3px; font-size:10px; padding:2px 8px; border-radius:99px; background:rgba(0,0,0,.25); font-weight:700; }
+.planet { position:absolute; left:0; top:0; width:44px; height:44px; margin:-22px 0 0 -22px; border-radius:50%; display:grid; place-items:center; color:#fff; font-weight:800; cursor:pointer; will-change:transform;
+  background: radial-gradient(circle at 32% 28%, rgba(255,255,255,.75), var(--c) 38%, color-mix(in srgb, var(--c) 55%, #000) 100%); box-shadow: inset -6px -8px 14px rgba(0,0,0,.45), 0 0 18px -2px var(--c); }
+.planet span { font-size:17px; text-shadow:0 1px 3px rgba(0,0,0,.5); }
+.planet.due::after { content:''; position:absolute; inset:-9px; border-radius:50%; border:2px solid var(--c); opacity:.8; animation: halo 1.4s ease-out infinite; }
+@keyframes halo { from { transform:scale(.85); opacity:.9; } to { transform:scale(1.35); opacity:0; } }
+.planet.sel { outline:3px solid #fff; outline-offset:3px; }
+.planet.paid { filter:saturate(.35); }
+.planet.ghost { background:transparent; border:2px dashed var(--c); box-shadow:none; }
+.planet.sleepy { filter:grayscale(1) brightness(.6); }
+.planet .tag { position:absolute; top:100%; margin-top:6px; transform-origin:top center; font-style:normal; white-space:nowrap; font-size:11px; font-weight:700; color:#fff; background:rgba(0,0,0,.45); padding:2px 7px; border-radius:99px; pointer-events:none; }
+.planet .tag:empty { display:none; }
+.dayline { position:absolute; left:50%; bottom:12px; transform:translateX(-50%); color:#fff; font-size:12px; font-weight:700; background:rgba(255,255,255,.12); padding:4px 12px; border-radius:99px; backdrop-filter:blur(6px); }
 /* tickets */
 .tickets { display:flex; flex-direction:column; gap:12px; }
 .ticket { position:relative; display:flex; background:var(--surface); border:1px solid var(--line); border-radius:18px; overflow:hidden; touch-action:pan-y; transition:transform .3s, box-shadow .3s, opacity .3s; }
@@ -64,11 +86,13 @@ svg.orbit { width:100%; display:block; touch-action:none; user-select:none; }
 <div class="strip" id="strip"></div>
 
 <div class="lbl">October</div>
-<div class="orbit-wrap">
-  <svg class="orbit" id="orbit" viewBox="0 0 340 340"></svg>
-  <div class="center" id="center"></div>
+<div class="space" id="space">
+  <svg class="rings" id="rings" viewBox="0 0 360 300" preserveAspectRatio="none"></svg>
+  <div class="sun" id="sun"><div id="center"></div></div>
+  <div id="planets"></div>
+  <div class="dayline" id="dayline"></div>
 </div>
-<div class="hint">Bubble size = price · position = renewal day</div>
+<div class="hint">Drag sideways to spin through the month · the front is today · tap a planet</div>
 
 <div class="lbl">Tickets</div>
 <div class="tickets" id="tickets"></div>
@@ -96,37 +120,46 @@ const untilTxt = (s) => { const d = s.day >= TODAY ? s.day - TODAY : s.day + DAY
 const untilN = (s) => (s.day >= TODAY ? s.day - TODAY : s.day + DAYS - TODAY);
 function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 1600); navigator.vibrate && navigator.vibrate(8); }
 
+// ---- 3D orbit: each subscription is a planet on its own tilted ring; the front of the rings is "today"
+let view = TODAY;                     // the day facing you (drag changes it)
+const TILT = 0.42;                    // how flat the orbits look
+const ringR = (s) => { const i = [...subs].sort((a, b) => a.amt - b.amt).indexOf(s); return 78 + i * ((Math.min(170, $('space').clientWidth / 2 - 18) - 78) / (subs.length - 1)); };
 function drawOrbit() {
-  const max = Math.max(...subs.map((s) => s.amt));
-  let g = `<circle cx="170" cy="170" r="132" fill="none" stroke="var(--line)" stroke-width="22"/>`;
-  // elapsed arc up to the hand
-  const a0 = ang(1), a1 = ang(hand);
-  const large = a1 - a0 > Math.PI ? 1 : 0;
-  g += `<path d="M ${pt(1,132).join(' ')} A 132 132 0 ${large} 1 ${pt(hand,132).join(' ')}" fill="none" stroke="var(--accent)" stroke-opacity=".22" stroke-width="22" stroke-linecap="round"/>`;
-  for (let d = 1; d <= DAYS; d += 5) { const [x, y] = pt(d, 158); g += `<text x="${x}" y="${y}" font-size="10" fill="var(--muted)" text-anchor="middle" dominant-baseline="middle">${d}</text>`; }
+  const W = $('space').clientWidth, H = $('space').clientHeight, cx = W / 2, cy = H / 2 - 14;
+  // rings (one per planet)
+  $('rings').setAttribute('viewBox', `0 0 ${W} ${H}`);
+  $('rings').innerHTML = subs.map((s) => `<ellipse cx="${cx}" cy="${cy}" rx="${ringR(s)}" ry="${ringR(s) * TILT}" fill="none" stroke="${s.c}" stroke-opacity="${s.ghost ? .25 : .35}" stroke-width="1.2" ${s.ghost ? 'stroke-dasharray="3 4"' : ''}/>`).join('');
   subs.forEach((s) => {
-    const r = 11 + (s.amt / max) * 15;
-    const [x, y] = pt(s.day, 132);
-    const cls = ['bub', sel === s.id ? 'sel' : '', s.ghost ? 'ghost' : '', s.zz >= 2 ? 'sleepy' : ''].join(' ');
-    g += `<g class="${cls}" data-id="${s.id}"><circle cx="${x}" cy="${y}" r="${r}" fill="${s.c}" stroke="${s.c}" stroke-width="2" ${s.paid && !s.ghost ? 'fill-opacity=".45"' : ''}/>
-      <text x="${x}" y="${y + 1}" font-size="${r * .8}" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="middle">${s.l}</text></g>`;
+    let el = document.getElementById('p-' + s.id);
+    if (!el) { el = document.createElement('div'); el.id = 'p-' + s.id; el.className = 'planet'; el.dataset.id = s.id; el.innerHTML = `<span>${s.l}</span><i class="tag"></i>`; $('planets').appendChild(el); }
+    el.style.setProperty('--c', s.c);
+    // angle: renewal day relative to the day in front; front (bottom of the ellipse) = PI/2
+    const a = Math.PI / 2 + ((s.day - view) / DAYS) * Math.PI * 2;
+    const r = ringR(s);
+    const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r * TILT;
+    const depth = (Math.sin(a) + 1) / 2;               // 0 back, 1 front
+    const size = (0.5 + depth * 0.6) * (0.75 + Math.min(1, s.amt / 1000) * 0.45);
+    el.style.transform = `translate(${x}px, ${y}px) scale(${size.toFixed(3)})`;
+    el.style.zIndex = Math.round(depth * 1000);         // the sun sits at 500: back half goes behind it
+    el.style.opacity = s.ghost ? .7 : (0.45 + depth * 0.55).toFixed(2);
+    const n = untilN(s);
+    el.className = 'planet' + (s.ghost ? ' ghost' : '') + (sel === s.id ? ' sel' : '') + (s.paid && !s.ghost ? ' paid' : '') + (s.zz >= 2 ? ' sleepy' : '') + (!s.paid && !s.ghost && n <= 3 ? ' due' : '');
+    el._depth = depth;
   });
-  const [hx, hy] = pt(hand, 112);
-  g += `<line x1="170" y1="170" x2="${hx}" y2="${hy}" stroke="var(--text)" stroke-opacity=".15" stroke-width="2"/>
-    <circle id="knob" cx="${hx}" cy="${hy}" r="10" fill="var(--surface)" stroke="var(--text)" stroke-width="2" style="cursor:grab"/>`;
-  $('orbit').innerHTML = g;
+  // one label only: the selected planet, else the one nearest the front
+  const lead = subs.find((x) => x.id === sel) || subs.reduce((a, b) => (document.getElementById('p-' + b.id)._depth > document.getElementById('p-' + a.id)._depth ? b : a));
+  subs.forEach((x) => { const t = document.getElementById('p-' + x.id).querySelector('.tag'); t.textContent = x === lead ? `${x.name} · ${x.ghost ? 'spotted' : x.paid ? 'paid' : untilTxt(x)} · ${fmt(x.amt)}` : ''; t.style.transform = `scale(${(1 / parseFloat(document.getElementById('p-' + x.id).style.transform.split('scale(')[1])).toFixed(3)})`; });
+  const d = ((Math.round(view) - 1 + DAYS) % DAYS) + 1;
+  $('dayline').textContent = Math.round(view) === TODAY ? `Today · Oct ${TODAY}` : `Oct ${d}`;
 }
 
 function drawCenter() {
-  const L = live().filter((s) => s.zz < 2 || true);
+  const L = live();
   const month = L.reduce((n, s) => n + s.amt, 0);
-  const due = L.filter((s) => !s.paid && s.day >= hand).reduce((n, s) => n + s.amt, 0);
-  const modes = [
-    [fmt(month), 'every month', 'monthly'],
-    [fmt(Math.round(month * 12)), 'every year', 'yearly'],
-    [fmt(Math.round(month / 30)), 'a day for fun', 'daily'],
-  ];
-  const [big, cap, m] = hand !== TODAY ? [fmt(due), `still due after the ${hand}${['st','nd','rd'][((hand+90)%100-10)%10-1]||'th'}`, 'scrubbing'] : modes[mode];
+  const vd = Math.round(view);
+  const due = L.filter((s) => !s.paid && s.day >= vd).reduce((n, s) => n + s.amt, 0);
+  const modes = [[fmt(month), 'every month', 'monthly'], [fmt(Math.round(month * 12)), 'every year', 'yearly'], [fmt(Math.round(month / 30)), 'a day for fun', 'daily']];
+  const [big, cap, m] = vd !== TODAY ? [fmt(due), `still due from Oct ${vd}`, 'time travel'] : modes[mode];
   $('center').innerHTML = `<div class="big">${big}</div><div class="cap">${cap}</div><span class="mode">${m}</span>`;
 }
 
@@ -160,27 +193,42 @@ function select(id) {
   if (t && sel) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
-// orbit: tap bubbles, drag the hand
-const svg = $('orbit');
-let dragging = false;
-function dayFromEvent(e) {
-  const r = svg.getBoundingClientRect();
-  const x = (e.clientX - r.left) / r.width * 340 - 170, y = (e.clientY - r.top) / r.height * 340 - 170;
-  let a = Math.atan2(y, x) + Math.PI / 2; if (a < 0) a += Math.PI * 2;
-  return Math.min(DAYS, Math.max(1, Math.round(a / (Math.PI * 2) * DAYS) + 1));
-}
-svg.addEventListener('pointerdown', (e) => {
-  if (e.target.id === 'knob') { dragging = true; svg.setPointerCapture(e.pointerId); return; }
-  const b = e.target.closest('.bub'); if (!b) return;
-  const s = subs.find((x) => x.id === b.dataset.id);
-  if (s.ghost) { toast(`${s.name} spotted. Add it from the tickets below`); return; }
-  select(s.id);
+// space: drag sideways to spin through the month (the stage owns the touch, so the page does not scroll)
+const space = $('space');
+let drag = null, raf = 0;
+function frame() { drawOrbit(); drawCenter(); raf = 0; }
+const req = () => { if (!raf) raf = requestAnimationFrame(frame); };
+space.addEventListener('pointerdown', (e) => {
+  drag = { x: e.clientX, v0: view, moved: false, target: e.target.closest('.planet'), sun: e.target.closest('.sun') };
+  space.setPointerCapture(e.pointerId); space.style.cursor = 'grabbing'; cancelAnimationFrame(back);
 });
-svg.addEventListener('pointermove', (e) => { if (!dragging) return; const d = dayFromEvent(e); if (d !== hand) { hand = d; drawOrbit(); drawCenter(); navigator.vibrate && navigator.vibrate(3); } });
-const endDrag = () => { if (!dragging) return; dragging = false; const from = hand; const step = () => { hand += hand < TODAY ? 1 : hand > TODAY ? -1 : 0; drawOrbit(); drawCenter(); if (hand !== TODAY) setTimeout(step, 18); }; setTimeout(step, 700); };
-svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
-$('center').addEventListener('click', () => { mode = (mode + 1) % 3; drawCenter(); });
-
+space.addEventListener('pointermove', (e) => {
+  if (!drag) return;
+  const dx = e.clientX - drag.x;
+  if (Math.abs(dx) > 6) drag.moved = true;
+  const nv = drag.v0 - dx / 9;                        // ~9px per day
+  if (Math.round(nv) !== Math.round(view) && navigator.vibrate) navigator.vibrate(2);
+  view = nv; req();
+});
+let back = 0;
+function glideHome() {                                 // ease back to today
+  const step = () => { view += (TODAY - view) * 0.12; if (Math.abs(TODAY - view) < 0.02) { view = TODAY; frame(); return; } frame(); back = requestAnimationFrame(step); };
+  back = requestAnimationFrame(step);
+}
+function endDrag() {
+  if (!drag) return; const d = drag; drag = null; space.style.cursor = '';
+  if (!d.moved) {
+    if (d.target) { const s = subs.find((x) => x.id === d.target.dataset.id); if (s.ghost) toast(`${s.name} spotted. Add it from the tickets below`); else select(s.id); }
+    else if (d.sun) { mode = (mode + 1) % 3; drawCenter(); }
+    return;
+  }
+  setTimeout(glideHome, 900);
+}
+space.addEventListener('pointerup', endDrag); space.addEventListener('pointercancel', endDrag);
+// a gentle idle drift so it feels alive
+let t0 = performance.now();
+(function idle(t) { if (!drag && Math.abs(view - TODAY) < 0.05) { view = TODAY + Math.sin((t - t0) / 1600) * 0.25; drawOrbit(); } requestAnimationFrame(idle); })(t0);
+window.addEventListener('resize', frame);
 // tickets: swipe, rate, add
 let sw = null;
 $('tickets').addEventListener('pointerdown', (e) => {
