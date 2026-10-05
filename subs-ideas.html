@@ -229,6 +229,7 @@ function makeWallet(el, list, opts = {}) {
     cards.forEach((c, i) => { if (c === focused) return; c.style.top = i * peek + 'px'; c.style.zIndex = i; });
     el.style.setProperty('--h', ch + (cards.length - 1) * peek + 'px');
   }
+  const below = (c) => { const cs = [...el.children]; return cs.slice(cs.indexOf(c) + 1); };
   function focus(c) {
     if (busy || focused) return;
     busy = true; focused = c;
@@ -243,6 +244,8 @@ function makeWallet(el, list, opts = {}) {
     const dx = innerWidth / 2 - (r.left + r.width / 2), dy = innerHeight / 2 - (r.top + r.height / 2) - 20;
     c.style.transform = `translate(${dx}px, ${dy}px) scale(${sc})`;
     c.classList.add('flip');
+    // like Wallet: the cards under it slide away down the screen, so it later returns into an empty gap
+    below(c).forEach((b, k) => { b.style.transitionDelay = k * 25 + 'ms'; b.style.transform = `translateY(${innerHeight}px)`; });
     dim.classList.add('on'); dim._w = api;
     document.documentElement.style.overflow = 'hidden';
     buzz(6);
@@ -256,11 +259,15 @@ function makeWallet(el, list, opts = {}) {
     dim.classList.remove('on');
     document.documentElement.style.overflow = '';
     setTimeout(() => {
+      // landed in the gap: nothing overlaps it yet, so dropping back to its own layer is invisible
       c.style.transition = 'none';
       c.classList.remove('focus'); c.style.transform = ''; c.style.left = ''; c.style.width = ''; c.style.right = '';
       focused = null; stack();
       void c.offsetWidth; c.style.transition = '';
-      busy = false;
+      // then the cards below come back up and settle over its lower part
+      const bl = below(c);
+      bl.forEach((b, k) => { b.style.transitionDelay = k * 30 + 'ms'; b.style.transform = ''; });
+      setTimeout(() => { bl.forEach((b) => { b.style.transitionDelay = ''; }); busy = false; }, 560 + bl.length * 30);
     }, 640);
   }
   const api = { unfocus, openCard(id) { const c = el.querySelector(`.wcard[data-id="${id}"]`); if (c) { c.scrollIntoView({ block: 'center', behavior: 'instant' }); requestAnimationFrame(() => focus(c)); } } };
