@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Subscriptions preview</title>
+<style>
+:root { --bg:#F4F5FA; --surface:#fff; --text:#0E1224; --muted:#6B7085; --line:rgba(14,18,36,.08); --accent:#5B5BF0; --pos:#2E9E62; --neg:#D9534F; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0A0B10; --surface:#151722; --text:#F2F3F8; --muted:#8A8FA6; --line:rgba(255,255,255,.08); } }
+* { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { margin:0; background:var(--bg); color:var(--text); font:15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif; padding:calc(env(safe-area-inset-top) + 14px) 16px 40px; max-width:480px; margin-inline:auto; }
+h1 { font-size:28px; margin:6px 0 2px; letter-spacing:-.02em; }
+.sub { color:var(--muted); margin:0 0 14px; font-size:14px; }
+.note { font-size:12px; color:var(--muted); background:var(--surface); border:1px dashed var(--line); border-radius:12px; padding:8px 12px; margin-bottom:14px; }
+/* home strip */
+.strip { display:flex; align-items:center; gap:12px; background:var(--surface); border:1px solid var(--line); border-radius:20px; padding:12px 14px; margin-bottom:18px; }
+.strip .ring { width:38px; height:38px; flex:none; }
+.strip b { display:block; font-size:15px; } .strip small { color:var(--muted); }
+.strip .amt { margin-left:auto; font-weight:700; }
+.lbl { font-size:12px; font-weight:700; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); margin:18px 4px 8px; }
+/* orbit */
+.orbit-wrap { position:relative; background:radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--accent) 14%, var(--surface)), var(--surface) 70%); border:1px solid var(--line); border-radius:28px; padding:10px; }
+svg.orbit { width:100%; display:block; touch-action:none; user-select:none; }
+.center { position:absolute; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center; pointer-events:auto; cursor:pointer; width:46%; }
+.center .big { font-size:30px; font-weight:800; letter-spacing:-.02em; transition:opacity .2s; }
+.center .cap { font-size:12px; color:var(--muted); }
+.center .mode { display:inline-block; margin-top:6px; font-size:11px; padding:3px 9px; border-radius:99px; background:color-mix(in srgb, var(--accent) 16%, transparent); color:var(--accent); font-weight:700; }
+.bub { cursor:pointer; transition:transform .25s cubic-bezier(.3,1.4,.5,1); transform-box:fill-box; transform-origin:center; }
+.bub.sel { transform:scale(1.25); }
+.bub.sleepy { opacity:.35; }
+.bub.ghost circle { fill-opacity:.12; stroke-dasharray:4 4; }
+.hint { text-align:center; font-size:12px; color:var(--muted); margin-top:6px; }
+/* tickets */
+.tickets { display:flex; flex-direction:column; gap:12px; }
+.ticket { position:relative; display:flex; background:var(--surface); border:1px solid var(--line); border-radius:18px; overflow:hidden; touch-action:pan-y; transition:transform .3s, box-shadow .3s, opacity .3s; }
+.ticket.sel { box-shadow:0 0 0 2px var(--c); transform:translateY(-2px); }
+.ticket.sleepy { opacity:.55; }
+.ticket .main { flex:1; padding:14px 14px 12px 16px; display:flex; gap:12px; align-items:center; min-width:0; }
+.logo { width:42px; height:42px; border-radius:13px; display:grid; place-items:center; color:#fff; font-weight:800; font-size:18px; flex:none; background:var(--c); box-shadow:0 8px 18px -8px var(--c); }
+.ticket .t { min-width:0; } .ticket .t b { display:block; } .ticket .t small { color:var(--muted); }
+.rate { display:flex; gap:4px; margin-top:6px; }
+.rate button { border:1px solid var(--line); background:transparent; border-radius:99px; padding:2px 8px; font-size:14px; cursor:pointer; color:var(--text); }
+.rate button.on { background:color-mix(in srgb, var(--c) 18%, transparent); border-color:var(--c); }
+.stub { width:92px; flex:none; border-left:2px dashed var(--line); display:flex; flex-direction:column; align-items:center; justify-content:center; padding:8px; position:relative; transition:transform .45s cubic-bezier(.5,0,.2,1), opacity .45s; }
+.stub::before, .stub::after { content:''; position:absolute; left:-9px; width:16px; height:16px; border-radius:50%; background:var(--bg); }
+.stub::before { top:-9px; } .stub::after { bottom:-9px; }
+.stub .amt { font-weight:800; } .stub .when { font-size:12px; color:var(--muted); }
+.stub .when.soon { color:var(--c); font-weight:700; }
+.ticket.paid .stub { transform:translateX(30px) rotate(12deg); opacity:0; }
+.ticket .swipe-bg { position:absolute; inset:0; display:flex; align-items:center; justify-content:space-between; padding:0 18px; font-weight:700; color:#fff; z-index:-1; }
+.ticket.ghost { border-style:dashed; background:transparent; }
+.ticket.ghost .btn { margin-left:auto; border:0; background:var(--accent); color:#fff; border-radius:99px; padding:8px 12px; font-weight:700; cursor:pointer; }
+.save { margin-top:10px; padding:12px 14px; border-radius:16px; background:color-mix(in srgb, var(--pos) 12%, var(--surface)); color:var(--pos); font-weight:600; display:none; }
+.toast { position:fixed; left:50%; bottom:28px; transform:translate(-50%, 30px); opacity:0; background:var(--text); color:var(--bg); padding:10px 16px; border-radius:99px; font-weight:600; transition:.3s; pointer-events:none; }
+.toast.show { transform:translate(-50%,0); opacity:1; }
+</style>
+</head>
+<body>
+<h1>Subscriptions</h1>
+<p class="sub">Design preview with sample data. Nothing here is saved.</p>
+<div class="note">Try: tap a bubble · drag the white hand around the dial · tap the centre · swipe a ticket right (paid) or left (skip) · rate 💤 twice</div>
+
+<div class="lbl">On Home</div>
+<div class="strip" id="strip"></div>
+
+<div class="lbl">October</div>
+<div class="orbit-wrap">
+  <svg class="orbit" id="orbit" viewBox="0 0 340 340"></svg>
+  <div class="center" id="center"></div>
+</div>
+<div class="hint">Bubble size = price · position = renewal day</div>
+
+<div class="lbl">Tickets</div>
+<div class="tickets" id="tickets"></div>
+<div class="save" id="save"></div>
+<div class="toast" id="toast"></div>
+
+<script>
+const TODAY = 5, DAYS = 31;
+const subs = [
+  { id: 'nf', name: 'Netflix', amt: 190, day: 1, c: '#E50914', l: 'N' },
+  { id: 'cl', name: 'Claude', amt: 999.99, day: 2, c: '#D97757', l: 'C' },
+  { id: 'sp', name: 'Spotify', amt: 99, day: 12, c: '#1DB954', l: 'S' },
+  { id: 'yt', name: 'YouTube Premium', amt: 75, day: 18, c: '#FF3D3D', l: '▶' },
+  { id: 'sh', name: 'Shahid VIP', amt: 120, day: 25, c: '#7B4DFF', l: 'ش' },
+  { id: 'ic', name: 'iCloud+', amt: 50, day: 8, c: '#3A8DFF', l: '☁', ghost: true },
+];
+subs.forEach((s) => { s.paid = s.day < TODAY; s.zz = 0; s.rate = null; });
+let sel = null, hand = TODAY, mode = 0;
+const $ = (id) => document.getElementById(id);
+const fmt = (n) => n.toLocaleString('en-US', { maximumFractionDigits: n % 1 ? 2 : 0 });
+const live = () => subs.filter((s) => !s.ghost);
+const ang = (d) => ((d - 1) / DAYS) * Math.PI * 2 - Math.PI / 2;
+const pt = (d, r) => [170 + Math.cos(ang(d)) * r, 170 + Math.sin(ang(d)) * r];
+const untilTxt = (s) => { const d = s.day >= TODAY ? s.day - TODAY : s.day + DAYS - TODAY; return d === 0 ? 'today' : d === 1 ? 'tomorrow' : `in ${d} days`; };
+const untilN = (s) => (s.day >= TODAY ? s.day - TODAY : s.day + DAYS - TODAY);
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 1600); navigator.vibrate && navigator.vibrate(8); }
+
+function drawOrbit() {
+  const max = Math.max(...subs.map((s) => s.amt));
+  let g = `<circle cx="170" cy="170" r="132" fill="none" stroke="var(--line)" stroke-width="22"/>`;
+  // elapsed arc up to the hand
+  const a0 = ang(1), a1 = ang(hand);
+  const large = a1 - a0 > Math.PI ? 1 : 0;
+  g += `<path d="M ${pt(1,132).join(' ')} A 132 132 0 ${large} 1 ${pt(hand,132).join(' ')}" fill="none" stroke="var(--accent)" stroke-opacity=".22" stroke-width="22" stroke-linecap="round"/>`;
+  for (let d = 1; d <= DAYS; d += 5) { const [x, y] = pt(d, 158); g += `<text x="${x}" y="${y}" font-size="10" fill="var(--muted)" text-anchor="middle" dominant-baseline="middle">${d}</text>`; }
+  subs.forEach((s) => {
+    const r = 11 + (s.amt / max) * 15;
+    const [x, y] = pt(s.day, 132);
+    const cls = ['bub', sel === s.id ? 'sel' : '', s.ghost ? 'ghost' : '', s.zz >= 2 ? 'sleepy' : ''].join(' ');
+    g += `<g class="${cls}" data-id="${s.id}"><circle cx="${x}" cy="${y}" r="${r}" fill="${s.c}" stroke="${s.c}" stroke-width="2" ${s.paid && !s.ghost ? 'fill-opacity=".45"' : ''}/>
+      <text x="${x}" y="${y + 1}" font-size="${r * .8}" font-weight="800" fill="#fff" text-anchor="middle" dominant-baseline="middle">${s.l}</text></g>`;
+  });
+  const [hx, hy] = pt(hand, 112);
+  g += `<line x1="170" y1="170" x2="${hx}" y2="${hy}" stroke="var(--text)" stroke-opacity=".15" stroke-width="2"/>
+    <circle id="knob" cx="${hx}" cy="${hy}" r="10" fill="var(--surface)" stroke="var(--text)" stroke-width="2" style="cursor:grab"/>`;
+  $('orbit').innerHTML = g;
+}
+
+function drawCenter() {
+  const L = live().filter((s) => s.zz < 2 || true);
+  const month = L.reduce((n, s) => n + s.amt, 0);
+  const due = L.filter((s) => !s.paid && s.day >= hand).reduce((n, s) => n + s.amt, 0);
+  const modes = [
+    [fmt(month), 'every month', 'monthly'],
+    [fmt(Math.round(month * 12)), 'every year', 'yearly'],
+    [fmt(Math.round(month / 30)), 'a day for fun', 'daily'],
+  ];
+  const [big, cap, m] = hand !== TODAY ? [fmt(due), `still due after the ${hand}${['st','nd','rd'][((hand+90)%100-10)%10-1]||'th'}`, 'scrubbing'] : modes[mode];
+  $('center').innerHTML = `<div class="big">${big}</div><div class="cap">${cap}</div><span class="mode">${m}</span>`;
+}
+
+function drawStrip() {
+  const next = live().filter((s) => !s.paid).sort((a, b) => untilN(a) - untilN(b))[0];
+  if (!next) { $('strip').innerHTML = '<b>All paid this month 🎉</b>'; return; }
+  const p = 1 - untilN(next) / DAYS;
+  $('strip').innerHTML = `<svg class="ring" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" fill="none" stroke="var(--line)" stroke-width="4"/><circle cx="18" cy="18" r="15" fill="none" stroke="${next.c}" stroke-width="4" stroke-linecap="round" stroke-dasharray="${(p * 94).toFixed(1)} 94" transform="rotate(-90 18 18)"/></svg>
+    <div><b>${next.name}</b><small>renews ${untilTxt(next)}</small></div><span class="amt">${fmt(next.amt)}</span>`;
+}
+
+function drawTickets() {
+  const order = [...subs].sort((a, b) => (a.ghost - b.ghost) || (a.paid - b.paid) || (untilN(a) - untilN(b)));
+  $('tickets').innerHTML = order.map((s) => s.ghost
+    ? `<div class="ticket ghost" style="--c:${s.c}"><div class="main"><div class="logo">${s.l}</div><div class="t"><b>${s.name}?</b><small>Spotted ${fmt(s.amt)} on the ${s.day}th, 3 months in a row</small></div><button class="btn" data-add="${s.id}">Add</button></div></div>`
+    : `<div class="ticket ${sel === s.id ? 'sel' : ''} ${s.paid ? 'paid' : ''} ${s.zz >= 2 ? 'sleepy' : ''}" data-id="${s.id}" style="--c:${s.c}">
+        <div class="main"><div class="logo">${s.l}</div><div class="t"><b>${s.name}</b><small>${s.paid ? 'Paid this month ✓' : 'Credit Card · day ' + s.day}</small>
+          <div class="rate">${['🔥', '😐', '💤'].map((e) => `<button data-rate="${s.id}" data-e="${e}" class="${s.rate === e ? 'on' : ''}">${e}</button>`).join('')}</div></div></div>
+        <div class="stub"><span class="amt">${fmt(s.amt)}</span><span class="when ${untilN(s) <= 3 ? 'soon' : ''}">${s.paid ? 'paid' : untilTxt(s)}</span></div>
+      </div>`).join('');
+  const sleepy = live().filter((s) => s.zz >= 2);
+  const sv = $('save');
+  if (sleepy.length) { sv.style.display = 'block'; sv.textContent = `💤 ${sleepy.map((s) => s.name).join(', ')}: you'd save ${fmt(Math.round(sleepy.reduce((n, s) => n + s.amt, 0) * 12))} a year by cancelling`; }
+  else sv.style.display = 'none';
+}
+
+function all() { drawOrbit(); drawCenter(); drawStrip(); drawTickets(); }
+function select(id) {
+  sel = sel === id ? null : id; all();
+  const t = document.querySelector(`.ticket[data-id="${id}"]`);
+  if (t && sel) t.scrollIntoView({ behavior: 'smooth', block: 'center' });
+}
+
+// orbit: tap bubbles, drag the hand
+const svg = $('orbit');
+let dragging = false;
+function dayFromEvent(e) {
+  const r = svg.getBoundingClientRect();
+  const x = (e.clientX - r.left) / r.width * 340 - 170, y = (e.clientY - r.top) / r.height * 340 - 170;
+  let a = Math.atan2(y, x) + Math.PI / 2; if (a < 0) a += Math.PI * 2;
+  return Math.min(DAYS, Math.max(1, Math.round(a / (Math.PI * 2) * DAYS) + 1));
+}
+svg.addEventListener('pointerdown', (e) => {
+  if (e.target.id === 'knob') { dragging = true; svg.setPointerCapture(e.pointerId); return; }
+  const b = e.target.closest('.bub'); if (!b) return;
+  const s = subs.find((x) => x.id === b.dataset.id);
+  if (s.ghost) { toast(`${s.name} spotted. Add it from the tickets below`); return; }
+  select(s.id);
+});
+svg.addEventListener('pointermove', (e) => { if (!dragging) return; const d = dayFromEvent(e); if (d !== hand) { hand = d; drawOrbit(); drawCenter(); navigator.vibrate && navigator.vibrate(3); } });
+const endDrag = () => { if (!dragging) return; dragging = false; const from = hand; const step = () => { hand += hand < TODAY ? 1 : hand > TODAY ? -1 : 0; drawOrbit(); drawCenter(); if (hand !== TODAY) setTimeout(step, 18); }; setTimeout(step, 700); };
+svg.addEventListener('pointerup', endDrag); svg.addEventListener('pointercancel', endDrag);
+$('center').addEventListener('click', () => { mode = (mode + 1) % 3; drawCenter(); });
+
+// tickets: swipe, rate, add
+let sw = null;
+$('tickets').addEventListener('pointerdown', (e) => {
+  const t = e.target.closest('.ticket:not(.ghost)'); if (!t || e.target.closest('button')) return;
+  sw = { t, x: e.clientX, dx: 0 }; t.style.transition = 'none';
+});
+window.addEventListener('pointermove', (e) => { if (!sw) return; sw.dx = e.clientX - sw.x; sw.t.style.transform = `translateX(${sw.dx}px) rotate(${sw.dx / 40}deg)`; sw.t.style.background = sw.dx > 40 ? 'color-mix(in srgb, var(--pos) 14%, var(--surface))' : sw.dx < -40 ? 'color-mix(in srgb, var(--muted) 14%, var(--surface))' : ''; });
+window.addEventListener('pointerup', () => {
+  if (!sw) return; const { t, dx } = sw; sw = null;
+  t.style.transition = ''; t.style.transform = ''; t.style.background = '';
+  const s = subs.find((x) => x.id === t.dataset.id);
+  if (Math.abs(dx) < 8) { select(s.id); return; }
+  if (dx > 80 && !s.paid) { s.paid = true; toast(`${s.name} · ${fmt(s.amt)} logged as paid`); setTimeout(all, 50); }
+  else if (dx < -80) { s.paid = true; toast(`${s.name} skipped this month`); setTimeout(all, 50); }
+});
+$('tickets').addEventListener('click', (e) => {
+  const r = e.target.closest('[data-rate]');
+  if (r) { const s = subs.find((x) => x.id === r.dataset.rate); s.rate = r.dataset.e; s.zz = r.dataset.e === '💤' ? s.zz + 1 : 0; toast(s.zz === 1 ? 'Noted. One more 💤 and I’ll flag it' : s.zz >= 2 ? `${s.name} looks unused` : 'Rated'); all(); return; }
+  const a = e.target.closest('[data-add]');
+  if (a) { const s = subs.find((x) => x.id === a.dataset.add); s.ghost = false; s.paid = s.day < TODAY; toast(`${s.name} added`); all(); }
+});
+all();
+</script>
+</body>
+</html>
