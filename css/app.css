@@ -645,3 +645,16 @@ html { overscroll-behavior: none; }
 #view { overscroll-behavior-y: contain; }
 #topbar, #tabbar { touch-action: none; }
 .linkbtn { display: block; width: 100%; margin-top: 12px; padding: 8px; text-align: center; color: var(--accent); font-weight: 650; font-size: 14px; }
+
+/* ---------- sliding highlight for pill groups (js/slide.js) ---------- */
+.slide-ready { position: relative; isolation: isolate; }
+.slide-ind { position: absolute; left: 0; top: 0; z-index: -1; pointer-events: none; box-sizing: border-box; border: 1px solid transparent;
+  will-change: transform; transition: transform .42s cubic-bezier(.3, 1.2, .4, 1), width .42s cubic-bezier(.3, 1.2, .4, 1), height .3s ease, background-color .3s ease, border-color .3s ease; }
+.slide-ready > .on { background: transparent !important; border-color: transparent !important; }
+.slide-ready > .chip { position: relative; background: transparent; border-color: transparent; }
+.slide-ready > .chip::before { content: ''; position: absolute; inset: 0; z-index: -2; border-radius: inherit; background: var(--surface); border: 1px solid var(--line); transition: opacity .25s; }
+.slide-ready > .chip.on::before { opacity: 0; }
+
+/* switching wallet: the content under the pills fades in softly */
+.page.swap > *:not(.acc-chips):not(#accChips) { animation: swapin .32s cubic-bezier(.2, .8, .2, 1) both; }
+@keyframes swapin { from { opacity: .3; transform: translateY(8px); } }
