@@ -63,6 +63,18 @@ section.demo p.how { color:var(--muted); font-size:13.5px; margin:4px 0 12px; }
 .wtotal { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:12px; }
 .wtotal .big { font-size:30px; font-weight:800; letter-spacing:-.02em; }
 
+.bl { display:inline-block; width:1em; height:1em; background:currentColor; -webkit-mask:var(--m) center/contain no-repeat; mask:var(--m) center/contain no-repeat; vertical-align:-.12em; }
+.logo .bl { width:20px; height:20px; } .coin .bl { width:11px; height:11px; } .rlogo .logo .bl { width:17px; height:17px; }
+.wcard .mark .bl { width:18px; height:18px; }
+.ball .bl { width:.95em; height:.95em; }
+/* Wallet focus: the card flies to the centre, grows and flips; everything else dims and blurs */
+.wdim { position:fixed; inset:0; z-index:900; background:rgba(8,10,20,.38); -webkit-backdrop-filter:blur(16px) saturate(1.2); backdrop-filter:blur(16px) saturate(1.2); opacity:0; pointer-events:none; transition:opacity .45s ease; }
+.wdim.on { opacity:1; pointer-events:auto; }
+.wcard.focus { position:fixed !important; z-index:1000 !important; transition:transform .62s cubic-bezier(.2,1.05,.3,1) !important; }
+.wcard.focus .face { box-shadow: inset 0 0 0 .5px rgba(255,255,255,.28), inset 0 1px 0 rgba(255,255,255,.25), 0 30px 60px -20px rgba(0,0,0,.65); }
+.whint { position:fixed; left:0; right:0; bottom:calc(env(safe-area-inset-bottom) + 28px); text-align:center; color:#fff; font-size:13px; font-weight:600; opacity:0; transition:opacity .4s .3s; z-index:950; pointer-events:none; }
+.wdim.on + .whint { opacity:.85; }
+
 /* 2 calendar */
 .cal { display:grid; grid-template-columns:repeat(7, 1fr); gap:4px; }
 .cal .dow { text-align:center; font-size:11px; color:var(--muted); font-weight:700; padding-bottom:2px; }
@@ -140,11 +152,11 @@ section.demo p.how { color:var(--muted); font-size:13.5px; margin:4px 0 12px; }
 </nav>
 
 <section class="demo" id="d7"><h2>★ My pick <small>Wallet + strip + rating</small></h2>
-<p class="how">A strip of days on top (tap a day with a dot), a stack of cards below (tap one to bring it forward, tap again to flip it), and a quick rating on each card.</p>
+<p class="how">A strip of days on top (tap a day with a dot), a Wallet-style stack below: tap a card and it flies to the centre, grows and flips while everything behind blurs. Tap outside to put it back. Rate each card on its front.</p>
 <div class="panel"><div class="strip7" id="strip7"></div><div class="wtotal"><div><div class="muted" style="font-size:12px">Fun money this month</div><div class="big" id="tot7"></div></div><div class="muted" id="next7" style="font-size:13px;text-align:right"></div></div><div class="wallet" id="wallet7"></div></div></section>
 
 <section class="demo" id="d1"><h2>1 · Card wallet</h2>
-<p class="how">Like Apple Wallet. Tap a card to pull it out of the stack, tap it again to flip it over, tap the background to put it back.</p>
+<p class="how">Like Apple Wallet. Tap a card: it flies to the centre, grows and flips to show the details. Tap outside to put it back.</p>
 <div class="panel"><div class="wtotal"><div><div class="muted" style="font-size:12px">Every month</div><div class="big" id="tot1"></div></div><div class="muted" style="font-size:13px" id="cnt1"></div></div><div class="wallet" id="wallet1"></div></div></section>
 
 <section class="demo" id="d2"><h2>2 · Renewal calendar</h2>
@@ -175,15 +187,17 @@ section.demo p.how { color:var(--muted); font-size:13.5px; margin:4px 0 12px; }
 <script>
 const TODAY = 5, DAYS = 31;
 const SUBS = [
-  { id: 'cl', name: 'Claude', amt: 999.99, day: 2, c: '#D97757', l: 'C', kind: 'AI' },
-  { id: 'nf', name: 'Netflix', amt: 190, day: 1, c: '#E50914', l: 'N', kind: 'Video' },
+  { id: 'cl', logo: 'claude', name: 'Claude', amt: 999.99, day: 2, c: '#D97757', l: 'C', kind: 'AI' },
+  { id: 'nf', logo: 'netflix', name: 'Netflix', amt: 190, day: 1, c: '#E50914', l: 'N', kind: 'Video' },
   { id: 'sh', name: 'Shahid VIP', amt: 120, day: 25, c: '#7B4DFF', l: 'ش', kind: 'Video' },
-  { id: 'sp', name: 'Spotify', amt: 99, day: 12, c: '#1DB954', l: 'S', kind: 'Music' },
-  { id: 'yt', name: 'YouTube Premium', amt: 75, day: 12, c: '#FF3D3D', l: '▶', kind: 'Video' },
-  { id: 'ps', name: 'PlayStation Plus', amt: 260, day: 18, c: '#2D6BE4', l: 'P', kind: 'Gaming' },
-  { id: 'ic', name: 'iCloud+', amt: 50, day: 8, c: '#3A8DFF', l: '☁', kind: 'Storage' },
+  { id: 'sp', logo: 'spotify', name: 'Spotify', amt: 99, day: 12, c: '#1DB954', l: 'S', kind: 'Music' },
+  { id: 'yt', logo: 'youtube', name: 'YouTube Premium', amt: 75, day: 12, c: '#FF3D3D', l: '▶', kind: 'Video' },
+  { id: 'ps', logo: 'playstation', name: 'PlayStation Plus', amt: 260, day: 18, c: '#2D6BE4', l: 'P', kind: 'Gaming' },
+  { id: 'ic', logo: 'icloud', name: 'iCloud+', amt: 50, day: 8, c: '#3A8DFF', l: '☁', kind: 'Storage' },
 ];
 const $ = (id) => document.getElementById(id);
+// official logo (monochrome, tinted with the current text colour), or the letter when there is none
+const G = (s) => s.logo ? `<i class="bl" style="--m:url(icons/brands/${s.logo}.svg)"></i>` : s.l;
 const fmt = (n) => Number(n).toLocaleString('en-US', { maximumFractionDigits: n % 1 ? 2 : 0 });
 const until = (d) => (d >= TODAY ? d - TODAY : d + DAYS - TODAY);
 const untilTxt = (d) => { const n = until(d); return n === 0 ? 'today' : n === 1 ? 'tomorrow' : `in ${n} days`; };
@@ -194,46 +208,74 @@ const byNext = [...SUBS].sort((a, b) => until(a.day) - until(b.day));
 
 // ---------- shared: wallet stack (used by 1 and 7)
 function makeWallet(el, list, opts = {}) {
-  let open = null, flipped = false;
   const state = opts.state || {};
-  function layout() {
-    const cards = [...el.children];
-    if (!cards.length) return;
-    const ch = cards[0].offsetHeight || 210, peek = 56;
-    cards.forEach((c, i) => {
-      const id = c.dataset.id;
-      if (open === null) { c.style.top = i * peek + 'px'; c.style.transform = 'none'; c.style.zIndex = i; }
-      else if (id === open) { c.style.top = '0px'; c.style.transform = 'none'; c.style.zIndex = 100; }
-      else { const j = cards.filter((x) => x.dataset.id !== open).indexOf(c); c.style.top = ch + 18 + j * 9 + 'px'; c.style.transform = `scale(${(1 - (j + 1) * 0.025).toFixed(3)})`; c.style.zIndex = 50 - j; }
-      c.classList.toggle('flip', id === open && flipped);
-    });
-    el.style.setProperty('--h', open === null ? (ch + (cards.length - 1) * peek) + 'px' : (ch + 18 + (cards.length - 2) * 9 + 56) + 'px');
-  }
+  let focused = null, busy = false;
+  const dim = document.querySelector('.wdim') || (() => { const d = document.createElement('div'); d.className = 'wdim'; document.body.appendChild(d); const h = document.createElement('div'); h.className = 'whint'; h.textContent = 'Tap outside to put it back'; document.body.appendChild(h); return d; })();
   const ord = (d) => d + (d % 10 === 1 && d !== 11 ? 'st' : d % 10 === 2 && d !== 12 ? 'nd' : d % 10 === 3 && d !== 13 ? 'rd' : 'th');
   el.innerHTML = list.map((s) => `<div class="wcard" data-id="${s.id}" style="--c:${s.c}">
       <div class="face front">
-        <div class="top"><span class="mark">${s.l}</span><span class="name">${s.name}</span><span class="fld"><i>Monthly</i><b>${fmt(s.amt)}</b></span></div>
+        <div class="top"><span class="mark">${G(s)}</span><span class="name">${s.name}</span><span class="fld"><i>Monthly</i><b>${fmt(s.amt)}</b></span></div>
         ${opts.rate ? `<div class="r7">${['🔥', '😐', '💤'].map((e) => `<button data-r="${e}" class="${state[s.id] === e ? 'on' : ''}">${e}</button>`).join('')}</div>` : ''}
         <div class="grid"><div><i>Next</i><b>${untilTxt(s.day)}</b></div><div><i>Account</i><b>Card</b></div><div><i>Per year</i><b>${fmt(Math.round(s.amt * 12))}</b></div></div>
       </div>
       <div class="face back">
-        <div class="top"><span class="mark">${s.l}</span><span class="name">${s.name}</span><span class="fld"><i>Renews</i><b>${ord(s.day)}</b></span></div>
+        <div class="top"><span class="mark">${G(s)}</span><span class="name">${s.name}</span><span class="fld"><i>Renews</i><b>${ord(s.day)}</b></span></div>
         <div class="grid"><div><i>Monthly</i><b>${fmt(s.amt)}</b></div><div><i>Per day</i><b>${fmt(Math.round(s.amt / 30 * 10) / 10)}</b></div><div><i>Per year</i><b>${fmt(Math.round(s.amt * 12))}</b></div></div>
         <div class="btns"><button class="main" data-paid="1">Log as paid</button><button data-skip="1">Skip month</button></div>
       </div>
     </div>`).join('');
+  function stack() {
+    const cards = [...el.children], ch = cards[0].offsetHeight || 210, peek = 56;
+    cards.forEach((c, i) => { if (c === focused) return; c.style.top = i * peek + 'px'; c.style.zIndex = i; });
+    el.style.setProperty('--h', ch + (cards.length - 1) * peek + 'px');
+  }
+  function focus(c) {
+    if (busy || focused) return;
+    busy = true; focused = c;
+    const r = c.getBoundingClientRect();
+    const tw = Math.min(innerWidth - 28, 460), th = tw / 1.586, sc = tw / r.width;
+    // lift it out of the stack without moving it, then fly to the centre
+    c.style.transition = 'none';
+    c.style.left = r.left + 'px'; c.style.top = r.top + 'px'; c.style.width = r.width + 'px'; c.style.right = 'auto';
+    c.classList.add('focus');
+    void c.offsetWidth;
+    c.style.transition = '';
+    const dx = innerWidth / 2 - (r.left + r.width / 2), dy = innerHeight / 2 - (r.top + r.height / 2) - 20;
+    c.style.transform = `translate(${dx}px, ${dy}px) scale(${sc})`;
+    c.classList.add('flip');
+    dim.classList.add('on'); dim._w = api;
+    document.documentElement.style.overflow = 'hidden';
+    buzz(6);
+    setTimeout(() => { busy = false; }, 650);
+  }
+  function unfocus() {
+    const c = focused; if (!c || busy) return;
+    busy = true;
+    c.classList.remove('flip');
+    c.style.transform = 'translate(0, 0) scale(1)';
+    dim.classList.remove('on');
+    document.documentElement.style.overflow = '';
+    setTimeout(() => {
+      c.style.transition = 'none';
+      c.classList.remove('focus'); c.style.transform = ''; c.style.left = ''; c.style.width = ''; c.style.right = '';
+      focused = null; stack();
+      void c.offsetWidth; c.style.transition = '';
+      busy = false;
+    }, 640);
+  }
+  const api = { unfocus, openCard(id) { const c = el.querySelector(`.wcard[data-id="${id}"]`); if (c) { c.scrollIntoView({ block: 'center', behavior: 'instant' }); requestAnimationFrame(() => focus(c)); } } };
+  if (!dim._bound) { dim._bound = true; dim.addEventListener('click', () => dim._w && dim._w.unfocus()); }
   el.addEventListener('click', (e) => {
-    const c = e.target.closest('.wcard');
+    const c = e.target.closest('.wcard'); if (!c) return;
     const r = e.target.closest('[data-r]');
-    if (r && c) { e.stopPropagation(); state[c.dataset.id] = r.dataset.r; r.parentNode.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === r)); toast(r.dataset.r === '💤' ? 'Marked as barely used' : 'Rated'); opts.onRate && opts.onRate(); return; }
-    if (e.target.closest('[data-paid]')) { toast(`${list.find((s) => s.id === c.dataset.id).name} logged as paid`); open = null; flipped = false; layout(); return; }
-    if (e.target.closest('[data-skip]')) { toast('Skipped this month'); open = null; flipped = false; layout(); return; }
-    if (!c) { open = null; flipped = false; layout(); return; }
-    if (open === c.dataset.id) flipped = !flipped; else { open = c.dataset.id; flipped = false; }
-    buzz(5); layout();
+    if (r) { e.stopPropagation(); state[c.dataset.id] = r.dataset.r; r.parentNode.querySelectorAll('button').forEach((b) => b.classList.toggle('on', b === r)); toast(r.dataset.r === '💤' ? 'Marked as barely used' : 'Rated'); return; }
+    const name = list.find((s) => s.id === c.dataset.id).name;
+    if (e.target.closest('[data-paid]')) { toast(`${name} logged as paid`); unfocus(); return; }
+    if (e.target.closest('[data-skip]')) { toast(`${name} skipped this month`); unfocus(); return; }
+    if (c === focused) unfocus(); else focus(c);
   });
-  layout();
-  return { openCard(id) { open = id; flipped = false; layout(); } };
+  stack(); window.addEventListener('resize', () => { if (!focused) stack(); });
+  return api;
 }
 
 // ---------- 1 wallet
@@ -250,13 +292,13 @@ makeWallet($('wallet1'), byNext);
   for (let d = 1; d <= DAYS; d++) {
     const on = SUBS.filter((s) => s.day === d);
     const sum = on.reduce((n, s) => n + s.amt, 0);
-    html += `<div class="d ${d === TODAY ? 'today' : ''} ${sum > 250 ? 'hot' : ''}" data-d="${d}">${d}<div class="coins">${on.map((s, i) => `<span class="coin" style="--c:${s.c};animation-delay:${0.15 + d * 0.025 + i * 0.08}s">${s.l}</span>`).join('')}</div></div>`;
+    html += `<div class="d ${d === TODAY ? 'today' : ''} ${sum > 250 ? 'hot' : ''}" data-d="${d}">${d}<div class="coins">${on.map((s, i) => `<span class="coin" style="--c:${s.c};animation-delay:${0.15 + d * 0.025 + i * 0.08}s">${G(s)}</span>`).join('')}</div></div>`;
   }
   $('cal').innerHTML = html;
   const show = (d) => {
     document.querySelectorAll('#cal .d').forEach((x) => x.classList.toggle('sel', +x.dataset.d === d));
     const on = SUBS.filter((s) => s.day === d);
-    $('daylist').innerHTML = on.length ? on.map((s) => `<div class="it"><span class="logo" style="--c:${s.c}">${s.l}</span><div><div class="b">${s.name}</div><div class="muted" style="font-size:12px">Oct ${d} · ${untilTxt(d)}</div></div><b style="margin-left:auto">${fmt(s.amt)}</b></div>`).join('')
+    $('daylist').innerHTML = on.length ? on.map((s) => `<div class="it"><span class="logo" style="--c:${s.c}">${G(s)}</span><div><div class="b">${s.name}</div><div class="muted" style="font-size:12px">Oct ${d} · ${untilTxt(d)}</div></div><b style="margin-left:auto">${fmt(s.amt)}</b></div>`).join('')
       : `<div class="muted" style="font-size:13px;padding-top:6px">Nothing charged on Oct ${d}.</div>`;
   };
   $('cal').addEventListener('click', (e) => { const d = e.target.closest('.d'); if (d) { buzz(4); show(+d.dataset.d); } });
@@ -274,7 +316,7 @@ makeWallet($('wallet1'), byNext);
       const r = 26 + Math.sqrt(s.amt * 12 / maxY) * 46;
       const el = document.createElement('div'); el.className = 'ball'; el.style.setProperty('--c', s.c);
       el.style.width = el.style.height = r * 2 + 'px';
-      el.innerHTML = `<span style="font-size:${Math.max(13, r * .45)}px">${s.l}</span><small>${fmt(Math.round(s.amt * 12))}/yr</small>`;
+      el.innerHTML = `<span style="font-size:${Math.max(13, r * .45)}px">${G(s)}</span><small>${fmt(Math.round(s.amt * 12))}/yr</small>`;
       tank.appendChild(el);
       return { s, el, r, x: 40 + Math.random() * (W - 80), y: 30 + i * 20, vx: (Math.random() - .5) * 4, vy: 0, gone: false };
     });
@@ -390,7 +432,7 @@ makeWallet($('wallet1'), byNext);
   pts.push([days.length * COL - COL / 2, base - run / totalAhead * 120]);
   html += `<svg width="${days.length * COL}" height="${H}" style="position:absolute;left:0;top:0;pointer-events:none"><polyline points="${pts.map((p) => p.join(',')).join(' ')}" fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" opacity=".7"/></svg>`;
   const stack = {};
-  items.forEach(({ s, i }) => { const k = stack[i] = (stack[i] || 0) + 1; html += `<div class="rlogo" style="left:${i * COL + COL / 2}px;top:${8 + (k - 1) * 52}px"><span class="logo" style="--c:${s.c}">${s.l}</span>${fmt(s.amt)}</div>`; });
+  items.forEach(({ s, i }) => { const k = stack[i] = (stack[i] || 0) + 1; html += `<div class="rlogo" style="left:${i * COL + COL / 2}px;top:${8 + (k - 1) * 52}px"><span class="logo" style="--c:${s.c}">${G(s)}</span>${fmt(s.amt)}</div>`; });
   $('rtrack').style.width = days.length * COL + 'px';
   $('rtrack').innerHTML = html;
   const rib = $('ribbon');
@@ -403,7 +445,7 @@ makeWallet($('wallet1'), byNext);
   const rating = { cl: '🔥', nf: '😐', sp: '🔥', ps: '💤' };
   const col = { '🔥': '#F97316', '😐': '#A1A1AA', '💤': '#6366F1', '': 'transparent' };
   function draw() {
-    $('rate6').innerHTML = SUBS.map((s) => `<div class="rate-row ${rating[s.id] === '💤' ? 'cut' : ''}" style="--c:${s.c}"><span class="logo" style="--c:${s.c}">${s.l}</span><div><div class="b">${s.name}</div><div class="muted" style="font-size:12px">${fmt(s.amt)} a month</div></div>
+    $('rate6').innerHTML = SUBS.map((s) => `<div class="rate-row ${rating[s.id] === '💤' ? 'cut' : ''}" style="--c:${s.c}"><span class="logo" style="--c:${s.c}">${G(s)}</span><div><div class="b">${s.name}</div><div class="muted" style="font-size:12px">${fmt(s.amt)} a month</div></div>
       <div class="emo">${['🔥', '😐', '💤'].map((e) => `<button data-id="${s.id}" data-e="${e}" class="${rating[s.id] === e ? 'on' : ''}">${e}</button>`).join('')}</div></div>`).join('');
     const sums = { '🔥': 0, '😐': 0, '💤': 0, '': 0 };
     SUBS.forEach((s) => { sums[rating[s.id] || ''] += s.amt; });
