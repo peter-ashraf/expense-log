@@ -24,8 +24,12 @@ function enhance(box, key, scope) {
   if (ind && ind._on === on) return;                       // nothing changed
 
   // read how the chosen pill looks BEFORE it is made transparent
+  // (a box that stays on screen while its buttons are replaced is already neutralised: undo that for the read)
+  const was = box.classList.contains('slide-ready');
+  box.classList.remove('slide-ready');
   const cs = getComputedStyle(on);
   const look = { bg: cs.backgroundColor, bd: parseFloat(cs.borderTopWidth) ? cs.borderTopColor : 'transparent', r: cs.borderRadius };
+  if (was) box.classList.add('slide-ready');
   const fresh = !ind;
   if (fresh) {
     ind = document.createElement('i');
@@ -46,7 +50,12 @@ function enhance(box, key, scope) {
     void ind.offsetWidth;                                   // commit the starting spot
     ind.style.transition = '';
   }
-  paint(ind, to, look);
+  if (fresh && !(glide && from)) {                          // first appearance: show at once, no colour fade-in
+    ind.style.transition = 'none';
+    paint(ind, to, look);
+    void ind.offsetWidth;
+    ind.style.transition = '';
+  } else paint(ind, to, look);
   ind._on = on;
   seen.set(key, { ...to, n, cw, bg: look.bg, bd: look.bd, r: look.r, scope });
 }
