@@ -25,14 +25,14 @@ function enhance(box, key, scope) {
 
   // read how the chosen pill looks BEFORE it is made transparent
   // (a box that stays on screen while its buttons are replaced is already neutralised: undo that for the read)
-  // Transitions are switched off for the read, otherwise a pill that was just neutralised is caught mid-fade (transparent).
+  // Only this pill has its transitions off for the read, otherwise it is caught mid-fade (transparent).
   const was = box.classList.contains('slide-ready');
-  box.classList.add('slide-probe');
+  on.style.transition = 'none';
   box.classList.remove('slide-ready');
   const cs = getComputedStyle(on);
   const look = { bg: cs.backgroundColor, bd: parseFloat(cs.borderTopWidth) ? cs.borderTopColor : 'transparent', r: cs.borderRadius };
+  on.style.transition = '';
   if (was) box.classList.add('slide-ready');
-  requestAnimationFrame(() => box.classList.remove('slide-probe'));
   const fresh = !ind;
   if (fresh) {
     ind = document.createElement('i');
