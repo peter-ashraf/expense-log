@@ -64,7 +64,7 @@
     <button class="chip" data-lang="en-US">English</button>
   </div>
   <label class="sw">Stop / restart method · طريقة الإيقاف:
-    <select id="mode"><option value="stop">A · stop() + new engine (current)</option><option value="abort">B · abort() + new engine</option><option value="reuse">C · stop() + same engine again</option><option value="reuseabort">D · abort() + same engine again</option></select></label>
+    <select id="mode"><option value="alt">E · switch between A and B on every tap (automatic)</option><option value="stop">A · stop() + new engine (current)</option><option value="abort">B · abort() + new engine</option><option value="reuse">C · stop() + same engine again</option><option value="reuseabort">D · abort() + same engine again</option></select></label>
   <label class="sw"><input type="checkbox" id="hold"> Keep the microphone open the whole time the page is open · خلّي المايك مفتوح طول ما الصفحة مفتوحة</label>
   <label class="sw"><input type="checkbox" id="reset"> Reset the microphone before each try (fixes “hears nothing the second time”) · صفّر المايك قبل كل مرة</label>
   <label class="sw"><input type="checkbox" id="cont" checked> Keep listening for long sentences (tap again to stop) · كمّل سماع للجمل الطويلة</label>
@@ -178,10 +178,11 @@ document.querySelectorAll('#langs .chip').forEach((b) => b.addEventListener('cli
   log(`language set to ${lang}`);
 }));
 
-let shared = null, sharedUsed = false;
+let shared = null, sharedUsed = false, altN = 0, altCur = 'stop';
+function curMode() { const v = $('#mode').value; return v === 'alt' ? altCur : v; }
 let wanted = false;   // the person has not tapped stop yet
 function listen(base) {
-  const mode = $('#mode').value;
+  const mode = curMode();
   const reuse = mode === 'reuse' || mode === 'reuseabort';
   const r = (reuse && shared) ? shared : new SR();
   if (reuse) shared = r;
@@ -236,8 +237,9 @@ async function releaseMic() {
 }
 $('#mic').addEventListener('click', () => {
   if (!SR) return;
-  if (rec || wanted) { log('tapped stop'); wanted = false; if (!rec) $('#mic').textContent = 'اضغط واتكلم · Tap and speak'; try { if (rec) { const m = $('#mode').value; if (m === 'abort' || m === 'reuseabort') rec.abort(); else rec.stop(); } } catch (e) { /* ignore */ } return; }
+  if (rec || wanted) { log('tapped stop'); wanted = false; if (!rec) $('#mic').textContent = 'اضغط واتكلم · Tap and speak'; try { if (rec) { const m = curMode(); if (m === 'abort' || m === 'reuseabort') rec.abort(); else rec.stop(); } } catch (e) { /* ignore */ } return; }
   wanted = true; lastHeard = '';
+  if ($('#mode').value === 'alt') { altCur = altN++ % 2 ? 'abort' : 'stop'; log(`automatic switch: this tap uses ${altCur === 'stop' ? 'A' : 'B'}`); }
   if (!$('#reset').checked && !$('#hold').checked) { listen(''); return; }
   releaseMic().then(() => { if (wanted) listen(''); });
 });
