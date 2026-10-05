@@ -56,7 +56,7 @@ section.demo p.how { color:var(--muted); font-size:13.5px; margin:4px 0 12px; }
 .wcard .grid { position:absolute; z-index:1; left:16px; right:16px; bottom:14px; display:grid; grid-template-columns:repeat(3, 1fr); gap:6px; }
 .wcard .grid b { font-size:14px; font-weight:650; font-variant-numeric:tabular-nums; }
 .wcard .grid div:last-child { text-align:right; }
-.wcard .back .grid { bottom:auto; top:58px; }
+.wcard .back .grid { bottom:auto; top:98px; } .wcard .back .grid.g2 { top:54px; }
 .wcard .back .btns { position:absolute; z-index:1; left:16px; right:16px; bottom:14px; display:flex; gap:8px; }
 .wcard .back button { flex:1; border:0; border-radius:10px; padding:10px; font-weight:700; font-size:14px; background:rgba(255,255,255,.16); color:#fff; cursor:pointer; backdrop-filter:blur(8px); }
 .wcard .back button.main { background:#fff; color:color-mix(in srgb, var(--c) 80%, #000); }
@@ -146,7 +146,7 @@ section.demo p.how { color:var(--muted); font-size:13.5px; margin:4px 0 12px; }
 <body>
 <div class="wrap">
 <h1>Subscription ideas</h1>
-<p class="sub"><b style="color:var(--accent)">Build 6 · slower de-stacking</b><br>Seven interactive previews, all using the same sample data. Nothing is saved. Today is pretended to be Oct 5.</p>
+<p class="sub"><b style="color:var(--accent)">Build 7 · details on the back</b><br>Seven interactive previews, all using the same sample data. Nothing is saved. Today is pretended to be Oct 5.</p>
 <nav>
   <a class="star" href="#d7">★ My pick</a><a href="#d1">1 Wallet</a><a href="#d2">2 Calendar</a><a href="#d3">3 Bubbles</a><a href="#d4">4 Treemap</a><a href="#d5">5 Timeline</a><a href="#d6">6 Worth it?</a>
 </nav>
@@ -219,8 +219,9 @@ function makeWallet(el, list, opts = {}) {
         <div class="grid"><div><i>Next</i><b>${untilTxt(s.day)}</b></div><div><i>Account</i><b>Card</b></div><div><i>Per year</i><b>${fmt(Math.round(s.amt * 12))}</b></div></div>
       </div>
       <div class="face back">
-        <div class="top"><span class="mark">${G(s)}</span><span class="name">${s.name}</span><span class="fld"><i>Renews</i><b>${ord(s.day)}</b></span></div>
-        <div class="grid"><div><i>Monthly</i><b>${fmt(s.amt)}</b></div><div><i>Per day</i><b>${fmt(Math.round(s.amt / 30 * 10) / 10)}</b></div><div><i>Per year</i><b>${fmt(Math.round(s.amt * 12))}</b></div></div>
+        <div class="top"><span class="mark">${G(s)}</span><span class="name">${s.name}</span><span class="fld"><i>Monthly</i><b>${fmt(s.amt)}</b></span></div>
+        <div class="grid g2"><div><i>Next</i><b>${untilTxt(s.day)}</b></div><div><i>Account</i><b>Card</b></div><div><i>Per year</i><b>${fmt(Math.round(s.amt * 12))}</b></div></div>
+        <div class="grid"><div><i>Renews</i><b>${ord(s.day)}</b></div><div><i>Per week</i><b>${fmt(Math.round(s.amt * 12 / 52))}</b></div><div><i>Per day</i><b>${fmt(Math.round(s.amt / 30 * 10) / 10)}</b></div></div>
         <div class="btns"><button class="main" data-paid="1">Log as paid</button><button data-skip="1">Skip month</button></div>
       </div>
     </div>`).join('');
@@ -245,7 +246,7 @@ function makeWallet(el, list, opts = {}) {
     c.style.transform = `translate(${dx}px, ${dy}px) scale(${sc})`;
     c.classList.add('flip');
     // like Wallet: the cards under it slide away down the screen, so it later returns into an empty gap
-    below(c).forEach((b, k) => { b.style.transition = 'transform .95s cubic-bezier(.45,0,.2,1)'; b.style.transitionDelay = k * 60 + 'ms'; b.style.transform = `translateY(${innerHeight}px)`; });
+    below(c).forEach((b, k) => { b.style.transition = 'transform .72s cubic-bezier(.45,0,.2,1)'; b.style.transitionDelay = k * 40 + 'ms'; b.style.transform = `translateY(${innerHeight}px)`; });
     dim.classList.add('on'); dim._w = api;
     document.documentElement.style.overflow = 'hidden';
     buzz(6);
