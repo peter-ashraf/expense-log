@@ -65,6 +65,7 @@
   </div>
   <label class="sw">Stop / restart method · طريقة الإيقاف:
     <select id="mode"><option value="stop">A · stop() + new engine (current)</option><option value="abort">B · abort() + new engine</option><option value="reuse">C · stop() + same engine again</option><option value="reuseabort">D · abort() + same engine again</option></select></label>
+  <label class="sw"><input type="checkbox" id="hold"> Keep the microphone open the whole time the page is open · خلّي المايك مفتوح طول ما الصفحة مفتوحة</label>
   <label class="sw"><input type="checkbox" id="reset"> Reset the microphone before each try (fixes “hears nothing the second time”) · صفّر المايك قبل كل مرة</label>
   <label class="sw"><input type="checkbox" id="cont" checked> Keep listening for long sentences (tap again to stop) · كمّل سماع للجمل الطويلة</label>
   <div class="row"><button class="main" id="mic">اضغط واتكلم · Tap and speak</button></div>
@@ -214,7 +215,15 @@ function listen(base) {
 }
 let lastHeard = '';
 // iPhone can keep the microphone busy after a listening session: open it and close it again, then wait a moment
+let held = null;
 async function releaseMic() {
+  if (!$('#hold').checked && held) { held.getTracks().forEach((t) => t.stop()); held = null; log('held mic released'); }
+  if ($('#hold').checked) {
+    if (!held || !held.active) {
+      try { held = await navigator.mediaDevices.getUserMedia({ audio: true }); log('mic held open'); } catch (e) { log(`mic hold failed: ${e.name}`); }
+    }
+    return;
+  }
   $('#mic').textContent = '… استنى ثانية · One moment';
   try {
     if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
@@ -229,7 +238,7 @@ $('#mic').addEventListener('click', () => {
   if (!SR) return;
   if (rec || wanted) { log('tapped stop'); wanted = false; if (!rec) $('#mic').textContent = 'اضغط واتكلم · Tap and speak'; try { if (rec) { const m = $('#mode').value; if (m === 'abort' || m === 'reuseabort') rec.abort(); else rec.stop(); } } catch (e) { /* ignore */ } return; }
   wanted = true; lastHeard = '';
-  if (!$('#reset').checked) { listen(''); return; }
+  if (!$('#reset').checked && !$('#hold').checked) { listen(''); return; }
   releaseMic().then(() => { if (wanted) listen(''); });
 });
 
