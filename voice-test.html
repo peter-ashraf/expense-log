@@ -63,6 +63,7 @@
     <button class="chip on" data-lang="ar-EG">عربي (مصر)</button>
     <button class="chip" data-lang="en-US">English</button>
   </div>
+  <label class="sw"><input type="checkbox" id="reset" checked> Reset the microphone before each try (fixes “hears nothing the second time”) · صفّر المايك قبل كل مرة</label>
   <label class="sw"><input type="checkbox" id="cont" checked> Keep listening for long sentences (tap again to stop) · كمّل سماع للجمل الطويلة</label>
   <div class="row"><button class="main" id="mic">اضغط واتكلم · Tap and speak</button></div>
   <div id="heard"><i>اللي الموبايل سمعه هيظهر هنا · What the phone heard appears here</i></div>
@@ -203,11 +204,24 @@ function listen(base) {
   catch (e) { log(`start() threw: ${e.name}: ${e.message}`); $('#heard').innerHTML = `<i>Could not start: ${e.name}</i>`; rec = null; wanted = false; }
 }
 let lastHeard = '';
+// iPhone can keep the microphone busy after a listening session: open it and close it again, then wait a moment
+async function releaseMic() {
+  $('#mic').textContent = '… استنى ثانية · One moment';
+  try {
+    if (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) {
+      const st = await navigator.mediaDevices.getUserMedia({ audio: true });
+      st.getTracks().forEach((t) => t.stop());
+      log('mic reset: opened and closed');
+    }
+  } catch (e) { log(`mic reset failed: ${e.name}`); }
+  await new Promise((r) => setTimeout(r, 500));
+}
 $('#mic').addEventListener('click', () => {
   if (!SR) return;
-  if (rec || wanted) { log('tapped stop'); wanted = false; try { if (rec) rec.stop(); } catch (e) { /* ignore */ } return; }
+  if (rec || wanted) { log('tapped stop'); wanted = false; if (!rec) $('#mic').textContent = 'اضغط واتكلم · Tap and speak'; try { if (rec) rec.stop(); } catch (e) { /* ignore */ } return; }
   wanted = true; lastHeard = '';
-  listen('');
+  if (!$('#reset').checked) { listen(''); return; }
+  releaseMic().then(() => { if (wanted) listen(''); });
 });
 
 // ---- keyboard dictation
