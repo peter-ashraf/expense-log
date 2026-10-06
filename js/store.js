@@ -23,6 +23,7 @@ let transport = null;
 let cache = null;
 let syncing = false;
 let syncStarted = 0;
+let inflight = null;   // AbortController of the request sync() is waiting on
 let timer = null;
 let retries = 0;
 
@@ -361,8 +362,19 @@ export function scheduleSync(ms = 500) {
   timer = setTimeout(() => sync(), ms);
 }
 
+// A request that has been out for a while is dropped so a fresh one can go. iOS freezes the app in the background, and a
+// request sent before that usually never answers; its own time limit only counts while the app is open, so it can sit
+// on "Syncing…" for ages. Called when the app comes back to the screen, and by sync() itself as a watchdog.
+export function unstick(ms = 15000) {
+  if (!syncing || Date.now() - syncStarted < ms) return false;
+  if (inflight) inflight.abort();
+  inflight = null;
+  syncing = false;
+  return true;
+}
+
 export async function sync() {
-  if (syncing && Date.now() - syncStarted > 150000) syncing = false;   // watchdog: never stay "Syncing…" forever
+  unstick(150000);   // watchdog: never stay "Syncing…" forever
   if (!transport || syncing) return;
   if (!navigator.onLine && !(S.cfg && S.cfg.demo)) {
     S.status = 'offline';
@@ -371,11 +383,14 @@ export async function sync() {
   }
   syncing = true;
   syncStarted = Date.now();
+  const ctl = new AbortController();
+  inflight = ctl;
   S.status = 'syncing';
-  emit();
   try {
+    emit();
     const ops = S.queue.slice(0, 20); // big batches go up in slices so each request stays quick
-    const r = ops.length ? await transport.call('push', { ops }) : await transport.call('pull', {});
+    const r = ops.length ? await transport.call('push', { ops }, { signal: ctl.signal }) : await transport.call('pull', {}, { signal: ctl.signal });
+    if (inflight !== ctl) return;   // dropped by unstick(): a newer sync owns the state now
     const done = new Set([...(r.applied || []), ...(r.rejected || []).map((x) => x.opId)]);
     if (r.rejected && r.rejected.length) S.rejected = r.rejected;
     S.queue = S.queue.filter((o) => !done.has(o.opId));
@@ -387,6 +402,7 @@ export async function sync() {
     S.error = '';
     db.set('lastSync', S.lastSync).catch(() => {});
   } catch (e) {
+    if (inflight !== ctl) return;
     const msg = (e && e.message) || String(e);
     // "Load failed" / "Failed to fetch": the request never completed (phone radio asleep, tunnel, dropped signal...).
     const network = !navigator.onLine || e instanceof TypeError || /load failed|failed to fetch|network|timed out|abort/i.test(msg);
@@ -403,6 +419,8 @@ export async function sync() {
     }
     if (S.cfg && S.cfg.demo && localStorage.getItem('el_demo_offline') === '1') S.status = 'offline';
   } finally {
+    if (inflight !== ctl) return;   // eslint-disable-line no-unsafe-finally
+    inflight = null;
     syncing = false;
     try { await persist(); } catch (e) { /* storage stuck: the data is still in memory and saves next time */ }
     emit();

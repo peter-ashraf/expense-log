@@ -27,7 +27,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.13.1';
+const APP_VERSION = '3.13.2';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
 const SCRIPT_LATEST = 6;
 
@@ -247,8 +247,9 @@ function renderTab() {
   const view = $('#view');
   const y = view.scrollTop;
   const m = activeMonth();
-  if (!m && store.getState().cfg) {
-    view.innerHTML = `<div class="empty-big">${icon('cloud', 40, 1.5)}<h2>Nothing here yet</h2><p>Tap the + button to add your first transaction.</p></div>`;
+  const st = store.getState();
+  if (!m && st.cfg && ui.tab !== 'settings') {   // Settings always opens, even before anything has loaded
+    view.innerHTML = emptyState(st);
     return;
   }
   if (ui.tab === 'home') renderHome(view, m);
@@ -259,6 +260,17 @@ function renderTab() {
   if (ui.swap && view.firstElementChild) view.firstElementChild.classList.add('swap');
   ui.swap = false;
   ui.animate = false;
+}
+
+// With nothing on this phone yet, say what is actually going on instead of "Nothing here yet" while the sheet loads.
+function emptyState(st) {
+  const box = (h, p, btn) => `<div class="empty-big">${icon('cloud', 40, 1.5)}<h2>${h}</h2><p>${p}</p>${btn ? '<button class="btn" data-act="sync">' + icon('cloud', 18) + 'Try again</button>' : ''}</div>`;
+  if (!st.lastSync) {
+    if (st.status === 'syncing' || st.status === 'idle') return box('Loading your sheet…', 'Getting everything from your Google Sheet. Settings is open meanwhile.');
+    if (st.status === 'offline') return box('You’re offline', 'Your entries will load from your Google Sheet once you’re back online.', true);
+    if (st.status === 'retrying' || st.status === 'error') return box('Couldn’t load your sheet', esc(st.error || 'The Google Sheet didn’t answer.') + ' You can check the connection in Settings.', true);
+  }
+  return box('Nothing here yet', 'Tap the + button to add your first transaction.');
 }
 
 function catTotals(m) {
@@ -2370,7 +2382,10 @@ window.addEventListener('online', autoSync);
 document.addEventListener('visibilitychange', () => {
   lk.onVisibility();
   paintTheme(themeNow); // the phone's appearance may have changed while the app was away
-  if (document.visibilityState === 'visible') setTimeout(autoSync, 700); // give a sleeping mobile connection a moment to wake
+  if (document.visibilityState === 'visible') {
+    const dropped = store.unstick();   // a request started before iOS put the app to sleep often never comes back: drop it and ask again
+    setTimeout(dropped ? store.sync : autoSync, 700); // give a sleeping mobile connection a moment to wake
+  }
 });
 window.addEventListener('pageshow', () => paintTheme(themeNow));
 setInterval(() => { if (document.visibilityState === 'visible') autoSync(); }, 60000);   // checks each minute, pulls only when 30 minutes old

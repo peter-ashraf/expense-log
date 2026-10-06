@@ -7,9 +7,10 @@ export function makeTransport(cfg) {
 
 function remoteTransport(cfg) {
   return {
-    async call(action, body = {}) {
+    async call(action, body = {}, opts = {}) {
       const ctl = new AbortController();
       const timer = setTimeout(() => ctl.abort(), 120000);
+      if (opts.signal) opts.signal.addEventListener('abort', () => ctl.abort(), { once: true });   // the caller gave up on it (see store.unstick)
       try {
         // text/plain keeps this a "simple" request: no CORS preflight (Apps Script can't answer one).
         const res = await fetch(cfg.url, {
