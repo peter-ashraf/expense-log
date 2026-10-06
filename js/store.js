@@ -253,14 +253,16 @@ export function updateAccount(name, patch) {
   enqueue({ type: 'updateAccount', id: uid(), name, ...patch });
 }
 
-// Remove an account for good: its entries and subscriptions move to `moveTo` first (in queue order, so the server
+// Remove an account for good: entries in `dropIds` are deleted, the rest (and its subscriptions) move to `moveTo` first (in queue order, so the server
 // sees them moved before the account goes). Returns how many entries were moved.
-export function deleteAccount(name, moveTo) {
+export function deleteAccount(name, moveTo, dropIds = new Set()) {
   const v = view();
   const key = name.toLowerCase();
   let moved = 0;
-  for (const k of v.months) for (const e of v.by[k].entries) {
-    if (String(e.account).toLowerCase() !== key) continue;
+  const own = [];
+  for (const k of v.months) for (const e of v.by[k].entries) if (String(e.account).toLowerCase() === key) own.push(e);
+  for (const e of own) {
+    if (dropIds.has(e.id)) { deleteEntry(e.id); continue; }    // goes to Recently deleted, can be restored
     enqueue({ type: 'update', id: e.id, data: clean({ date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: moveTo }) });
     moved++;
   }

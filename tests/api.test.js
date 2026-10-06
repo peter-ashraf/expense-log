@@ -278,5 +278,23 @@ ok(r.applied.join() === 'l1', 'legacy "category = sub-category" rows are still a
   ok(ss.getSheetByName('Oct-26').get(2, 3) === '=A2-B2+SUMIFS(C5:C,D5:D,"Income")' && ss.getSheetByName('Oct-26').get(2, 2) === '=SUMIFS(C5:C,D5:D,"Expense")', 'balance formulas unchanged: all accounts still total into one chain');
 }
 
+// ---- a brand-new empty Google Sheet becomes a working one with setupNewSheet()
+{
+  const ss2 = Object.assign(Object.create(Object.getPrototypeOf(ss)), ss, { sheets: [], active: null, deleteSheet(sh) { this.sheets.splice(this.sheets.indexOf(sh), 1); } });
+  ss2.insertSheet('Sheet1');
+  const g2 = { ...g, SpreadsheetApp: { ...g.SpreadsheetApp, getActive: () => ss2 } };
+  const api2 = new Function(...Object.keys(g2), src + ';return {doPost, setupNewSheet}')(...Object.values(g2));
+  const msg = api2.setupNewSheet();
+  const call2 = (action, extra = {}) => JSON.parse(api2.doPost({ postData: { contents: JSON.stringify({ key: 'test-key', action, ...extra }) } }).s);
+  const names = ss2.sheets.map((x) => x.name);
+  ok(/^Ready/.test(msg) && names.includes('Categories') && names.includes('Summary') && names.includes('Accounts') && !names.includes('Sheet1'), 'setupNewSheet builds Categories, Summary, Accounts and drops the empty Sheet1');
+  let s2 = call2('pull');
+  ok(s2.ok && s2.months.length === 1 && s2.categories.order.length === 10 && s2.categories.map.Food.join() === 'Groceries,Dining Out,Coffee' && !s2.categories.order.includes('Income'), 'fresh sheet: one month tab and the starter categories');
+  const mkey = s2.months[0];
+  s2 = call2('push', { ops: [{ opId: 'n1', type: 'add', id: 'n-1', data: { date: mkey + '-01', description: 'First', amount: 10, type: 'Expense', category: 'Food', sub: 'Coffee' } }] });
+  ok(s2.applied.join() === 'n1' && s2.entries.length === 1 && s2.accounts[0].name === 'Credit Card', 'fresh sheet accepts its first entry');
+  ok(/already has month tabs/.test(api2.setupNewSheet()), 'running it again changes nothing');
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

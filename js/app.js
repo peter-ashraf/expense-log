@@ -27,7 +27,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.10.0';
+const APP_VERSION = '3.11.0';
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -638,7 +638,7 @@ function accountsCard(st) {
       <div class="acc-new"><label class="field"><span>Name</span><input id="accName" maxlength="30" placeholder="e.g. Cash" autocomplete="off"></label>
       <label class="field"><span>${t === 'cash' ? 'Cash on hand now' : 'Monthly limit'}</span><input id="accLimit" inputmode="decimal" placeholder="Optional" autocomplete="off"></label></div>
       <button class="btn" data-act="acc-add">${icon('plus', 18)}Add account</button>
-      <p class="muted sm" style="margin-top:10px">Every entry belongs to one account. Archive hides an account but keeps it; Delete removes it and moves its entries to the main account. Card limits are per month. For Cash, enter what you have on you and the app counts it down as you spend. Totals and the balance in your sheet still add up all accounts together.</p>
+      <p class="muted sm" style="margin-top:10px">Every entry belongs to one account. Archive hides an account but keeps it; Delete removes it and lets you choose what happens to its entries. Card limits are per month. For Cash, enter what you have on you and the app counts it down as you spend. Totals and the balance in your sheet still add up all accounts together.</p>
     </section>`;
 }
 
@@ -837,6 +837,11 @@ function renderSettings(view) {
       <div class="card-h"><h3>This device</h3></div>
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
+    </section>
+    <section class="card">
+      <div class="card-h"><h3>Share the app</h3></div>
+      <p class="muted sm" style="margin-top:0">Anyone can use it with their own Google Sheet. Send them this guide: a blank sheet, one script, about 10 minutes.</p>
+      <button class="btn ghost" data-act="share-setup">${icon('file', 18)}Share the setup guide</button>
     </section>`;
   }
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">${head}${body}</div>`;
@@ -861,6 +866,7 @@ function renderOnboarding(prefill = {}) {
       <button class="btn primary" type="submit" id="cBtn">Connect</button>
     </form>
     <button class="btn ghost" data-act="demo">Try the demo</button>
+    <p class="muted sm center" style="margin-top:14px">New here? <a href="setup.html" target="_blank" rel="noopener">Set up your own Google Sheet</a></p>
   </div>`;
   $('#connectForm').addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -1853,6 +1859,41 @@ function renderImportPreview() {
 }
 
 // ---- Recently deleted ------------------------------------------------------------------------
+function accEntries(name) {
+  const v = store.view();
+  const out = [];
+  v.months.forEach((k) => v.by[k].entries.forEach((e) => { if (e.account === name) out.push(e); }));
+  return out.sort((x, y) => (x.date < y.date ? 1 : -1));
+}
+
+// Deleting an account: delete all its entries, keep all, or pick which to keep, and choose where kept ones go.
+function openDeleteAccount(rerender = false) {
+  const d = ui.delAcc;
+  if (!d) return;
+  const list = accEntries(d.name);
+  const subs = store.view().subs.filter((x) => x.account === d.name).length;
+  const others = accList().filter((a) => a.name !== d.name);
+  const keepN = d.mode === 'keep' ? list.length : d.mode === 'delete' ? 0 : list.filter((e) => d.keep.has(e.id)).length;
+  const dropN = list.length - keepN;
+  const total = list.reduce((n, e) => n + (e.type === 'Expense' ? e.amount : 0), 0);
+  const modes = [['delete', 'Delete all'], ['keep', 'Keep all'], ['pick', 'Choose']];
+  const body = `<div class="del-acc">
+    <p class="muted sm" style="margin-top:0">${list.length ? `“${esc(d.name)}” has <b>${list.length}</b> entr${list.length === 1 ? 'y' : 'ies'} (${esc(num(total))} spent). What should happen to ${list.length === 1 ? 'it' : 'them'}?` : `“${esc(d.name)}” has no entries.`}</p>
+    ${list.length ? `<div class="seg three" role="radiogroup" aria-label="Entries">${modes.map(([k, l]) => `<button role="radio" aria-checked="${d.mode === k}" class="${d.mode === k ? 'on' : ''}" data-act="da-mode" data-v="${k}">${l}</button>`).join('')}</div>` : ''}
+    ${d.mode === 'pick' && list.length ? `<div class="da-head"><span class="muted sm">Tick the ones to keep</span><button class="link" data-act="da-all">${d.keep.size === list.length ? 'Keep none' : 'Keep all'}</button></div>
+      <div class="card flush da-list">${list.map((e) => `<button class="row da-row ${d.keep.has(e.id) ? 'on' : ''}" data-act="da-pick" data-id="${esc(e.id)}">
+        <span class="da-box">${d.keep.has(e.id) ? icon('check', 14, 3) : ''}</span>
+        <span class="row-main"><span class="row-t">${esc(e.description || e.sub || e.category)}</span><span class="row-s">${esc(dateShort(e.date))} · ${esc(e.type === 'Income' ? 'Income' : e.category)}</span></span>
+        <b class="${e.type === 'Income' ? 'pos' : ''}">${e.type === 'Income' ? '+' : '\u2212'}${esc(num(e.amount))}</b></button>`).join('')}</div>` : ''}
+    ${(keepN || subs) ? `<div class="lbl">${keepN ? `Move ${keepN === list.length ? 'them' : `the ${keepN} kept`}` : 'Move its subscriptions'} to</div>
+      <div class="chips wrap">${others.map((a) => `<button class="chip ${d.to === a.name ? 'on' : ''}" data-act="da-to" data-v="${esc(a.name)}">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}${esc(a.name)}</button>`).join('')}</div>` : ''}
+    <p class="muted sm">${[dropN ? `${dropN} entr${dropN === 1 ? 'y goes' : 'ies go'} to Recently deleted (restorable for 60 days)` : '', keepN ? `${keepN} move${keepN === 1 ? 's' : ''} to ${esc(d.to)}` : '', subs ? `${subs} subscription${subs === 1 ? '' : 's'} move${subs === 1 ? 's' : ''} to ${esc(d.to)}` : ''].filter(Boolean).join(' · ') || 'Nothing else changes.'}</p>
+    <button class="btn danger" data-act="da-go">${icon('trash', 18)}Delete “${esc(d.name)}”</button>
+  </div>`;
+  if (rerender && $('.sheet-body')) { $('.sheet-body').innerHTML = body; return; }
+  present(`Delete ${d.name}`, '', body, 'small');
+}
+
 function openTrash(rerender = false) {
   const t = store.getState().trash;
   const body = t.length ? `<div class="card flush">${t.map((x) => {
@@ -1956,21 +1997,32 @@ document.addEventListener('click', async (ev) => {
     }
     case 'acc-delete': {
       const a = accOf(el.dataset.v);
-      const main = accList()[0];
-      if (!a || a === main) break;
-      const n = store.view().months.reduce((c, k) => c + store.view().by[k].entries.filter((e) => e.account === a.name).length, 0);
-      if (ui.armedAcc !== a.name) {
-        ui.armedAcc = a.name;
-        toast(n ? `Tap again to delete “${a.name}”. Its ${n} entr${n === 1 ? 'y moves' : 'ies move'} to ${main.name}.` : `Tap again to delete “${a.name}”.`);
-        renderSettings($('#view'));
-        setTimeout(() => { if (ui.armedAcc === a.name) { ui.armedAcc = null; if (ui.settingsPage === 'accounts') renderSettings($('#view')); } }, 5000);
-        break;
-      }
-      ui.armedAcc = null;
-      store.deleteAccount(a.name, main.name);
-      if (ui.account === a.name) { ui.account = 'all'; try { localStorage.setItem('el_acc', 'all'); } catch (e) { /* ignore */ } }
+      if (!a || a === accList()[0]) break;
+      haptic(6);
+      ui.delAcc = { name: a.name, mode: 'keep', to: accList()[0].name, keep: new Set() };
+      openDeleteAccount();
+      break;
+    }
+    case 'da-mode': ui.delAcc.mode = el.dataset.v; haptic(5); openDeleteAccount(true); break;
+    case 'da-to': ui.delAcc.to = el.dataset.v; haptic(5); openDeleteAccount(true); break;
+    case 'da-pick': {
+      const d = ui.delAcc;
+      if (d.keep.has(el.dataset.id)) d.keep.delete(el.dataset.id); else d.keep.add(el.dataset.id);
+      openDeleteAccount(true);
+      break;
+    }
+    case 'da-all': { const d = ui.delAcc; const ids = accEntries(d.name).map((e) => e.id); d.keep = d.keep.size === ids.length ? new Set() : new Set(ids); openDeleteAccount(true); break; }
+    case 'da-go': {
+      const d = ui.delAcc;
+      const list = accEntries(d.name);
+      const drop = new Set(list.filter((e) => d.mode === 'delete' || (d.mode === 'pick' && !d.keep.has(e.id))).map((e) => e.id));
+      store.deleteAccount(d.name, d.to, drop);
+      if (ui.account === d.name) { ui.account = 'all'; try { localStorage.setItem('el_acc', 'all'); } catch (e) { /* ignore */ } }
+      const kept = list.length - drop.size;
+      ui.delAcc = null;
+      closeSheet();
       haptic(12);
-      toast(n ? `“${a.name}” deleted. ${n} entr${n === 1 ? 'y' : 'ies'} moved to ${main.name}` : `“${a.name}” deleted`, 'ok');
+      toast(`“${d.name}” deleted${drop.size ? ` · ${drop.size} entr${drop.size === 1 ? 'y' : 'ies'} to Recently deleted` : ''}${kept ? ` · ${kept} moved to ${d.to}` : ''}`, 'ok');
       renderSettings($('#view'));
       break;
     }
@@ -2137,6 +2189,12 @@ document.addEventListener('click', async (ev) => {
       haptic(14);
       closeSheet();
       toast(`Importing ${d.fresh.length} transactions…`, 'ok');
+      break;
+    }
+    case 'share-setup': {
+      const url = new URL('setup.html', location.href).href;
+      try { if (navigator.share) { await navigator.share({ title: 'Credit Card Expenses: set up your own sheet', url }); break; } } catch (e) { if (e && e.name === 'AbortError') break; }
+      try { await navigator.clipboard.writeText(url); toast('Link copied', 'ok'); } catch (e) { toast(url); }
       break;
     }
     case 'trash': openTrash(); break;

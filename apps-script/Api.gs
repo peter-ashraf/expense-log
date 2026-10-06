@@ -265,6 +265,47 @@ function rebuildSummary_() {
   sh.getRange(4, 2, rows.length, 3).setNumberFormat('#,##0.00');
 }
 
+/**
+ * For a brand-new, empty Google Sheet: run once from the editor (pick "setupNewSheet", press Run).
+ * Creates Categories (a starter list you can edit), Summary, Accounts and this month's tab, exactly as the app
+ * expects. Does nothing to a sheet that already has month tabs.
+ */
+function setupNewSheet() {
+  var ss = SpreadsheetApp.getActive();
+  if (listMonthSheets_().length) return 'This sheet already has month tabs. Nothing was changed.';
+  var starter = [
+    ['Food', ['Groceries', 'Dining Out', 'Coffee']], ['Transport', ['Fuel', 'Taxi', 'Public Transit']],
+    ['Bills', ['Mobile', 'Internet', 'Electricity', 'Water']], ['Shopping', ['Clothes', 'Electronics', 'Household']],
+    ['Entertainment', ['Cinema', 'Games', 'Outings']], ['Health', ['Doctor Visits', 'Pharmacy', 'Gym']],
+    ['Education', ['Courses', 'Books']], ['Travel', ['Flights', 'Hotels', 'Transport']],
+    ['Subscriptions', ['Netflix', 'Spotify', 'Other Services']], ['Miscellaneous', ['Other']]];
+  if (!ss.getSheetByName('Categories')) {
+    var cs = ss.insertSheet('Categories');
+    var head = ['Categories'].concat(starter.map(function (c) { return c[0]; })).concat(['Income']);
+    cs.getRange(1, 1, 1, head.length).setValues([head]).setFontWeight('bold');
+    starter.forEach(function (c, i) {
+      cs.getRange(i + 2, 1).setValue(c[0]);                                       // the category list in column A
+      c[1].forEach(function (sub, r) { cs.getRange(r + 2, i + 2).setValue(sub); });
+    });
+    cs.getRange(2, head.length).setValue('Income');
+    cs.setFrozenRows(1);
+  }
+  if (!ss.getSheetByName('Summary')) {
+    var sm = ss.insertSheet('Summary');
+    sm.getRange(1, 1).setValue('Expense Log').setFontWeight('bold');
+    sm.getRange(3, 1, 1, 4).setValues([['Month', 'Starting Balance', 'Total Spent', 'Available Balance']]).setFontWeight('bold');
+  }
+  ensureAccountsSheet_();
+  _catsCache = null;
+  var now = new Date();
+  getOrCreateMonthSheet_(now.getFullYear(), now.getMonth());
+  ss.getSheets().forEach(function (sh) {                                          // drop the empty default tab
+    if (/^(Sheet|Feuille|Hoja|ورقة)\s?1$/i.test(sh.getName()) && sh.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(sh);
+  });
+  SpreadsheetApp.flush();
+  return 'Ready. Type your starting balance in cell A2 of the month tab if you like, then deploy as a web app.';
+}
+
 /** Run once from the editor after pasting this file: normalises headers, IDs, formulas and the summary. */
 function setupAfterImport() {
   var all = listMonthSheets_();

@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Set up your own sheet · Credit Card Expenses</title>
+<meta name="description" content="Make your own private copy of Credit Card Expenses: a blank Google Sheet, one script, about 10 minutes.">
+<style>
+:root { --bg:#F4F5FA; --surface:#fff; --text:#0E1224; --muted:#6B7085; --line:rgba(14,18,36,.09); --accent:#5B5BF0; --pos:#2E9E62; --neg:#D9534F; --code:#F1F2F8; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0A0B10; --surface:#14161F; --text:#F2F3F8; --muted:#8A8FA6; --line:rgba(255,255,255,.09); --accent:#7C7CFF; --code:#1C1F2B; } }
+* { box-sizing:border-box; }
+body { margin:0; background:var(--bg); color:var(--text); font:16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif; }
+.wrap { max-width:640px; margin:0 auto; padding:calc(env(safe-area-inset-top) + 20px) 16px 60px; }
+h1 { font-size:30px; line-height:1.15; letter-spacing:-.02em; margin:8px 0 6px; }
+.lead { color:var(--muted); margin:0 0 18px; }
+.step { background:var(--surface); border:1px solid var(--line); border-radius:22px; padding:16px 18px; margin:14px 0; }
+.step h2 { display:flex; align-items:center; gap:10px; font-size:18px; margin:0 0 8px; }
+.n { width:28px; height:28px; border-radius:50%; background:var(--accent); color:#fff; display:grid; place-items:center; font-size:14px; font-weight:800; flex:none; }
+.step ol, .step ul { margin:6px 0; padding-left:22px; } .step li { margin:4px 0; }
+.muted { color:var(--muted); } .sm { font-size:14px; }
+code, .mono { font-family:ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size:.92em; background:var(--code); padding:2px 6px; border-radius:6px; }
+.btn { display:inline-flex; align-items:center; justify-content:center; gap:8px; border:0; border-radius:14px; padding:12px 16px; font-weight:700; font-size:15px; cursor:pointer; background:var(--accent); color:#fff; text-decoration:none; }
+.btn.ghost { background:transparent; color:var(--text); border:1px solid var(--line); }
+.row { display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin:10px 0; }
+.box { display:flex; gap:8px; align-items:center; background:var(--code); border-radius:12px; padding:10px 12px; word-break:break-all; }
+.box .mono { background:none; padding:0; flex:1; }
+input { width:100%; height:48px; padding:0 14px; border-radius:14px; border:1px solid var(--line); background:var(--code); color:var(--text); font-size:15px; }
+.note { border-left:3px solid var(--accent); padding:6px 12px; margin:10px 0; color:var(--muted); font-size:14px; }
+.warn { border-left-color:var(--neg); }
+.ok { color:var(--pos); font-weight:700; }
+#qr { background:#fff; padding:10px; border-radius:12px; display:inline-block; margin-top:8px; }
+.toast { position:fixed; left:50%; bottom:24px; transform:translate(-50%, 30px); opacity:0; background:var(--text); color:var(--bg); padding:10px 16px; border-radius:99px; font-weight:600; transition:.3s; pointer-events:none; }
+.toast.show { transform:translate(-50%, 0); opacity:1; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Set up your own sheet</h1>
+  <p class="lead">Your own private copy of Credit Card Expenses: your data lives in <b>your</b> Google Sheet, nobody else can see it. About 10 minutes on a computer, once.</p>
+
+  <section class="step">
+    <h2><span class="n">1</span>Create a blank Google Sheet</h2>
+    <ol>
+      <li>Open <a href="https://sheets.new" target="_blank" rel="noopener"><b>sheets.new</b></a> (signed in to your Google account). A blank sheet opens.</li>
+      <li>Give it a name at the top left, e.g. <i>Expenses</i>.</li>
+    </ol>
+    <p class="note">Signed in to several Google accounts? Do all of this in a private / incognito window with only one account, or Apps Script may refuse to open.</p>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">2</span>Paste the script</h2>
+    <p class="sm muted" style="margin-top:0">This page made you a private key: a long random password only your app and your sheet will know. It is already written into the code below, and never leaves this page.</p>
+    <div class="box"><span class="mono" id="key">…</span><button class="btn ghost" id="newKey" title="Make a different key">↻</button></div>
+    <div class="row"><button class="btn" id="copyCode">Copy the script (with your key)</button><span id="codeState" class="sm muted"></span></div>
+    <ol>
+      <li>In the sheet: <b>Extensions → Apps Script</b>.</li>
+      <li>Click into the editor, select everything (<b>Ctrl+A</b> / <b>⌘A</b>), and paste (<b>Ctrl+V</b> / <b>⌘V</b>).</li>
+      <li>Save (<b>Ctrl+S</b> / the disk icon).</li>
+    </ol>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">3</span>Build the sheet (one click)</h2>
+    <ol>
+      <li>In the toolbar, pick <code>setupNewSheet</code> from the function list, then press <b>Run</b>.</li>
+      <li>Google asks for permission: <b>Review permissions</b> → pick your account → <b>Advanced</b> → <b>Go to … (unsafe)</b> → <b>Allow</b>.
+        <div class="sm muted">It says “unsafe” only because the script is yours and not reviewed by Google. It can only touch this one sheet.</div></li>
+      <li>The log says <i>Ready</i>. Your sheet now has <b>Categories</b>, <b>Summary</b>, <b>Accounts</b> and this month’s tab.</li>
+    </ol>
+    <p class="note">Optional: type your current balance into cell <b>A2</b> of the month tab. Categories can be changed later, in the sheet or from the app.</p>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">4</span>Publish it as a web app</h2>
+    <ol>
+      <li><b>Deploy → New deployment</b>. Click the gear next to “Select type” and choose <b>Web app</b>.</li>
+      <li><b>Execute as:</b> Me. <b>Who has access:</b> Anyone.
+        <div class="sm muted">“Anyone” only means the app can reach it; without your key every request is refused.</div></li>
+      <li><b>Deploy</b>, then copy the <b>Web app URL</b> (ends in <code>/exec</code>) and paste it here:</li>
+    </ol>
+    <input id="url" placeholder="https://script.google.com/macros/s/…/exec" inputmode="url" autocomplete="off">
+    <p id="urlState" class="sm"></p>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">5</span>Install the app on your phone</h2>
+    <ol>
+      <li>On the phone, open <a href="./" target="_blank" rel="noopener"><b>peter-ashraf.github.io/expense-log</b></a>
+        <span class="sm muted">(or scan the code below once the address above is filled in)</span>.</li>
+      <li><b>iPhone:</b> Safari → Share → <b>Add to Home Screen</b>. <b>Android:</b> Chrome menu → <b>Install app</b>.</li>
+      <li>Open it <b>from the Home Screen</b>, then paste the <b>Sheet API address</b> and the <b>Access key</b>:</li>
+    </ol>
+    <div class="sm muted">Sheet API address</div>
+    <div class="box"><span class="mono" id="urlOut">fill in step 4 first</span><button class="btn ghost" data-copy="urlOut">Copy</button></div>
+    <div class="sm muted" style="margin-top:8px">Access key</div>
+    <div class="box"><span class="mono" id="keyOut">…</span><button class="btn ghost" data-copy="keyOut">Copy</button></div>
+    <div id="qrWrap" hidden>
+      <p class="sm muted">Android or a computer: this code (or link) opens the app already connected. On iPhone, install first and paste instead: a Home Screen app does not share Safari’s storage.</p>
+      <div id="qr"></div>
+      <div class="row"><button class="btn ghost" id="copyLink">Copy one-tap link</button></div>
+    </div>
+    <p class="note warn">Keep the key private. Anyone with both the address and the key can read and change your sheet. If it leaks, make a new key here, paste the script again and deploy a new version.</p>
+  </section>
+
+  <section class="step">
+    <h2><span class="n">✓</span>Later: updating the script</h2>
+    <p class="sm" style="margin:0">When a new feature needs it, paste the newest script again but keep <b>your own</b> <code>var API_KEY = '…';</code> line, then <b>Deploy → Manage deployments → ✏️ → New version → Deploy</b>. Choose “New version”, not “New deployment”, so the address stays the same.</p>
+  </section>
+</div>
+<div class="toast" id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<script>
+const $ = (id) => document.getElementById(id);
+function toast(t) { const el = $('toast'); el.textContent = t; el.classList.add('show'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('show'), 1800); }
+async function copy(text, what) {
+  try { await navigator.clipboard.writeText(text); toast(`${what} copied`); }
+  catch (e) {                                   // older browsers: select and copy
+    const ta = document.createElement('textarea'); ta.value = text; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); toast(`${what} copied`); } catch (e2) { toast('Copy failed. Select it and copy by hand'); }
+    ta.remove();
+  }
+}
+// a long random key, made right here in the browser
+function makeKey() {
+  const a = new Uint8Array(24); crypto.getRandomValues(a);
+  return Array.from(a, (b) => 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789'[b % 56]).join('');
+}
+let key = '';
+try { key = sessionStorage.getItem('setupKey') || ''; } catch (e) { /* ignore */ }
+function setKey(k) { key = k; try { sessionStorage.setItem('setupKey', k); } catch (e) { /* ignore */ } $('key').textContent = k; $('keyOut').textContent = k; refresh(); }
+$('newKey').onclick = () => { setKey(makeKey()); toast('New key made. Copy the script again'); };
+
+let code = '';
+fetch('apps-script/Api.gs', { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
+  .then((t) => { code = t; $('codeState').textContent = ''; })
+  .catch(() => { $('codeState').innerHTML = 'Could not load the script. <a href="https://github.com/peter-ashraf/expense-log/blob/main/apps-script/Api.gs" target="_blank" rel="noopener">Open it on GitHub</a> and put your key on the API_KEY line by hand.'; });
+$('copyCode').onclick = () => {
+  if (!code) return toast('Still loading, try again in a second');
+  const withKey = code.replace("var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';", `var API_KEY = '${key}';`);
+  if (withKey === code) return toast('Could not insert the key. Paste it on the API_KEY line by hand');
+  copy(withKey, 'Script');
+  $('codeState').innerHTML = '<span class="ok">Copied ✓</span>';
+};
+
+function link() {
+  const u = $('url').value.trim();
+  return /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(u) ? new URL(`./#u=${encodeURIComponent(u)}&k=${encodeURIComponent(key)}`, location.href).href : '';
+}
+function refresh() {
+  const u = $('url').value.trim();
+  const good = /^https:\/\/script\.google\.com\/macros\/s\/[^/]+\/exec$/.test(u);
+  $('urlState').innerHTML = !u ? '' : good ? '<span class="ok">Looks right ✓</span>' : '<span style="color:var(--neg)">That doesn’t look like a web app address. It should start with https://script.google.com/macros/s/ and end with /exec</span>';
+  $('urlOut').textContent = good ? u : 'fill in step 4 first';
+  $('qrWrap').hidden = !good;
+  $('qr').innerHTML = '';
+  if (good && window.QRCode) new QRCode($('qr'), { text: link(), width: 180, height: 180, correctLevel: QRCode.CorrectLevel.L });
+}
+$('url').addEventListener('input', refresh);
+document.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => {
+  const t = $(b.dataset.copy).textContent;
+  if (!t || t.startsWith('fill in')) return toast('Fill in step 4 first');
+  copy(t, b.dataset.copy === 'keyOut' ? 'Key' : 'Address');
+});
+$('copyLink').onclick = () => { const l = link(); if (l) copy(l, 'Link'); };
+setKey(key || makeKey());
+</script>
+</body>
+</html>

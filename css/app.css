@@ -729,3 +729,10 @@ html { overscroll-behavior: none; }
 .acc-set { flex-wrap: wrap; }
 .acc-acts { flex-basis: 100%; display: flex; gap: 8px; padding-left: 50px; }
 .acc-acts .chip { gap: 5px; }
+.del-acc .seg { margin: 4px 0 12px; }
+.da-head { display: flex; justify-content: space-between; align-items: center; margin: 4px 2px 6px; }
+.da-list { max-height: 42vh; overflow-y: auto; margin-bottom: 10px; }
+.da-row { width: 100%; text-align: left; gap: 10px; }
+.da-box { width: 22px; height: 22px; border-radius: 7px; border: 2px solid var(--line); display: grid; place-items: center; flex: none; color: #fff; }
+.da-row.on .da-box { background: var(--accent); border-color: var(--accent); }
+.da-row:not(.on) .row-t { color: var(--muted); text-decoration: line-through; }
