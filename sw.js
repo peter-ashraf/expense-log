@@ -1,6 +1,6 @@
-const CACHE = 'expense-log-v48';
+const CACHE = 'expense-log-v49';
 const SHELL = [
-  './', 'index.html', 'manifest.webmanifest',
+  './', 'manifest.webmanifest',
   'css/app.css',
   'js/app.js', 'js/store.js', 'js/api.js', 'js/db.js', 'js/util.js', 'js/icons.js', 'js/xlsx.js', 'js/csv.js', 'js/lock.js', 'js/lockui.js',
   'js/insights.js', 'js/quick.js', 'js/vault.js', 'js/vaultui.js', 'js/refresh.js', 'js/slide.js', 'js/subs.js',
@@ -8,8 +8,20 @@ const SHELL = [
   'icons/icon.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/apple-touch-icon.png', 'icons/apple-touch-icon-dark.png',
 ];
 
+// Some hosts (Cloudflare Pages) redirect "x.html" to "x". Safari refuses a page that a service worker hands back
+// as a redirect, so every response is stored and served as a plain copy of the final page.
+async function plain(res) {
+  if (!res || !res.redirected) return res;
+  const body = await res.blob();
+  return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+}
+
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(CACHE).then((c) => c.addAll(SHELL.map((u) => new Request(u, { cache: 'reload' })))).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE).then((c) => Promise.all(SHELL.map(async (u) => {
+    const res = await plain(await fetch(new Request(u, { cache: 'reload' })));
+    if (!res.ok) throw new Error('Could not cache ' + u);
+    await c.put(u, res);
+  }))).then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -30,10 +42,10 @@ self.addEventListener('fetch', (e) => {
     caches.match(req, { ignoreSearch: true }).then((hit) => {
       // 'no-cache' = ask the server whether the file changed every time (the host's 10-minute cache would otherwise
       // let this "background refresh" read the same old copy again)
-      const net = fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then((res) => {
+      const net = fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' }).then(plain).then((res) => {
         if (res && res.ok) { const copy = res.clone(); caches.open(CACHE).then((c) => c.put(req, copy)); }
         return res;
-      }).catch(() => hit || caches.match('index.html'));
+      }).catch(() => hit || caches.match('./'));
       return hit || net;
     })
   );
