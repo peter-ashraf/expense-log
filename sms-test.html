@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="SMS test">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#0A0B10">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<title>SMS test</title>
+<style>
+  :root { color-scheme: light dark; --bg:#F4F5FA; --card:#fff; --text:#0F1020; --muted:#6B6E85; --line:#E1E3EE; --accent:#6D5EF6; --ok:#12A66B; --bad:#E5484D; --warn:#D98A06; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#0A0B10; --card:#14151D; --text:#F2F3FA; --muted:#8E91AB; --line:#24263A; --ok:#3DDC97; --bad:#FF6B70; --warn:#F5B544; } }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.45 -apple-system, system-ui, "Segoe UI", Roboto, sans-serif; padding: 16px 16px 80px; max-width: 560px; margin-inline: auto; }
+  .top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  h1 { font-size: 22px; margin: 6px 0 2px; } h2 { font-size: 15px; margin: 0 0 8px; }
+  p.sub { color: var(--muted); margin: 0 0 14px; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 18px; padding: 14px; margin-bottom: 12px; }
+  .kv { display: flex; justify-content: space-between; gap: 10px; padding: 5px 0; border-top: 1px solid var(--line); font-size: 14px; }
+  .kv:first-of-type { border-top: 0; } .kv span { color: var(--muted); } .kv b { text-align: right; word-break: break-word; }
+  .yes { color: var(--ok); } .no { color: var(--bad); } .maybe { color: var(--warn); }
+  button { font: inherit; color: inherit; border: 1px solid var(--line); background: none; border-radius: 14px; padding: 11px 14px; cursor: pointer; }
+  button.main { width: 100%; height: 64px; font-size: 18px; font-weight: 700; background: var(--accent); color: #fff; border: 0; border-radius: 18px; }
+  button.main.on { background: var(--bad); }
+  button.chip { padding: 8px 14px; border-radius: 999px; font-weight: 600; } button.chip.on { background: var(--text); color: var(--bg); }
+  button.ex { text-align: right; padding: 9px 12px; border-radius: 12px; font-size: 15px; width: 100%; margin-top: 6px; }
+  button.reload { padding: 8px 12px; border-radius: 999px; font-size: 14px; font-weight: 700; white-space: nowrap; }
+  .row { display: flex; gap: 8px; flex-wrap: wrap; margin: 10px 0; align-items: center; }
+  textarea, input[type=text] { width: 100%; border-radius: 14px; border: 1px solid var(--line); background: var(--bg); color: inherit; padding: 10px 12px; font: inherit; font-size: 16px; }
+  textarea { min-height: 76px; resize: none; }
+  #heard { min-height: 52px; font-size: 19px; margin: 12px 0 4px; direction: auto; }
+  #heard i { color: var(--muted); font-style: normal; font-size: 15px; }
+  .res { border-top: 1px solid var(--line); padding: 10px 0; direction: ltr; } .res:first-child { border-top: 0; }
+  .res b { display: block; direction: auto; } .res small { color: var(--muted); display: block; margin-top: 2px; }
+  .count { font-weight: 700; margin: 0 0 6px; }
+  pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); max-height: 260px; overflow: auto; direction: ltr; }
+  .tip { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  label.sw { display: flex; align-items: center; gap: 8px; font-size: 14px; }
+</style>
+</head>
+<body>
+<h1>SMS link test</h1>
+<p class="sub">Checks what your Shortcut hands over. Nothing is saved to your sheet.</p>
+
+<div class="card">
+  <h2>This page</h2>
+  <div class="kv"><span>Opened as</span><b id="mode"></b></div>
+  <div class="kv"><span>Loaded at</span><b id="loaded"></b></div>
+</div>
+
+<div class="card">
+  <h2>Last message received</h2>
+  <div id="last"><p class="sub">Nothing yet. Run your Shortcut, or tap the button below.</p></div>
+</div>
+
+<div class="card">
+  <h2>Events</h2>
+  <div id="log"></div>
+  <p style="display:flex;gap:8px;margin:10px 0 0">
+    <button class="chip" id="paste">Paste clipboard</button>
+    <button class="chip" id="sample">Try a sample link</button>
+    <button class="chip" id="clear">Clear</button>
+  </p>
+</div>
+
+<script type="module">
+import { parseMessages } from './js/quick.js';
+const $ = (s) => document.querySelector(s);
+const KEY = 'smsTestLog';
+const read = () => { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } };
+const write = (l) => { try { localStorage.setItem(KEY, JSON.stringify(l.slice(-30))); } catch (e) { /* ignore */ } };
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+const pad = (n) => String(n).padStart(2, '0');
+const d = new Date(); const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+function log(event, detail, cls) {
+  const l = read(); l.push({ at: now(), event, detail: detail || '', cls: cls || '' }); write(l); paintLog();
+}
+function paintLog() {
+  const l = read().slice().reverse();
+  $('#log').innerHTML = l.length ? l.map((e) => `<div class="kv"><span>${esc(e.at)}</span><b class="${e.cls}">${esc(e.event)}${e.detail ? '<br><small>' + esc(e.detail) + '</small>' : ''}</b></div>`).join('') : '<p class="sub">No events yet.</p>';
+}
+function show(text, via) {
+  const rows = parseMessages(text, { today, categories: { order: [], subs: {} }, accounts: [{ name: 'Credit Card', type: 'card' }], history: [] });
+  const kv = (k, v) => `<div class="kv"><span>${k}</span><b>${esc(v)}</b></div>`;
+  $('#last').innerHTML = kv('Arrived via', via) + kv('Text', text.length > 160 ? text.slice(0, 160) + '…' : text) +
+    (rows.length ? rows.map((r) => kv('Read as', `${r.type} ${r.currency} ${r.amount.toFixed(2)} · ${r.description || '?'} · ${r.date} ${r.time}`)).join('')
+      : '<div class="kv"><span>Read as</span><b class="no">Not recognised as a bank message</b></div>');
+  log(`Message via ${via}`, rows.length ? `${rows.length} transaction(s) read` : 'not recognised', rows.length ? 'yes' : 'no');
+}
+function checkHash(via) {
+  if (!/[#&]sms=/.test(location.hash)) return false;
+  const t = (new URLSearchParams(location.hash.slice(1)).get('sms') || '').trim();
+  history.replaceState(null, '', location.pathname + location.search);
+  if (t) show(t, via); else log(`Link via ${via} had sms= but it was empty`, '', 'no');
+  return true;
+}
+
+const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
+$('#mode').innerHTML = standalone ? '<span class="yes">Home-screen app</span>' : '<span class="maybe">Safari tab</span>';
+$('#loaded').textContent = now();
+paintLog();
+log('Page opened (fresh start)', standalone ? 'home-screen app' : 'Safari tab');
+if (!checkHash('fresh open')) log('No message in the link');
+
+window.addEventListener('hashchange', () => { if (!checkHash('link while open')) log('Link changed, no message in it', location.hash.slice(0, 60), 'maybe'); });
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState !== 'visible') return;
+  log('Came back to the front', location.hash ? 'link: ' + location.hash.slice(0, 60) : 'no message in the link', location.hash ? '' : 'maybe');
+  checkHash('link on resume');
+});
+window.addEventListener('pageshow', (e) => { if (e.persisted) log('Restored from memory'); });
+
+$('#paste').onclick = async () => {
+  try { const t = await navigator.clipboard.readText(); if (t && t.trim()) show(t.trim(), 'clipboard'); else log('Clipboard is empty', '', 'no'); }
+  catch (e) { log('Clipboard blocked', e.message || '', 'no'); }
+};
+$('#sample').onclick = () => { location.hash = 'sms=' + encodeURIComponent('Your credit card ending with#0000 was charged for EGP 12.50 at TEST SHOP on ' + `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}` + '  at 12:00. Card available limit is EGP 1.00.'); };
+$('#clear').onclick = () => { write([]); paintLog(); };
+</script>
+</body>
+</html>
