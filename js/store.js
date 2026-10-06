@@ -22,6 +22,7 @@ const subs = new Set();
 let transport = null;
 let cache = null;
 let syncing = false;
+let syncStarted = 0;
 let timer = null;
 let retries = 0;
 
@@ -30,7 +31,7 @@ export const onChange = (fn) => { subs.add(fn); return () => subs.delete(fn); };
 function emit() { cache = null; subs.forEach((f) => f()); }
 
 async function persist() {
-  await Promise.all([db.set('snap', S.snap), db.set('queue', S.queue)]);
+  try { await Promise.all([db.set('snap', S.snap), db.set('queue', S.queue)]); return true; } catch (e) { return false; }   // stuck storage: memory still has it, the next save retries
 }
 
 export async function init() {
@@ -361,6 +362,7 @@ export function scheduleSync(ms = 500) {
 }
 
 export async function sync() {
+  if (syncing && Date.now() - syncStarted > 150000) syncing = false;   // watchdog: never stay "Syncing…" forever
   if (!transport || syncing) return;
   if (!navigator.onLine && !(S.cfg && S.cfg.demo)) {
     S.status = 'offline';
@@ -368,6 +370,7 @@ export async function sync() {
     return;
   }
   syncing = true;
+  syncStarted = Date.now();
   S.status = 'syncing';
   emit();
   try {
@@ -382,7 +385,7 @@ export async function sync() {
     retries = 0;
     S.status = 'synced';
     S.error = '';
-    await db.set('lastSync', S.lastSync);
+    db.set('lastSync', S.lastSync).catch(() => {});
   } catch (e) {
     const msg = (e && e.message) || String(e);
     // "Load failed" / "Failed to fetch": the request never completed (phone radio asleep, tunnel, dropped signal...).
@@ -401,7 +404,7 @@ export async function sync() {
     if (S.cfg && S.cfg.demo && localStorage.getItem('el_demo_offline') === '1') S.status = 'offline';
   } finally {
     syncing = false;
-    await persist();
+    try { await persist(); } catch (e) { /* storage stuck: the data is still in memory and saves next time */ }
     emit();
     if (S.queue.length && S.status === 'synced') scheduleSync(300);
   }

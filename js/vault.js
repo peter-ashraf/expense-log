@@ -38,15 +38,23 @@ function idbKeystore() {
     r.onsuccess = () => res(r.result);
     r.onerror = () => rej(r.error);
   });
-  const run = async (kind, fn) => {
-    const db = await open();
-    return new Promise((res, rej) => {
+  // Same time limit as db.js: a hung IndexedDB must not look like a lost key (that would wipe the phone's copy).
+  const timed = (p) => { let t; return Promise.race([p, new Promise((_, rej) => { t = setTimeout(() => rej(new Error('STORAGE_TIMEOUT')), 5000); })]).finally(() => clearTimeout(t)); };
+  const once = async (kind, fn) => {
+    const db = await timed(open());
+    return timed(new Promise((res, rej) => {
       const t = db.transaction('k', kind);
       const req = fn(t.objectStore('k'));
       t.oncomplete = () => { db.close(); res(req && req.result); };
       t.onerror = () => { db.close(); rej(t.error); };
       t.onabort = () => { db.close(); rej(t.error); };
-    });
+    }));
+  };
+  const run = async (kind, fn) => {
+    try { return await once(kind, fn); } catch (e) {
+      if (e && e.message === 'STORAGE_TIMEOUT') return once(kind, fn);   // one fresh try
+      throw e;
+    }
   };
   return { get: () => run('readonly', (s) => s.get('dek')), put: (k) => run('readwrite', (s) => s.put(k, 'dek')), del: () => run('readwrite', (s) => s.delete('dek')) };
 }
@@ -66,7 +74,10 @@ export async function createDevice() {
 /** Opens automatic encryption at start-up. Throws 'KEY_MISSING' when the browser no longer has the key. */
 export async function openDevice() {
   let key = null;
-  try { key = await store().get(); } catch (e) { key = null; }
+  try { key = await store().get(); } catch (e) {
+    if (e && e.message === 'STORAGE_TIMEOUT') throw e;   // storage stuck, not key gone: never wipe for this
+    key = null;
+  }
   if (!key) throw new Error('KEY_MISSING');
   dek = key;
   dekRaw = null;

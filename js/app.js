@@ -27,7 +27,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.13.0';
+const APP_VERSION = '3.13.1';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
 const SCRIPT_LATEST = 6;
 
@@ -2375,16 +2375,50 @@ document.addEventListener('visibilitychange', () => {
 window.addEventListener('pageshow', () => paintTheme(themeNow));
 setInterval(() => { if (document.visibilityState === 'visible') autoSync(); }, 60000);   // checks each minute, pulls only when 30 minutes old
 
+// If start-up hasn't finished after a few seconds (iOS can leave the phone's storage hanging after a force-close),
+// the lock screen offers a way out instead of sitting there with buttons that do nothing.
+let booted = false;
+function bootRescue(why) {
+  if (booted) return;
+  const root = document.documentElement;
+  root.classList.add('locked');
+  ['#lockBio', '#lockPin', '#lockPass'].forEach((s) => { const el = document.querySelector(s); if (el) el.hidden = true; });
+  document.querySelector('#lockTitle').textContent = 'Still opening…';
+  document.querySelector('#lockSub').textContent = (why ? 'This phone’s storage didn’t respond. ' : 'This is taking longer than usual. ') + 'Tap anywhere to reload.';
+  const lock = document.querySelector('#lock');
+  if (lock.dataset.rescue) return;
+  lock.dataset.rescue = '1';
+  lock.addEventListener('click', (e) => {
+    if (booted) return;
+    if (e.target.closest('#lockReset')) {
+      if (confirm('Still stuck after reloading?\n\nThis clears the app’s copy on this phone and starts fresh. Your Google Sheet is untouched; anything not yet uploaded from this phone is lost.')) {
+        try { ['el_lock', 'el_vault'].forEach((k) => localStorage.removeItem(k)); } catch (e2) { /* ignore */ }
+        try { indexedDB.deleteDatabase('expenselog'); indexedDB.deleteDatabase('expenselog-keys'); } catch (e2) { /* ignore */ }
+        setTimeout(() => location.reload(), 600);
+      }
+      return;
+    }
+    location.reload();
+  });
+}
+setTimeout(() => bootRescue(false), 9000);
+
 (async function boot() {
+  try { await bootSteps(); booted = true; } catch (e) { console.error(e); bootRescue(true); }
+})();
+
+async function bootSteps() {
   let vaultOpened = false;
   let keyLost = false;
   if (vault.isEnabled() && vault.mode() === 'device') {
-    try { await vault.openDevice(); } catch (e) { keyLost = true; await store.disconnect(); }   // the browser dropped the key: the local copy can't be read, so start clean (the sheet still has everything)
+    try { await vault.openDevice(); } catch (e) { if (e && e.message === 'STORAGE_TIMEOUT') throw e; keyLost = true; await store.disconnect(); }   // the browser dropped the key: the local copy can't be read, so start clean (the sheet still has everything)
   } else if (vault.isEnabled()) {
     vaultOpened = await vault.takeStash();                // an automatic reload (app update) doesn't ask again
     if (!vaultOpened) {
+      booted = true;   // waiting for the passphrase is not a hang
       await promptUnlock({ onForgot: async () => { try { localStorage.removeItem('el_lock'); } catch (e) { /* ignore */ } await store.disconnect(); location.reload(); } });
       vaultOpened = true;
+      booted = false; setTimeout(() => bootRescue(false), 9000);   // loading after the passphrase gets the same safety net
     }
   }
   await store.init();
@@ -2402,6 +2436,7 @@ setInterval(() => { if (document.visibilityState === 'visible') autoSync(); }, 6
     haptic,
     onReset: async () => { try { localStorage.removeItem('el_lock'); } catch (e) { /* ignore */ } await store.disconnect(); location.reload(); },
   });
+  booted = true;   // the screen is live from here on (a first connection may still take a while, that's fine)
   try {
     const r = JSON.parse(sessionStorage.getItem('el_resume') || 'null');
     sessionStorage.removeItem('el_resume');
@@ -2430,4 +2465,4 @@ setInterval(() => { if (document.visibilityState === 'visible') autoSync(); }, 6
     });
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
-})();
+}
