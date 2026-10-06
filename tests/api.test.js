@@ -76,7 +76,23 @@ const g = {
   LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
   ContentService: { createTextOutput: (s) => ({ s, setMimeType() { return this; } }), MimeType: { JSON: 1 } },
   console,
+  PropertiesService: (() => { const m = new Map(); return { getScriptProperties: () => ({ getProperty: (k) => (m.has(k) ? m.get(k) : null), setProperty: (k, v) => m.set(k, v) }) }; })(),
+  // self-update: a fake of the downloaded file and of the Apps Script API
+  UrlFetchApp: { fetch: (url, o = {}) => fakeFetch(url, o) },
+  ScriptApp: { getScriptId: () => 'SCRIPT1', getOAuthToken: () => 'tok', getService: () => ({ getUrl: () => '' }) },
 };
+let fetchLog = [];
+let fakeRemote = '';
+let fakeApiError = '';
+function fakeFetch(url, o) {
+  fetchLog.push((o.method || 'get').toUpperCase() + ' ' + url.replace(/\?t=\d+/, ''));
+  const resp = (code, body) => ({ getResponseCode: () => code, getContentText: () => (typeof body === 'string' ? body : JSON.stringify(body)) });
+  if (url.startsWith('https://cc-expenses.pages.dev/')) return resp(200, fakeRemote);
+  if (fakeApiError) return resp(403, { error: { message: fakeApiError } });
+  if (url.endsWith('/content') && (o.method || 'get') === 'get') return resp(200, { files: [{ name: 'appsscript', type: 'JSON', source: '{}' }, { name: 'Code', type: 'SERVER_JS', source: 'function doPost(){}' }] });
+  if (url.endsWith('/versions')) return resp(200, { versionNumber: 9 });
+  return resp(200, {});
+}
 const api = new Function(...Object.keys(g), src + ';return {doPost, doGet, setupAfterImport}')(...Object.values(g));
 
 // ---- build a workbook shaped like the real one
@@ -294,6 +310,34 @@ ok(r.applied.join() === 'l1', 'legacy "category = sub-category" rows are still a
   s2 = call2('push', { ops: [{ opId: 'n1', type: 'add', id: 'n-1', data: { date: mkey + '-01', description: 'First', amount: 10, type: 'Expense', category: 'Food', sub: 'Coffee' } }] });
   ok(s2.applied.join() === 'n1' && s2.entries.length === 1 && s2.accounts[0].name === 'Credit Card', 'fresh sheet accepts its first entry');
   ok(/already has month tabs/.test(api2.setupNewSheet()), 'running it again changes nothing');
+}
+
+// ---- version + self-update
+{
+  const ver = +/var SCRIPT_VERSION = (\d+);/.exec(src)[1];
+  ok(call('pull').scriptVersion === ver, 'snapshot reports the script version');
+  ok(g.PropertiesService.getScriptProperties().getProperty('API_KEY') === 'test-key', 'the key from the code is saved to Script Properties');
+  const appUrl = 'https://script.google.com/macros/s/DEP123/exec';
+  fakeRemote = src;                                        // same version online: nothing to do
+  let r = call('selfUpdate', { url: appUrl });
+  ok(r.ok && r.updated === false && r.version === ver, 'no newer script: nothing changes');
+  fakeRemote = src.replace(/var SCRIPT_VERSION = \d+;/, 'var SCRIPT_VERSION = ' + (ver + 1) + ';');
+  fetchLog = [];
+  r = call('selfUpdate', { url: appUrl });
+  ok(r.ok && r.updated === true && r.version === ver + 1, 'newer script online: updated');
+  ok(fetchLog.join(' | ').includes('PUT https://script.googleapis.com/v1/projects/SCRIPT1/content') && fetchLog.some((x) => x === 'PUT https://script.googleapis.com/v1/projects/SCRIPT1/deployments/DEP123'), 'code replaced, new version made, the same deployment re-pointed');
+  fakeApiError = 'Apps Script API has not been used in project 1 before or it is disabled.';
+  r = call('selfUpdate', { url: appUrl });
+  ok(r.ok === false && /usersettings/.test(r.error), 'API switched off: a clear message');
+  fakeApiError = '';
+  fakeRemote = '<html>not found</html>';
+  r = call('selfUpdate', { url: appUrl });
+  ok(r.ok === false && /does not look right/.test(r.error), 'a broken download changes nothing');
+  ok(call('pull', {}, 'bad').error === 'Unauthorized', 'self-update never weakens the key check');
+  const raw = fs.readFileSync(path.join(__dirname, '..', 'apps-script', 'Api.gs'), 'utf8');   // placeholder key, as after a self-update
+  const api3 = new Function(...Object.keys(g), raw + ';return {doPost}')(...Object.values(g));
+  const c3 = (key) => JSON.parse(api3.doPost({ postData: { contents: JSON.stringify({ key, action: 'pull' }) } }).s);
+  ok(c3('test-key').ok === true && c3('nope').error === 'Unauthorized', 'after an update the code has no key in it, and the saved key still works');
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');

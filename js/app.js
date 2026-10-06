@@ -27,7 +27,9 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.12.0';
+const APP_VERSION = '3.13.0';
+// The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
+const SCRIPT_LATEST = 6;
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -642,6 +644,21 @@ function accountsCard(st) {
     </section>`;
 }
 
+function scriptCard(st) {
+  const v = st.scriptVersion;
+  const state = v === undefined ? 'Checking at the next sync'
+    : !v ? 'An older version without self-update'
+      : su.busy ? 'Updating…'
+        : v >= SCRIPT_LATEST ? 'Up to date' : `Version ${v}, version ${SCRIPT_LATEST} available`;
+  return `<section class="card">
+      <div class="card-h"><h3>Google Sheet script</h3><span class="badge ${v >= SCRIPT_LATEST ? 'synced' : ''}">${v ? 'v' + v : '?'}</span></div>
+      <div class="kv"><span>Status</span><b>${esc(state)}</b></div>
+      ${v && v < SCRIPT_LATEST && !su.busy ? `<button class="btn ghost" data-act="su-now">${icon('cloud', 18)}Update the sheet script now</button>` : ''}
+      ${su.error ? `<p class="warn">${esc(su.error)}</p>` : ''}
+      ${!v && v !== undefined ? '<p class="muted sm">Paste the newest script into your sheet once (see the setup guide, “Later: updating the script”). From then on it updates itself.</p>' : '<p class="muted sm">The script in your sheet updates itself when the app needs a newer one. Your key and data are never touched.</p>'}
+    </section>`;
+}
+
 function encryptionCard() {
   const m = vault.mode();
   const on = m !== null;
@@ -833,6 +850,7 @@ function renderSettings(view) {
       <p class="muted sm" style="margin-top:8px">Gets the newest version immediately and reloads. Your data is not touched.</p>
       <p class="muted xs">${esc(fitApp.info || '')}</p>
     </section>
+    ${demo ? '' : scriptCard(st)}
     <section class="card">
       <div class="card-h"><h3>This device</h3></div>
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
@@ -2197,6 +2215,7 @@ document.addEventListener('click', async (ev) => {
       try { await navigator.clipboard.writeText(url); toast('Link copied', 'ok'); } catch (e) { toast(url); }
       break;
     }
+    case 'su-now': maybeSelfUpdate(true); break;
     case 'trash': openTrash(); break;
     case 'restore': {
       const id = store.restoreTrash(el.dataset.id);
@@ -2304,8 +2323,31 @@ function render() {
 
 initSlide(() => ui.tab + '|' + (ui.settingsPage || ''));
 
+// Keep the sheet's script in step with the app: when it reports an older version, ask it to update itself.
+// Tried at most every 2 hours per new version (and every 15 minutes while the new file is still being published).
+const su = { busy: false, error: '', note: '' };
+function maybeSelfUpdate(force = false) {
+  const st = store.getState();
+  if (!st.cfg || st.cfg.demo || su.busy || st.scriptVersion === undefined) return;
+  if (!st.scriptVersion) { su.note = 'old'; return; }
+  if (st.scriptVersion >= SCRIPT_LATEST) { su.error = ''; su.note = ''; return; }
+  const k = 'el_su_' + SCRIPT_LATEST;
+  let last = 0; try { last = +localStorage.getItem(k) || 0; } catch (e) { /* ignore */ }
+  if (!force && Date.now() - last < (su.error ? 2 * 3600e3 : 15 * 60e3)) return;
+  try { localStorage.setItem(k, String(Date.now())); } catch (e) { /* ignore */ }
+  su.busy = true; su.error = '';
+  if (ui.tab === 'settings' && ui.settingsPage === 'about') renderSettings($('#view'));
+  store.selfUpdate().then((r) => {
+    su.busy = false;
+    if (r.updated) { toast(`Sheet script updated to v${r.version}`, 'ok'); store.sync(); }
+    else su.note = 'waiting';                      // the new file is not online yet; tried again later
+  }).catch((e) => { su.busy = false; su.error = (e && e.message) || 'Update failed'; })
+    .finally(() => { if (ui.tab === 'settings' && ui.settingsPage === 'about') renderSettings($('#view')); });
+}
+
 store.onChange(() => {
   const st = store.getState();
+  if (st.status === 'synced') setTimeout(() => maybeSelfUpdate(), 0);
   if (!st.cfg) { render(); return; }
   if ($('#layer').classList.contains('open') && ui.form) { renderTop(); return; } // don't disturb an open form
   const rej = store.takeRejected();

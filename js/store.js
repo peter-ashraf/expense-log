@@ -345,6 +345,15 @@ export function view() {
   return cache;
 }
 
+// ---- the Google Sheet's script updating itself ---------------------------------
+export async function selfUpdate() {
+  if (!transport) throw new Error('Not connected');
+  const r = await transport.call('selfUpdate', { url: S.cfg && S.cfg.url });
+  if (r.version) S.scriptVersion = r.version;
+  emit();
+  return r;
+}
+
 // ---- sync -------------------------------------------------------------------
 export function scheduleSync(ms = 500) {
   clearTimeout(timer);
@@ -367,6 +376,7 @@ export async function sync() {
     const done = new Set([...(r.applied || []), ...(r.rejected || []).map((x) => x.opId)]);
     if (r.rejected && r.rejected.length) S.rejected = r.rejected;
     S.queue = S.queue.filter((o) => !done.has(o.opId));
+    S.scriptVersion = Number(r.scriptVersion) || 0;   // 0 = an older script that cannot update itself yet
     S.snap = { categories: r.categories, accounts: r.accounts || [], subscriptions: r.subscriptions, firstStart: r.firstStart, months: r.months, entries: r.entries };
     S.lastSync = Date.now();
     retries = 0;

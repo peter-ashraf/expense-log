@@ -11,7 +11,11 @@
  * moved, renamed or removed.
  */
 
-var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';
+var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';   // only needed the first time: it is then kept in Script Properties
+
+// Bumped with every change to this file. The app compares it and asks the script to update itself (selfUpdate_).
+var SCRIPT_VERSION = 6;
+var UPDATE_URL = 'https://cc-expenses.pages.dev/apps-script/Api.gs';
 
 var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
 var HEADERS = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category', 'ID', 'Account'];
@@ -36,17 +40,67 @@ function doPost(e) {
   var out;
   try {
     var req = JSON.parse(e.postData.contents);
-    if (!API_KEY || API_KEY === 'PASTE-YOUR-SECRET-KEY-HERE') throw new Error('API key is not set on the server.');
-    if (req.key !== API_KEY) throw new Error('Unauthorized');
+    var key = apiKey_();
+    if (!key) throw new Error('API key is not set on the server.');
+    if (req.key !== key) throw new Error('Unauthorized');
     out = withLock_(function () {
       if (req.action === 'push') return push_(req.ops || []);
       if (req.action === 'pull') return snapshot_();
+      if (req.action === 'selfUpdate') return selfUpdate_(req.url);
       throw new Error('Unknown action');
     });
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err) };
   }
   return json_(out);
+}
+
+// The key lives in Script Properties, so a self-update (which replaces this file) can never lose it. The first time,
+// it is copied there from the API_KEY line above.
+function apiKey_() {
+  var props = PropertiesService.getScriptProperties();
+  var stored = props.getProperty('API_KEY');
+  var inCode = API_KEY && API_KEY !== 'PASTE-YOUR-SECRET-KEY-HERE' ? API_KEY : '';
+  if (inCode && stored !== inCode) { props.setProperty('API_KEY', inCode); return inCode; }
+  return stored || '';
+}
+
+// Replaces this file with the newest published version and points the same web-app address at it.
+// Needs the Apps Script API switched on (script.google.com/home/usersettings) and the scopes in appsscript.json.
+function selfUpdate_(appUrl) {
+  if (!PropertiesService.getScriptProperties().getProperty('API_KEY')) throw new Error('The key is not saved yet. Sync once, then try again.');
+  var res = UrlFetchApp.fetch(UPDATE_URL + '?t=' + Date.now(), { muteHttpExceptions: true });
+  if (res.getResponseCode() !== 200) throw new Error('Could not download the new script (' + res.getResponseCode() + ').');
+  var src = res.getContentText();
+  var m = /var SCRIPT_VERSION = (\d+);/.exec(src);
+  if (!m || src.indexOf('function doPost') < 0) throw new Error('The downloaded script does not look right. Nothing was changed.');
+  var newVer = +m[1];
+  if (newVer <= SCRIPT_VERSION) return { ok: true, updated: false, version: SCRIPT_VERSION };
+
+  var dep = /\/macros\/s\/([^/]+)\/exec/.exec(String(appUrl || '')) || /\/macros\/s\/([^/]+)\/exec/.exec(ScriptApp.getService().getUrl() || '');
+  if (!dep) throw new Error('Could not tell which deployment to update.');
+  var base = 'https://script.googleapis.com/v1/projects/' + ScriptApp.getScriptId();
+  var call = function (method, path, body) {
+    var r = UrlFetchApp.fetch(base + path, { method: method, contentType: 'application/json', muteHttpExceptions: true,
+      headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }, payload: body ? JSON.stringify(body) : undefined });
+    var j = JSON.parse(r.getContentText() || '{}');
+    if (r.getResponseCode() >= 300) {
+      var msg = (j.error && j.error.message) || ('HTTP ' + r.getResponseCode());
+      if (/has not been used|is disabled|not enabled/i.test(msg)) msg = 'Turn on the Apps Script API at script.google.com/home/usersettings, then try again.';
+      else if (/insufficient|scope/i.test(msg)) msg = 'The script needs the update permissions: paste the newest appsscript.json and approve once.';
+      throw new Error(msg);
+    }
+    return j;
+  };
+  var content = call('get', '/content');
+  var files = content.files || [];
+  var target = files.filter(function (f) { return f.type === 'SERVER_JS' && String(f.source).indexOf('function doPost') >= 0; })[0];
+  if (!target) throw new Error('Could not find the script file to update.');
+  target.source = src;                                           // other files (appsscript.json, extras) stay as they are
+  call('put', '/content', { files: files });
+  var ver = call('post', '/versions', { description: 'Expense Log v' + newVer });
+  call('put', '/deployments/' + dep[1], { deploymentConfig: { scriptId: ScriptApp.getScriptId(), versionNumber: ver.versionNumber, manifestFileName: 'appsscript', description: 'Expense Log v' + newVer } });
+  return { ok: true, updated: true, version: newVer };
 }
 
 function json_(o) {
@@ -79,7 +133,8 @@ function snapshot_() {
     firstStart: firstStart,
     months: sheets.map(function (m) { return m.key; }),
     entries: entries,
-    serverTime: Date.now()
+    serverTime: Date.now(),
+    scriptVersion: SCRIPT_VERSION
   };
 }
 

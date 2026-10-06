@@ -98,6 +98,7 @@ function demoTransport() {
     firstStart: s.firstStart,
     months: s.months.slice().sort(),
     serverTime: Date.now(),
+    scriptVersion: 1e9,   // the demo never needs a script update
   });
   return {
     async call(action, body = {}) {
@@ -106,6 +107,7 @@ function demoTransport() {
       const s = load();
       const applied = [];
       const rejected = [];
+      if (action === 'selfUpdate') return { ok: true, updated: false, version: 1e9 };
       if (action === 'push') {
         if (!s.cats) s.cats = JSON.parse(JSON.stringify(CATS));
         for (const op of body.ops || []) {

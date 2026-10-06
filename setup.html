@@ -39,6 +39,15 @@ input { width:100%; height:48px; padding:0 14px; border-radius:14px; border:1px 
   <p class="lead">Your own private copy of Credit Card Expenses: your data lives in <b>your</b> Google Sheet, nobody else can see it. About 10 minutes on a computer, once.</p>
 
   <section class="step">
+    <h2><span class="n">0</span>Allow automatic script updates</h2>
+    <ol>
+      <li>Open <a href="https://script.google.com/home/usersettings" target="_blank" rel="noopener"><b>script.google.com/home/usersettings</b></a>.</li>
+      <li>Switch <b>Google Apps Script API</b> to <b>On</b>.</li>
+    </ol>
+    <p class="note">This lets your sheet’s script update itself when the app gets new features, so you never paste code again.</p>
+  </section>
+
+  <section class="step">
     <h2><span class="n">1</span>Create a blank Google Sheet</h2>
     <ol>
       <li>Open <a href="https://sheets.new" target="_blank" rel="noopener"><b>sheets.new</b></a> (signed in to your Google account). A blank sheet opens.</li>
@@ -57,6 +66,12 @@ input { width:100%; height:48px; padding:0 14px; border-radius:14px; border:1px 
       <li>Click into the editor, select everything (<b>Ctrl+A</b> / <b>⌘A</b>), and paste (<b>Ctrl+V</b> / <b>⌘V</b>).</li>
       <li>Save (<b>Ctrl+S</b> / the disk icon).</li>
     </ol>
+    <p style="margin:14px 0 4px"><b>Then the settings file</b> (it holds the permissions for self-updating):</p>
+    <div class="row"><button class="btn" id="copyManifest">Copy the settings file</button><span id="mfState" class="sm muted"></span></div>
+    <ol>
+      <li>Click the <b>gear</b> (Project Settings) on the left and tick <b>Show “appsscript.json” manifest file in editor</b>.</li>
+      <li>Back in the <b>Editor</b> (the <code>&lt; &gt;</code> icon), open <code>appsscript.json</code>, select everything and paste. Save.</li>
+    </ol>
   </section>
 
   <section class="step">
@@ -64,7 +79,7 @@ input { width:100%; height:48px; padding:0 14px; border-radius:14px; border:1px 
     <ol>
       <li>In the toolbar, pick <code>setupNewSheet</code> from the function list, then press <b>Run</b>.</li>
       <li>Google asks for permission: <b>Review permissions</b> → pick your account → <b>Advanced</b> → <b>Go to … (unsafe)</b> → <b>Allow</b>.
-        <div class="sm muted">It says “unsafe” only because the script is yours and not reviewed by Google. It can only touch this one sheet.</div></li>
+        <div class="sm muted">It says “unsafe” only because the script is yours and not reviewed by Google. It can only touch this one sheet, and its own code (to update itself).</div></li>
       <li>The log says <i>Ready</i>. Your sheet now has <b>Categories</b>, <b>Summary</b>, <b>Accounts</b> and this month’s tab.</li>
     </ol>
     <p class="note">Optional: type your current balance into cell <b>A2</b> of the month tab. Categories can be changed later, in the sheet or from the app.</p>
@@ -103,8 +118,8 @@ input { width:100%; height:48px; padding:0 14px; border-radius:14px; border:1px 
   </section>
 
   <section class="step">
-    <h2><span class="n">✓</span>Later: updating the script</h2>
-    <p class="sm" style="margin:0">When a new feature needs it, paste the newest script again but keep <b>your own</b> <code>var API_KEY = '…';</code> line, then <b>Deploy → Manage deployments → ✏️ → New version → Deploy</b>. Choose “New version”, not “New deployment”, so the address stays the same.</p>
+    <h2><span class="n">✓</span>Updates are automatic</h2>
+    <p class="sm" style="margin:0">When the app needs a newer script, it asks your sheet to update itself (same address, your key and data untouched). You can see it in the app under <b>Settings → About → Google Sheet script</b>. If it ever says it can’t, the message there tells you what to switch on.</p>
   </section>
 </div>
 <div class="toast" id="toast"></div>
@@ -135,6 +150,10 @@ let code = '';
 fetch('apps-script/Api.gs', { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
   .then((t) => { code = t; $('codeState').textContent = ''; })
   .catch(() => { $('codeState').innerHTML = 'Could not load the script. <a href="apps-script/Api.gs" target="_blank" rel="noopener">Open it here</a>, copy it, and put your key on the API_KEY line by hand.'; });
+let manifest = '';
+fetch('apps-script/appsscript.json', { cache: 'no-cache' }).then((r) => (r.ok ? r.text() : Promise.reject())).then((t) => { manifest = t; })
+  .catch(() => { $('mfState').innerHTML = 'Could not load it. <a href="apps-script/appsscript.json" target="_blank" rel="noopener">Open it here</a> and copy it.'; });
+$('copyManifest').onclick = () => { if (!manifest) return toast('Still loading, try again in a second'); copy(manifest, 'Settings file'); $('mfState').innerHTML = '<span class="ok">Copied ✓</span>'; };
 $('copyCode').onclick = () => {
   if (!code) return toast('Still loading, try again in a second');
   const withKey = code.replace("var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';", `var API_KEY = '${key}';`);
