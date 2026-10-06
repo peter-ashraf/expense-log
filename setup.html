@@ -85,7 +85,7 @@ input { width:100%; height:48px; padding:0 14px; border-radius:14px; border:1px 
   <section class="step">
     <h2><span class="n">5</span>Install the app on your phone</h2>
     <ol>
-      <li>On the phone, open <a href="./" target="_blank" rel="noopener"><b>peter-ashraf.github.io/expense-log</b></a>
+      <li>On the phone, open <a href="./" target="_blank" rel="noopener"><b id="appAddr">the app</b></a>
         <span class="sm muted">(or scan the code below once the address above is filled in)</span>.</li>
       <li><b>iPhone:</b> Safari → Share → <b>Add to Home Screen</b>. <b>Android:</b> Chrome menu → <b>Install app</b>.</li>
       <li>Open it <b>from the Home Screen</b>, then paste the <b>Sheet API address</b> and the <b>Access key</b>:</li>
@@ -134,7 +134,7 @@ $('newKey').onclick = () => { setKey(makeKey()); toast('New key made. Copy the s
 let code = '';
 fetch('apps-script/Api.gs', { cache: 'no-cache' }).then((r) => { if (!r.ok) throw new Error(r.status); return r.text(); })
   .then((t) => { code = t; $('codeState').textContent = ''; })
-  .catch(() => { $('codeState').innerHTML = 'Could not load the script. <a href="https://github.com/peter-ashraf/expense-log/blob/main/apps-script/Api.gs" target="_blank" rel="noopener">Open it on GitHub</a> and put your key on the API_KEY line by hand.'; });
+  .catch(() => { $('codeState').innerHTML = 'Could not load the script. <a href="apps-script/Api.gs" target="_blank" rel="noopener">Open it here</a>, copy it, and put your key on the API_KEY line by hand.'; });
 $('copyCode').onclick = () => {
   if (!code) return toast('Still loading, try again in a second');
   const withKey = code.replace("var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';", `var API_KEY = '${key}';`);
@@ -163,6 +163,7 @@ document.querySelectorAll('[data-copy]').forEach((b) => b.onclick = () => {
   copy(t, b.dataset.copy === 'keyOut' ? 'Key' : 'Address');
 });
 $('copyLink').onclick = () => { const l = link(); if (l) copy(l, 'Link'); };
+$('appAddr').textContent = new URL('./', location.href).href.replace(/^https?:\/\//, '').replace(/\/$/, '');
 setKey(key || makeKey());
 </script>
 </body>
