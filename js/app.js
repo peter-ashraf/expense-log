@@ -27,7 +27,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.13.2';
+const APP_VERSION = '3.14.0';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
 const SCRIPT_LATEST = 6;
 
@@ -1092,6 +1092,53 @@ function editQuickRow(i) {
   leaveQuick();
 }
 
+// ------------------------------------------------------------------ bank SMS from the iPhone Shortcut
+// The Shortcut copies the SMS and brings the app to the front. iPhone only lets a web app read the clipboard
+// after a tap, so a big button waits for 20 seconds each time the app opens or comes back.
+let smsTimer = null, smsWait = null;
+function offerSmsTap(tries = 0) {
+  const b = $('#smsTap');
+  clearTimeout(smsWait);
+  if (!b || !store.getState().cfg || document.hidden) return;
+  if (lk.isLocked()) { if (tries < 40) smsWait = setTimeout(() => offerSmsTap(tries + 1), 500); return; }   // waits for Face ID / PIN
+  b.classList.add('show');
+  clearTimeout(smsTimer);
+  smsTimer = setTimeout(hideSmsTap, 20000);
+}
+function hideSmsTap() { clearTimeout(smsTimer); const b = $('#smsTap'); if (b) b.classList.remove('show'); }
+
+function smsTap() {
+  hideSmsTap();
+  if (!navigator.clipboard || !navigator.clipboard.readText) { toast('Your phone does not allow reading the clipboard here', 'err'); return; }
+  navigator.clipboard.readText().then((t) => {
+    t = (t || '').trim();
+    if (!t) { toast('The clipboard is empty', 'err'); return; }
+    logIncomingSms(t);
+  }).catch(() => toast('Your phone blocked the paste', 'err'));
+}
+
+// Everything the parser is sure about is added straight away; anything else opens in Quick add to check.
+function logIncomingSms(text) {
+  const rows = parseMessages(text, quickCtx());
+  if (!rows.length || rows.every((r) => r.source !== 'sms')) { toast('That is not a bank message', 'err'); return; }
+  if (rows.every((r) => r.dup)) { toast('Already logged', 'ok'); return; }
+  if (rows.every((r) => r.ready)) {
+    store.addMany(rows.map(quickData));
+    ui.month = monthKeyOf(rows[rows.length - 1].date);
+    haptic(14);
+    toast(rows.length === 1 ? `Logged ${rows[0].currency} ${fmtSmsAmt(rows[0].amount)} · ${rows[0].description}` : `${rows.length} transactions logged`, 'ok');
+    return;
+  }
+  const open = () => {
+    openSheet(null);
+    ui.quick = { text, rows: [], sel: new Set(), current: null };
+    enterQuick();
+    quickHint(rows.some((r) => r.dup) ? 'Part of this looks already logged. Nothing is saved until you add it.' : 'New place: pick a category, then tap Add selected.');
+  };
+  if ($('.sheet')) { closeSheet(); setTimeout(open, 500); } else open();
+}
+const fmtSmsAmt = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
 function quickHint(msg) { const h = $('#qHint'); if (h) h.textContent = msg; }
 
 let micWanted = false;         // the person has not tapped stop yet
@@ -1982,6 +2029,7 @@ document.addEventListener('click', async (ev) => {
       stopMic();
       break;
     }
+    case 'sms-tap': smsTap(); break;
     case 'quick-paste': {
       const ta = $('#qText');
       if (!ta) break;
@@ -2383,9 +2431,10 @@ document.addEventListener('visibilitychange', () => {
   lk.onVisibility();
   paintTheme(themeNow); // the phone's appearance may have changed while the app was away
   if (document.visibilityState === 'visible') {
+    setTimeout(offerSmsTap, 300);    // after the lock screen has had a chance to show
     const dropped = store.unstick();   // a request started before iOS put the app to sleep often never comes back: drop it and ask again
     setTimeout(dropped ? store.sync : autoSync, 700); // give a sleeping mobile connection a moment to wake
-  }
+  } else hideSmsTap();
 });
 window.addEventListener('pageshow', () => paintTheme(themeNow));
 setInterval(() => { if (document.visibilityState === 'visible') autoSync(); }, 60000);   // checks each minute, pulls only when 30 minutes old
@@ -2472,6 +2521,7 @@ async function bootSteps() {
   }
   render();
   store.sync();
+  offerSmsTap();
   if ('serviceWorker' in navigator) {
     const had = !!navigator.serviceWorker.controller;
     let reloaded = false;
