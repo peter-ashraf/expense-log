@@ -127,6 +127,15 @@ function demoTransport() {
               if (op.limit !== undefined) a.limit = Number(op.limit) > 0 ? Number(op.limit) : 0;
               if (op.archived !== undefined) { if (a === s.accounts[0] && op.archived) throw new Error('The main account cannot be archived.'); a.archived = !!op.archived; }
               if (op.accType !== undefined) a.type = op.accType === 'cash' ? 'cash' : 'card';
+            } else if (op.type === 'deleteAccount') {
+              const accs = s.accounts || [];
+              const i = accs.findIndex((x) => x.name.toLowerCase() === String(op.name).toLowerCase());
+              if (i === 0) throw new Error('The main account cannot be removed.');
+              if (i > 0) {
+                const k = accs[i].name.toLowerCase();
+                if (s.entries.some((e) => String(e.account || '').toLowerCase() === k) || (s.subscriptions || []).some((x) => String(x.account).toLowerCase() === k)) throw new Error('"' + op.name + '" still has entries. Move them to another account first.');
+                accs.splice(i, 1);
+              }
             } else if (op.type === 'saveSubscription') {
               const d = op.data || {};
               const nm = String(d.name || '').replace(/\s+/g, ' ').trim();

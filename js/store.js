@@ -229,6 +229,9 @@ function mergedAccounts() {
       if (o.limit !== undefined) a.limit = Number(o.limit) > 0 ? Number(o.limit) : 0;
       if (o.archived !== undefined) a.archived = !!o.archived;
       if (o.accType !== undefined) a.type = o.accType === 'cash' ? 'cash' : 'card';
+    } else if (o.type === 'deleteAccount') {
+      const i = list.findIndex((x) => x.name.toLowerCase() === o.name.toLowerCase());
+      if (i > 0) list.splice(i, 1);
     }
   }
   return list;
@@ -248,6 +251,22 @@ export function addAccount(name, accType = 'card', limit = 0) {
 
 export function updateAccount(name, patch) {
   enqueue({ type: 'updateAccount', id: uid(), name, ...patch });
+}
+
+// Remove an account for good: its entries and subscriptions move to `moveTo` first (in queue order, so the server
+// sees them moved before the account goes). Returns how many entries were moved.
+export function deleteAccount(name, moveTo) {
+  const v = view();
+  const key = name.toLowerCase();
+  let moved = 0;
+  for (const k of v.months) for (const e of v.by[k].entries) {
+    if (String(e.account).toLowerCase() !== key) continue;
+    enqueue({ type: 'update', id: e.id, data: clean({ date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: moveTo }) });
+    moved++;
+  }
+  for (const x of v.subs) if (String(x.account).toLowerCase() === key) saveSubscription({ ...x, account: moveTo });
+  enqueue({ type: 'deleteAccount', id: uid(), name });
+  return moved;
 }
 
 // ---- subscriptions -----------------------------------------------------------
@@ -288,7 +307,7 @@ export function view() {
   const map = new Map(S.snap.entries.map((e) => [e.id, e]));
   const pending = new Set();
   for (const o of S.queue) {
-    if (o.type === 'addCategory' || o.type === 'addSub' || o.type === 'addAccount' || o.type === 'updateAccount' || o.type === 'saveSubscription' || o.type === 'deleteSubscription') continue;
+    if (o.type === 'addCategory' || o.type === 'addSub' || o.type === 'addAccount' || o.type === 'updateAccount' || o.type === 'deleteAccount' || o.type === 'saveSubscription' || o.type === 'deleteSubscription') continue;
     pending.add(o.id);
     if (o.type === 'delete') map.delete(o.id);
     else map.set(o.id, { id: o.id, ...o.data, amount: Number(o.data.amount) });

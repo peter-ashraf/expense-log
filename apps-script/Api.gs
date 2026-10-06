@@ -107,6 +107,7 @@ function applyOp_(op) {
   if (op.type === 'addSub') return addSub_(op.category, op.name);
   if (op.type === 'addAccount') return addAccount_(op);
   if (op.type === 'updateAccount') return updateAccount_(op);
+  if (op.type === 'deleteAccount') return deleteAccount_(op);
   if (op.type === 'saveSubscription') return saveSub_(op);
   if (op.type === 'deleteSubscription') return deleteSub_(op);
   var loc = findById_(op.id);
@@ -533,6 +534,26 @@ function updateAccount_(op) {
     return;
   }
   throw new Error('Unknown account "' + op.name + '".');
+}
+
+// Removes an account for good. The app first moves its entries and subscriptions to another account; as a safety
+// net this refuses while anything still points at it, and the main (first) account can never be removed.
+function deleteAccount_(op) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(ACCOUNTS_SHEET);
+  if (!sh || sh.getLastRow() < 2) return;
+  var key = String(op.name || '').trim().toLowerCase();
+  var names = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getValues();
+  for (var i = 0; i < names.length; i++) {
+    if (String(names[i][0]).trim().toLowerCase() !== key) continue;
+    if (i === 0) throw new Error('The main account cannot be removed.');
+    var used = listMonthSheets_().some(function (m) {
+      return readEntries_(m.sheet).some(function (e) { return String(e.account).toLowerCase() === key; });
+    }) || readSubs_().some(function (x) { return String(x.account).toLowerCase() === key; });
+    if (used) throw new Error('"' + op.name + '" still has entries. Move them to another account first.');
+    sh.deleteRow(i + 2);
+    _accCache = null;
+    return;
+  }
 }
 
 // ------------------------------------------------------------------ subscriptions (Netflix, Spotify, ...)

@@ -257,6 +257,18 @@ ok(r.applied.join() === 'l1', 'legacy "category = sub-category" rows are still a
   r = call('push', { ops: [{ opId: 'v7', type: 'deleteSubscription', id: 'sub-nf' }, { opId: 'v8', type: 'deleteSubscription', id: 'ghost' }] });
   ok(r.applied.length === 2 && r.subscriptions.length === 0, 'subscription deleted; deleting a missing one is harmless');
 
+  // removing an account
+  r = call('push', { ops: [{ opId: 'd0', type: 'addAccount', id: 'acc-w', name: 'Wallet', accType: 'cash' }] });
+  r = call('push', { ops: [{ opId: 'd1', type: 'add', id: 'w-1', data: { date: '2026-10-02', description: 'Snack', amount: 15, type: 'Expense', category: 'Food', sub: 'Coffee', account: 'Wallet' } }] });
+  r = call('push', { ops: [{ opId: 'd2', type: 'deleteAccount', id: 'del-1', name: 'Wallet' }] });
+  ok(r.rejected.length === 1 && /still has entries/.test(r.rejected[0].error) && r.accounts.some((x) => x.name === 'Wallet'), 'an account that still has entries is not removed');
+  r = call('push', { ops: [
+    { opId: 'd3', type: 'update', id: 'w-1', data: { date: '2026-10-02', description: 'Snack', amount: 15, type: 'Expense', category: 'Food', sub: 'Coffee', account: 'Credit Card' } },
+    { opId: 'd4', type: 'deleteAccount', id: 'del-2', name: 'Wallet' }] });
+  ok(r.applied.length === 2 && !r.accounts.some((x) => x.name === 'Wallet') && r.entries.find((e) => e.id === 'w-1').account === 'Credit Card', 'entries moved first, then the account is removed');
+  r = call('push', { ops: [{ opId: 'd5', type: 'deleteAccount', id: 'del-3', name: 'Credit Card' }] });
+  ok(r.rejected.length === 1 && r.accounts[0].name === 'Credit Card', 'the main account cannot be removed');
+
   // the original structure is byte-for-byte what it was (only data rows were added below the header)
   const after = legacy();
   const head = (t) => t.split('\n').slice(0, 4).join('\n');

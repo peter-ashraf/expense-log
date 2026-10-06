@@ -27,7 +27,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.9.0';
+const APP_VERSION = '3.10.0';
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -627,7 +627,7 @@ function accountsCard(st) {
       <span class="bubble sm" style="--h:${accHue(a)}">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}</span>
       <span class="acc-name"><b>${esc(a.name)}</b><small>${a.type === 'cash' ? 'Cash' : 'Card'}${i === 0 ? ' · main' : ''}${a.archived ? ' · archived' : ''}</small></span>
       <input class="acc-limit" inputmode="decimal" placeholder="${a.type === 'cash' ? 'Cash on hand' : 'No limit'}" data-name="${esc(a.name)}" value="${priv() ? MASK : a.type === 'cash' ? (cashLeft(a) !== null ? esc(String(cashLeft(a))) : '') : a.limit > 0 ? esc(String(a.limit)) : ''}" ${priv() ? 'readonly' : ''} aria-label="${a.type === 'cash' ? 'Cash on hand for' : 'Monthly limit for'} ${esc(a.name)}" autocomplete="off">
-      ${i === 0 ? '' : `<button class="chip" data-act="acc-archive" data-v="${esc(a.name)}">${a.archived ? 'Restore' : 'Archive'}</button>`}
+      ${i === 0 ? '' : `<span class="acc-acts"><button class="chip" data-act="acc-archive" data-v="${esc(a.name)}">${a.archived ? 'Restore' : 'Archive'}</button><button class="chip ${ui.armedAcc === a.name ? 'danger' : ''}" data-act="acc-delete" data-v="${esc(a.name)}" aria-label="Delete ${esc(a.name)}">${ui.armedAcc === a.name ? 'Tap again to delete' : `${icon('trash', 15)}Delete`}</button></span>`}
     </div>`).join('');
   return `<section class="card">
       <div class="card-h"><h3>Accounts</h3><span class="badge ${v.accounts.length > 1 ? 'synced' : ''}">${v.accounts.length}</span></div>
@@ -638,7 +638,7 @@ function accountsCard(st) {
       <div class="acc-new"><label class="field"><span>Name</span><input id="accName" maxlength="30" placeholder="e.g. Cash" autocomplete="off"></label>
       <label class="field"><span>${t === 'cash' ? 'Cash on hand now' : 'Monthly limit'}</span><input id="accLimit" inputmode="decimal" placeholder="Optional" autocomplete="off"></label></div>
       <button class="btn" data-act="acc-add">${icon('plus', 18)}Add account</button>
-      <p class="muted sm" style="margin-top:10px">Every entry belongs to one account. Card limits are per month. For Cash, enter what you have on you and the app counts it down as you spend. Totals and the balance in your sheet still add up all accounts together.</p>
+      <p class="muted sm" style="margin-top:10px">Every entry belongs to one account. Archive hides an account but keeps it; Delete removes it and moves its entries to the main account. Card limits are per month. For Cash, enter what you have on you and the app counts it down as you spend. Totals and the balance in your sheet still add up all accounts together.</p>
     </section>`;
 }
 
@@ -1951,6 +1951,26 @@ document.addEventListener('click', async (ev) => {
       store.addAccount(name, ui.newAccType || 'card', Number.isFinite(limit) && limit > 0 ? limit : 0);
       ui.newAccType = 'card';
       haptic(10); toast('Account added', 'ok');
+      renderSettings($('#view'));
+      break;
+    }
+    case 'acc-delete': {
+      const a = accOf(el.dataset.v);
+      const main = accList()[0];
+      if (!a || a === main) break;
+      const n = store.view().months.reduce((c, k) => c + store.view().by[k].entries.filter((e) => e.account === a.name).length, 0);
+      if (ui.armedAcc !== a.name) {
+        ui.armedAcc = a.name;
+        toast(n ? `Tap again to delete “${a.name}”. Its ${n} entr${n === 1 ? 'y moves' : 'ies move'} to ${main.name}.` : `Tap again to delete “${a.name}”.`);
+        renderSettings($('#view'));
+        setTimeout(() => { if (ui.armedAcc === a.name) { ui.armedAcc = null; if (ui.settingsPage === 'accounts') renderSettings($('#view')); } }, 5000);
+        break;
+      }
+      ui.armedAcc = null;
+      store.deleteAccount(a.name, main.name);
+      if (ui.account === a.name) { ui.account = 'all'; try { localStorage.setItem('el_acc', 'all'); } catch (e) { /* ignore */ } }
+      haptic(12);
+      toast(n ? `“${a.name}” deleted. ${n} entr${n === 1 ? 'y' : 'ies'} moved to ${main.name}` : `“${a.name}” deleted`, 'ok');
       renderSettings($('#view'));
       break;
     }
