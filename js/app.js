@@ -27,7 +27,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.11.1';
+const APP_VERSION = '3.12.0';
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -2192,7 +2192,7 @@ document.addEventListener('click', async (ev) => {
       break;
     }
     case 'share-setup': {
-      const url = new URL('setup.html', location.href).href;
+      const url = 'https://cc-expenses.pages.dev/setup';   // the public address (no personal name in it)
       try { if (navigator.share) { await navigator.share({ title: 'Credit Card Expenses: set up your own sheet', url }); break; } } catch (e) { if (e && e.name === 'AbortError') break; }
       try { await navigator.clipboard.writeText(url); toast('Link copied', 'ok'); } catch (e) { toast(url); }
       break;
@@ -2317,14 +2317,21 @@ store.onChange(() => {
 });
 
 $('#view').addEventListener('scroll', () => $('#topbar').classList.toggle('scrolled', $('#view').scrollTop > 4), { passive: true });
-window.addEventListener('online', () => store.sync());
+// Background syncing: your own changes still upload right away (store.scheduleSync). Pulling other changes from the
+// sheet happens at most every 30 minutes on its own; "Sync" in the top bar or Settings does it any time.
+const AUTO_PULL_MS = 30 * 60 * 1000;
+function autoSync() {
+  const st = store.getState();
+  if (st.queue.length || Date.now() - (st.lastSync || 0) > AUTO_PULL_MS) store.sync();
+}
+window.addEventListener('online', autoSync);
 document.addEventListener('visibilitychange', () => {
   lk.onVisibility();
   paintTheme(themeNow); // the phone's appearance may have changed while the app was away
-  if (document.visibilityState === 'visible') setTimeout(() => store.sync(), 700); // give a sleeping mobile connection a moment to wake
+  if (document.visibilityState === 'visible') setTimeout(autoSync, 700); // give a sleeping mobile connection a moment to wake
 });
 window.addEventListener('pageshow', () => paintTheme(themeNow));
-setInterval(() => { if (document.visibilityState === 'visible') store.sync(); }, 60000);
+setInterval(() => { if (document.visibilityState === 'visible') autoSync(); }, 60000);   // checks each minute, pulls only when 30 minutes old
 
 (async function boot() {
   let vaultOpened = false;
