@@ -92,10 +92,13 @@ function show(text, via) {
       : '<div class="kv"><span>Read as</span><b class="no">Not recognised as a bank message</b></div>');
   log(`Message via ${via}`, rows.length ? `${rows.length} transaction(s) read` : 'not recognised', rows.length ? 'yes' : 'no');
 }
+// The message may come after # or after ? (iOS can drop the # part when it opens a home-screen app).
 function checkHash(via) {
-  if (!/[#&]sms=/.test(location.hash)) return false;
-  const t = (new URLSearchParams(location.hash.slice(1)).get('sms') || '').trim();
-  history.replaceState(null, '', location.pathname + location.search);
+  const inHash = /[#&]sms=/.test(location.hash), inQuery = /[?&]sms=/.test(location.search);
+  if (!inHash && !inQuery) return false;
+  const t = ((inHash ? new URLSearchParams(location.hash.slice(1)) : new URLSearchParams(location.search)).get('sms') || '').trim();
+  history.replaceState(null, '', location.pathname);
+  via += inHash ? ' (#)' : ' (?)';
   if (t) show(t, via); else log(`Link via ${via} had sms= but it was empty`, '', 'no');
   return true;
 }
@@ -104,13 +107,14 @@ const standalone = window.matchMedia('(display-mode: standalone)').matches || na
 $('#mode').innerHTML = standalone ? '<span class="yes">Home-screen app</span>' : '<span class="maybe">Safari tab</span>';
 $('#loaded').textContent = now();
 paintLog();
-log('Page opened (fresh start)', standalone ? 'home-screen app' : 'Safari tab');
+log('Page opened (fresh start)', (standalone ? 'home-screen app' : 'Safari tab') + ' · ' + (location.pathname + location.search + location.hash).slice(0, 60));
 if (!checkHash('fresh open')) log('No message in the link');
 
 window.addEventListener('hashchange', () => { if (!checkHash('link while open')) log('Link changed, no message in it', location.hash.slice(0, 60), 'maybe'); });
 document.addEventListener('visibilitychange', () => {
   if (document.visibilityState !== 'visible') return;
-  log('Came back to the front', location.hash ? 'link: ' + location.hash.slice(0, 60) : 'no message in the link', location.hash ? '' : 'maybe');
+  const l = location.search + location.hash;
+  log('Came back to the front', l ? 'link: ' + l.slice(0, 60) : 'no message in the link', l ? '' : 'maybe');
   checkHash('link on resume');
 });
 window.addEventListener('pageshow', (e) => { if (e.persisted) log('Restored from memory'); });
