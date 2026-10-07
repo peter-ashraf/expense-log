@@ -404,6 +404,7 @@ export async function sync() {
     const done = new Set([...(r.applied || []), ...(r.rejected || []).map((x) => x.opId)]);
     if (r.rejected && r.rejected.length) S.rejected = r.rejected;
     S.queue = S.queue.filter((o) => !done.has(o.opId));
+    S.scriptLoader = !!r.loader;
     S.scriptVersion = Number(r.scriptVersion) || 0;   // 0 = an older script that cannot update itself yet
     S.snap = { categories: r.categories, accounts: r.accounts || [], subscriptions: r.subscriptions, firstStart: r.firstStart, months: r.months, entries: r.entries };
     S.lastSync = Date.now();

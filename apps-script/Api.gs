@@ -15,7 +15,7 @@
 var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';   // only needed the first time: it is then kept in Script Properties
 
 // Bumped with every change to this file. The app compares it and asks the script to update itself (selfUpdate_).
-var SCRIPT_VERSION = 7;
+var SCRIPT_VERSION = 8;
 var UPDATE_URL = 'https://cc-expenses.pages.dev/apps-script/Api.gs';
 
 var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
@@ -186,7 +186,8 @@ function snapshot_() {
     months: sheets.map(function (m) { return m.key; }),
     entries: entries,
     serverTime: Date.now(),
-    scriptVersion: SCRIPT_VERSION
+    scriptVersion: SCRIPT_VERSION,
+    loader: typeof LOADED_BY_LOADER !== 'undefined'   // run through Loader.gs: always the newest, no self-update needed
   };
 }
 
