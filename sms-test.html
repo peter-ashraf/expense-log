@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="theme-color" content="#0A0B10">
 <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
-<title>SMS test</title>
+<title>SMS inbox test</title>
 <style>
   :root { color-scheme: light dark; --bg:#F4F5FA; --card:#fff; --text:#0F1020; --muted:#6B6E85; --line:#E1E3EE; --accent:#6D5EF6; --ok:#12A66B; --bad:#E5484D; --warn:#D98A06; }
   @media (prefers-color-scheme: dark) { :root { --bg:#0A0B10; --card:#14151D; --text:#F2F3FA; --muted:#8E91AB; --line:#24263A; --ok:#3DDC97; --bad:#FF6B70; --warn:#F5B544; } }
@@ -39,127 +39,122 @@
   pre { margin: 0; white-space: pre-wrap; word-break: break-word; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--muted); max-height: 260px; overflow: auto; direction: ltr; }
   .tip { font-size: 13px; color: var(--muted); margin: 8px 0 0; }
   label.sw { display: flex; align-items: center; gap: 8px; font-size: 14px; }
-  #tap { position: fixed; left: 16px; right: 16px; bottom: 24px; display: none; z-index: 9; }
-  #tap.on { display: block; animation: up .25s ease-out; }
-  #tap button { width: 100%; height: 72px; font-size: 19px; font-weight: 700; background: var(--accent); color: #fff; border: 0; border-radius: 20px; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
-  #tap small { display: block; text-align: center; color: var(--muted); font-size: 12px; margin-top: 6px; }
-  #done { position: fixed; left: 16px; right: 16px; top: 54px; display: none; z-index: 9; background: var(--ok); color: #fff; padding: 14px 16px; border-radius: 16px; font-weight: 700; }
-  #done.on { display: block; }
-  @keyframes up { from { transform: translateY(30px); opacity: 0; } }
 </style>
 </head>
 <body>
-<h1>SMS link test</h1>
-<p class="sub">Checks what your Shortcut hands over. Nothing is saved to your sheet.</p>
+<h1>SMS inbox test</h1>
+<p class="sub">Shows the bank SMS your Shortcut sent to your Google Sheet, and what the app would do with each one. Nothing is logged from this page.</p>
 
 <div class="card">
-  <h2>This page</h2>
-  <div class="kv"><span>Opened as</span><b id="mode"></b></div>
-  <div class="kv"><span>Loaded at</span><b id="loaded"></b></div>
+  <h2>Connection</h2>
+  <div class="kv"><span>Google Sheet</span><b id="conn">Checking…</b></div>
+  <div class="kv"><span>Sheet script</span><b id="ver">–</b></div>
+  <div class="kv"><span>Last check</span><b id="checked">–</b></div>
+  <div id="manual" style="display:none;margin-top:10px">
+    <p class="tip">Couldn't read the app's connection on this phone. Paste the sheet address and key (the same ones as your setup link).</p>
+    <input id="mUrl" placeholder="https://script.google.com/macros/s/…/exec" style="width:100%;margin:6px 0;padding:10px;border-radius:12px;border:1px solid var(--line);background:none;color:inherit;font:inherit">
+    <input id="mKey" placeholder="Key" style="width:100%;margin:0 0 6px;padding:10px;border-radius:12px;border:1px solid var(--line);background:none;color:inherit;font:inherit">
+    <button class="chip" id="mSave">Save</button>
+  </div>
 </div>
 
 <div class="card">
-  <h2>Last message received</h2>
-  <div id="last"><p class="sub">Nothing yet. Run your Shortcut, or tap the button below.</p></div>
-</div>
-
-<div class="card">
-  <h2>Events</h2>
-  <div id="log"></div>
-  <p style="display:flex;gap:8px;margin:10px 0 0">
-    <button class="chip" id="paste">Paste clipboard</button>
-    <button class="chip" id="sample">Try a sample link</button>
-    <button class="chip" id="clear">Clear</button>
+  <h2>Waiting in the inbox</h2>
+  <div id="inbox"><p class="sub">Nothing yet.</p></div>
+  <p style="display:flex;gap:8px;margin:10px 0 0;flex-wrap:wrap">
+    <button class="chip" id="refresh">Check now</button>
+    <button class="chip" id="sendTest">Send a test SMS</button>
   </p>
+  <p class="tip">Checks every 15 seconds while this page is open, and each time you come back to it.</p>
 </div>
 
-<div id="tap"><button id="tapBtn">Log bank SMS from clipboard</button><small id="tapLeft"></small></div>
-<div id="done"></div>
 <script type="module">
 import { parseMessages } from './js/quick.js';
+import * as vault from './js/vault.js';
+import * as store from './js/store.js';
+import { makeTransport } from './js/api.js';
 const $ = (s) => document.querySelector(s);
-const KEY = 'smsTestLog';
-const read = () => { try { return JSON.parse(localStorage.getItem(KEY) || '[]'); } catch (e) { return []; } };
-const write = (l) => { try { localStorage.setItem(KEY, JSON.stringify(l.slice(-30))); } catch (e) { /* ignore */ } };
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const now = () => new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
 const pad = (n) => String(n).padStart(2, '0');
-const d = new Date(); const today = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+const todayStr = () => { const d = new Date(); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+const fmt = (n) => Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-function log(event, detail, cls) {
-  const l = read(); l.push({ at: now(), event, detail: detail || '', cls: cls || '' }); write(l); paintLog();
-}
-function paintLog() {
-  const l = read().slice().reverse();
-  $('#log').innerHTML = l.length ? l.map((e) => `<div class="kv"><span>${esc(e.at)}</span><b class="${e.cls}">${esc(e.event)}${e.detail ? '<br><small>' + esc(e.detail) + '</small>' : ''}</b></div>`).join('') : '<p class="sub">No events yet.</p>';
-}
-function show(text, via) {
-  const rows = parseMessages(text, { today, categories: { order: [], subs: {} }, accounts: [{ name: 'Credit Card', type: 'card' }], history: [] });
-  const kv = (k, v) => `<div class="kv"><span>${k}</span><b>${esc(v)}</b></div>`;
-  $('#last').innerHTML = kv('Arrived via', via) + kv('Text', text.length > 160 ? text.slice(0, 160) + '…' : text) +
-    (rows.length ? rows.map((r) => kv('Read as', `${r.type} ${r.currency} ${r.amount.toFixed(2)} · ${r.description || '?'} · ${r.date} ${r.time}`)).join('')
-      : '<div class="kv"><span>Read as</span><b class="no">Not recognised as a bank message</b></div>');
-  log(`Message via ${via}`, rows.length ? `${rows.length} transaction(s) read` : 'not recognised', rows.length ? 'yes' : 'no');
-}
-// The message may come after # or after ? (iOS can drop the # part when it opens a home-screen app).
-function checkHash(via) {
-  const inHash = /[#&]sms=/.test(location.hash), inQuery = /[?&]sms=/.test(location.search);
-  if (!inHash && !inQuery) return false;
-  const t = ((inHash ? new URLSearchParams(location.hash.slice(1)) : new URLSearchParams(location.search)).get('sms') || '').trim();
-  history.replaceState(null, '', location.pathname);
-  via += inHash ? ' (#)' : ' (?)';
-  if (t) show(t, via); else log(`Link via ${via} had sms= but it was empty`, '', 'no');
-  return true;
-}
+let cfg = null, transport = null, ctxBase = { categories: { order: [], map: {} }, accounts: [], history: [] };
 
-const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone;
-$('#mode').innerHTML = standalone ? '<span class="yes">Home-screen app</span>' : '<span class="maybe">Safari tab</span>';
-$('#loaded').textContent = now();
-paintLog();
-log('Page opened (fresh start)', (standalone ? 'home-screen app' : 'Safari tab') + ' · ' + (location.pathname + location.search + location.hash).slice(0, 60));
-if (!checkHash('fresh open')) log('No message in the link');
-
-window.addEventListener('hashchange', () => { if (!checkHash('link while open')) log('Link changed, no message in it', location.hash.slice(0, 60), 'maybe'); });
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState !== 'visible') return;
-  const l = location.search + location.hash;
-  log('Came back to the front', l ? 'link: ' + l.slice(0, 60) : 'no message in the link', l ? '' : 'maybe');
-  checkHash('link on resume');
-});
-window.addEventListener('pageshow', (e) => { if (e.persisted) log('Restored from memory'); });
-
-// One tap: shown for 20 seconds whenever the app opens or comes back to the front.
-let tapTimer = null, tapEnd = 0;
-function offerTap() {
-  tapEnd = Date.now() + 20000;
-  $('#tap').classList.add('on');
-  clearInterval(tapTimer);
-  const tick = () => { const s = Math.ceil((tapEnd - Date.now()) / 1000); if (s <= 0) { hideTap(); return; } $('#tapLeft').textContent = `Hides in ${s}s`; };
-  tick(); tapTimer = setInterval(tick, 1000);
-}
-function hideTap() { clearInterval(tapTimer); $('#tap').classList.remove('on'); }
-$('#tapBtn').onclick = async () => {
-  hideTap();
+async function connect() {
   try {
-    const t = (await navigator.clipboard.readText() || '').trim();
-    if (!t) { log('One tap: clipboard is empty', '', 'no'); return; }
-    const rows = parseMessages(t, { today, categories: { order: [], subs: {} }, accounts: [{ name: 'Credit Card', type: 'card' }], history: [] });
-    show(t, 'one tap');
-    const d = $('#done');
-    d.textContent = rows.length ? rows.map((r) => `✓ Would log ${r.currency} ${r.amount.toFixed(2)} · ${r.description}`).join('\n') : 'Clipboard text is not a bank message';
-    d.style.background = rows.length ? '' : 'var(--bad)';
-    d.classList.add('on'); setTimeout(() => d.classList.remove('on'), 4000);
-  } catch (e) { log('One tap: clipboard blocked', e.message || '', 'no'); }
-};
-offerTap();
-document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') offerTap(); });
+    if (vault.mode() === 'device') await vault.openDevice();
+    if (vault.mode() !== 'passphrase') {
+      await store.init();
+      const st = store.getState();
+      if (st.cfg && !st.cfg.demo) {
+        cfg = st.cfg;
+        const v = store.view();
+        ctxBase = { categories: v.categories, accounts: v.accounts, history: v.months.flatMap((k) => v.by[k].entries) };
+      }
+    }
+  } catch (e) { /* fall back to typing it in */ }
+  if (!cfg) { try { cfg = JSON.parse(localStorage.getItem('smsTestCfg') || 'null'); } catch (e) { cfg = null; } }
+  if (!cfg) { $('#conn').innerHTML = '<span class="maybe">Not found</span>'; $('#manual').style.display = ''; return; }
+  transport = makeTransport(cfg);
+  try { $('#conn').innerHTML = '<span class="yes">' + esc(new URL(cfg.url).host) + '</span>'; } catch (e) { $('#conn').textContent = 'Connected'; }
+  check();
+}
 
-$('#paste').onclick = async () => {
-  try { const t = await navigator.clipboard.readText(); if (t && t.trim()) show(t.trim(), 'clipboard'); else log('Clipboard is empty', '', 'no'); }
-  catch (e) { log('Clipboard blocked', e.message || '', 'no'); }
+let busy = false;
+async function check() {
+  if (!transport || busy) return;
+  busy = true;
+  try {
+    const r = await transport.call('smsList');
+    $('#ver').innerHTML = '<span class="yes">Ready for SMS</span>';
+    paint(r.sms || []);
+  } catch (e) {
+    const m = String(e.message || e);
+    $('#ver').innerHTML = /Unknown action/.test(m)
+      ? '<span class="no">Needs the update: open the app, then Settings → About → Update the sheet script</span>'
+      : '<span class="no">' + esc(m) + '</span>';
+  } finally { busy = false; $('#checked').textContent = now(); }
+}
+
+function paint(list) {
+  if (!list.length) { $('#inbox').innerHTML = '<p class="sub">Nothing yet. When a bank SMS arrives, your Shortcut sends it here.</p>'; return; }
+  const ctx = { ...ctxBase, today: todayStr() };
+  $('#inbox').innerHTML = list.slice().reverse().map((m) => {
+    const rows = parseMessages(m.text, ctx);
+    const when = new Date(m.received);
+    const head = `<div class="kv"><span>Received</span><b>${esc(isNaN(when) ? m.received : when.toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }))}</b></div>`;
+    const txt = `<div class="kv"><span>Text</span><b>${esc(m.text.length > 140 ? m.text.slice(0, 140) + '…' : m.text)}</b></div>`;
+    let act;
+    if (!rows.length || rows.every((r) => r.source !== 'sms')) act = '<b class="no">Not a bank message: the app would skip it</b>';
+    else act = rows.map((r) => {
+      const what = `${r.currency} ${fmt(r.amount)} · ${esc(r.description || '?')}`;
+      if (r.dup) return `<b class="maybe">Already logged: ${what}</b>`;
+      if (r.ready) return `<b class="yes">Logs it automatically: ${what} → ${esc(r.category)} / ${esc(r.sub)}</b>`;
+      return `<b class="maybe">Asks you for a category: ${what}</b>`;
+    }).join('<br>');
+    return `<div style="border-top:1px solid var(--line);padding-top:8px;margin-top:8px">${head}${txt}<div class="kv"><span>App would</span>${act}</div></div>`;
+  }).join('');
+}
+
+$('#refresh').onclick = check;
+$('#sendTest').onclick = async () => {
+  if (!transport) return;
+  const d = new Date();
+  const sms = `Your credit card ending with#0000 was charged for EGP 12.50 at TEST SHOP on ${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}  at ${pad(d.getHours())}:${pad(d.getMinutes())}. Card available limit is EGP 1.00.`;
+  try { await transport.call('smsAdd', { sms }); check(); } catch (e) { $('#ver').innerHTML = '<span class="no">' + esc(e.message || e) + '</span>'; }
 };
-$('#sample').onclick = () => { location.hash = 'sms=' + encodeURIComponent('Your credit card ending with#0000 was charged for EGP 12.50 at TEST SHOP on ' + `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}` + '  at 12:00. Card available limit is EGP 1.00.'); };
-$('#clear').onclick = () => { write([]); paintLog(); };
+$('#mSave').onclick = () => {
+  const url = $('#mUrl').value.trim(), key = $('#mKey').value.trim();
+  if (!url || !key) return;
+  try { localStorage.setItem('smsTestCfg', JSON.stringify({ url, key })); } catch (e) { /* ignore */ }
+  $('#manual').style.display = 'none';
+  connect();
+};
+setInterval(() => { if (document.visibilityState === 'visible') check(); }, 15000);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') check(); });
+connect();
 </script>
 </body>
 </html>

@@ -335,9 +335,6 @@ body.onboard #view { padding: 0 16px 24px; }
 #toast.show { opacity: 1; transform: translate(-50%, 0); }
 #toast.err { background: var(--neg); color: #fff; }
 #toast.ok { background: var(--text); }
-#smsTap { position: absolute; left: 16px; right: 16px; bottom: calc(68px + var(--nav-gap) + 16px); z-index: 41; opacity: 0; pointer-events: none; transform: translateY(24px); transition: opacity .25s, transform .3s cubic-bezier(.2, .9, .2, 1); }
-#smsTap.show { opacity: 1; pointer-events: auto; transform: none; }
-#smsTap button { width: 100%; height: 64px; border: 0; border-radius: 20px; background: var(--accent); color: #fff; font: inherit; font-size: 17px; font-weight: 700; box-shadow: 0 14px 30px rgba(0, 0, 0, .3); }
 
 @media (min-width: 600px) {
   #app { border-left: 1px solid var(--line); border-right: 1px solid var(--line); }

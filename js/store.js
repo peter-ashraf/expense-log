@@ -356,6 +356,16 @@ export async function selfUpdate() {
   return r;
 }
 
+// Bank SMS waiting in the sheet's inbox (sent there by the iPhone Shortcut).
+export async function smsList() {
+  if (!transport) throw new Error('Not connected');
+  return (await transport.call('smsList')).sms || [];
+}
+export async function smsDone(ids) {
+  if (!transport || !ids.length) return;
+  await transport.call('smsDone', { ids });
+}
+
 // ---- sync -------------------------------------------------------------------
 export function scheduleSync(ms = 500) {
   clearTimeout(timer);
