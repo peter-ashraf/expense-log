@@ -27,9 +27,9 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.15.0';
+const APP_VERSION = '3.15.1';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
-const SCRIPT_LATEST = 7;
+const SCRIPT_LATEST = 8;
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -659,14 +659,15 @@ function accountsCard(st) {
 function scriptCard(st) {
   const v = st.scriptVersion;
   const state = v === undefined ? 'Checking at the next sync'
+    : st.scriptLoader ? 'Updates automatically'
     : !v ? 'An older version without self-update'
       : su.busy ? 'Updating…'
         : v >= SCRIPT_LATEST ? 'Up to date' : `Version ${v}, version ${SCRIPT_LATEST} available`;
   return `<section class="card">
       <div class="card-h"><h3>Google Sheet script</h3><span class="badge ${v >= SCRIPT_LATEST ? 'synced' : ''}">${v ? 'v' + v : '?'}</span></div>
       <div class="kv"><span>Status</span><b>${esc(state)}</b></div>
-      ${v && v < SCRIPT_LATEST && !su.busy ? `<button class="btn ghost" data-act="su-now">${icon('cloud', 18)}Update the sheet script now</button>` : ''}
-      ${su.error ? `<p class="warn">${esc(su.error)}</p>` : ''}
+      ${v && v < SCRIPT_LATEST && !su.busy && !st.scriptLoader ? `<button class="btn ghost" data-act="su-now">${icon('cloud', 18)}Update the sheet script now</button>` : ''}
+      ${su.error && !st.scriptLoader ? `<p class="warn">${esc(su.error)}</p>` : ''}
       ${!v && v !== undefined ? '<p class="muted sm">Paste the newest script into your sheet once (see the setup guide, “Later: updating the script”). From then on it updates itself.</p>' : '<p class="muted sm">The script in your sheet updates itself when the app needs a newer one. Your key and data are never touched.</p>'}
     </section>`;
 }
@@ -2390,7 +2391,7 @@ initSlide(() => ui.tab + '|' + (ui.settingsPage || ''));
 const su = { busy: false, error: '', note: '' };
 function maybeSelfUpdate(force = false) {
   const st = store.getState();
-  if (!st.cfg || st.cfg.demo || su.busy || st.scriptVersion === undefined) return;
+  if (!st.cfg || st.cfg.demo || su.busy || st.scriptVersion === undefined || st.scriptLoader) return;
   if (!st.scriptVersion) { su.note = 'old'; return; }
   if (st.scriptVersion >= SCRIPT_LATEST) { su.error = ''; su.note = ''; return; }
   const k = 'el_su_' + SCRIPT_LATEST;
