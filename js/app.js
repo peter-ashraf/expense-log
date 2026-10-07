@@ -29,7 +29,7 @@ const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);
 
 const APP_VERSION = '3.14.0';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
-const SCRIPT_LATEST = 6;
+const SCRIPT_LATEST = 7;
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 

@@ -3,6 +3,7 @@
  *
  * Actions:  pull  -> full snapshot
  *           push  -> apply queued ops [{opId, type: add|update|delete, id, data}] idempotently, then snapshot
+ *           smsAdd / smsList / smsDone -> bank SMS inbox filled by the iPhone Shortcut ("SMS Inbox" tab)
  *
  * Sheet layout is unchanged (Summary / Categories / one tab per month). Each month tab gets a hidden
  * column G "ID" so edits, deletes and retried uploads can never duplicate or misplace a row, and a hidden
@@ -14,7 +15,7 @@
 var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';   // only needed the first time: it is then kept in Script Properties
 
 // Bumped with every change to this file. The app compares it and asks the script to update itself (selfUpdate_).
-var SCRIPT_VERSION = 6;
+var SCRIPT_VERSION = 7;
 var UPDATE_URL = 'https://cc-expenses.pages.dev/apps-script/Api.gs';
 
 var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
@@ -47,12 +48,63 @@ function doPost(e) {
       if (req.action === 'push') return push_(req.ops || []);
       if (req.action === 'pull') return snapshot_();
       if (req.action === 'selfUpdate') return selfUpdate_(req.url);
+      if (req.action === 'smsAdd') return smsAdd_(req.sms);
+      if (req.action === 'smsList') return smsList_();
+      if (req.action === 'smsDone') return smsDone_(req.ids || []);
       throw new Error('Unknown action');
     });
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err) };
   }
   return json_(out);
+}
+
+// ------------------------------------------------------------------ bank SMS inbox
+// The iPhone Shortcut posts each bank SMS here as it arrives; the app reads the new ones, logs them and marks them done.
+var SMS_SHEET = 'SMS Inbox';
+var SMS_HEADERS = ['ID', 'Received', 'Text', 'Status'];
+
+function smsSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(SMS_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(SMS_SHEET);
+    sh.getRange(1, 1, 1, SMS_HEADERS.length).setValues([SMS_HEADERS]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    sh.setColumnWidth(3, 520);
+  }
+  return sh;
+}
+
+function smsAdd_(text) {
+  text = String(text || '').trim();
+  if (!text) throw new Error('No SMS text');
+  if (text.length > 2000) text = text.slice(0, 2000);
+  var id = Utilities.getUuid();
+  smsSheet_().appendRow([id, new Date(), text, 'new']);
+  return { ok: true, id: id };
+}
+
+function smsList_() {
+  var sh = smsSheet_();
+  var n = sh.getLastRow() - 1;
+  var out = [];
+  if (n > 0) sh.getRange(2, 1, n, 4).getValues().forEach(function (r) {
+    if (r[0] && r[3] === 'new') out.push({ id: String(r[0]), received: r[1] instanceof Date ? r[1].toISOString() : String(r[1]), text: String(r[2]) });
+  });
+  return { ok: true, sms: out.slice(-50) };
+}
+
+function smsDone_(ids) {
+  var sh = smsSheet_();
+  var n = sh.getLastRow() - 1;
+  if (n <= 0 || !ids.length) return { ok: true, done: 0 };
+  var want = {};
+  ids.forEach(function (i) { want[String(i)] = true; });
+  var col = sh.getRange(2, 1, n, 1).getValues();
+  var done = 0;
+  col.forEach(function (r, i) { if (want[String(r[0])]) { sh.getRange(i + 2, 4).setValue('logged'); done++; } });
+  return { ok: true, done: done };
 }
 
 // The key lives in Script Properties, so a self-update (which replaces this file) can never lose it. The first time,
