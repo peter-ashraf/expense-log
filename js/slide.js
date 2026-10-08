@@ -31,15 +31,19 @@ function enhance(box, key, scope) {
   box.classList.remove('slide-ready');
   const cs = getComputedStyle(on);
   const look = { bg: cs.backgroundColor, bd: parseFloat(cs.borderTopWidth) ? cs.borderTopColor : 'transparent', r: cs.borderRadius };
-  on.style.transition = '';
   if (was) box.classList.add('slide-ready');
+  void getComputedStyle(on).backgroundColor;              // settle "transparent" while transitions are still off,
+  on.style.transition = '';                                // else the pill fades from solid to clear = a ghost highlight
   const fresh = !ind;
   if (fresh) {
     ind = document.createElement('i');
     ind.className = 'slide-ind';
     ind.setAttribute('aria-hidden', 'true');
     box.insertBefore(ind, box.firstChild);
+    on.style.transition = 'none';
     box.classList.add('slide-ready');
+    void getComputedStyle(on).backgroundColor;
+    on.style.transition = '';
   }
   const to = geometry(on);
   const n = box.querySelectorAll(':scope > button').length;
