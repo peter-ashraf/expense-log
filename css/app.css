@@ -175,6 +175,9 @@ body.onboard #topbar { display: none; }
 .bubble.sm { width: 32px; height: 32px; border-radius: 11px; }
 .row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .row-t { font-weight: 620; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-t:has(.row-seller) { display: flex; align-items: baseline; gap: 7px; }
+.row-note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.row-seller { flex: 0 10000 auto; min-width: 0; font-size: 12.5px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-s { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-amt { font-weight: 700; font-size: 15.5px; white-space: nowrap; letter-spacing: -.01em; }
 .row.inc .row-amt { color: var(--pos); }
@@ -313,6 +316,8 @@ body.onboard #tabbar { display: none; }
 .date-pill input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .note { display: block; } .note input { width: 100%; height: 46px; padding: 0 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); outline: 0; font-size: 16px; }
 .note input:focus { border-color: var(--accent); }
+.note-hint { margin: 6px 4px 0; }
+.note-hint[hidden] { display: none; }
 .mlist { display: flex; flex-direction: column; gap: 6px; padding-bottom: 6px; }
 .mrow { display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); font-weight: 650; }
 .mrow span { flex: 1; text-align: left; } .mrow b { color: var(--muted); font-weight: 600; font-size: 14px; }

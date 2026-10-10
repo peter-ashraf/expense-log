@@ -162,7 +162,7 @@ function demoTransport() {
               const accs = s.accounts || [{ name: 'Credit Card' }];
               const acc = d.account ? accs.find((a) => a.name.toLowerCase() === String(d.account).toLowerCase()) : accs[0];
               if (!acc) throw new Error('Unknown account "' + d.account + '".');
-              const row = { id: op.id, date: d.date, description: d.description || '', amount: Number(d.amount), type: d.type, category: d.category, sub: d.sub, account: acc.name };
+              const row = { id: op.id, date: d.date, description: d.description || '', amount: Number(d.amount), type: d.type, category: d.category, sub: d.sub, account: acc.name, seller: d.seller || '' };
               const i = s.entries.findIndex((x) => x.id === op.id);
               if (i >= 0) s.entries[i] = row; else s.entries.push(row);
               const k = row.date.slice(0, 7);

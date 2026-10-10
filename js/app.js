@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import { icon, catHue } from './icons.js';
 import { computeInsights, computeAllTime, computeStreak, weeklySeries, topMerchants } from './insights.js';
-import { parseMessages } from './quick.js';
+import { suggestNote, parseMessages } from './quick.js';
 import { esc, num as rawNum, num0 as rawNum0, money as rawMoney, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 import { readCsvEntries, decodeText } from './csv.js';
@@ -27,9 +27,9 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.15.2';
+const APP_VERSION = '3.16.0';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
-const SCRIPT_LATEST = 8;
+const SCRIPT_LATEST = 9;
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -201,10 +201,12 @@ function hueStyle(name) {
 function entryRow(e, pending) {
   const isInc = e.type === 'Income';
   const title = e.description || (isInc ? 'Income' : e.sub);
+  // a note of its own: the shop it was bought from sits beside it, small and grey
+  const seller = e.seller && e.description && e.seller.trim().toLowerCase() !== e.description.trim().toLowerCase() ? e.seller : '';
   const subtitle = (isInc ? 'Income' : `${e.category} · ${e.sub}`) + (ui.account === 'all' && multiAcc() && e.account ? ` · ${e.account}` : '');
   return `<button class="row ${isInc ? 'inc' : 'exp'}" data-act="edit" data-id="${esc(e.id)}">
     <span class="bubble" style="${hueStyle(isInc ? 'Income' : e.category)}">${icon(isInc ? 'income' : e.category, 20)}</span>
-    <span class="row-main"><span class="row-t">${esc(title)}</span><span class="row-s">${esc(subtitle)}${pending.has(e.id) ? '<i class="pend" title="Waiting to sync"></i>' : ''}</span></span>
+    <span class="row-main"><span class="row-t">${seller ? `<span class="row-note">${esc(title)}</span><span class="row-seller">${esc(seller)}</span>` : esc(title)}</span><span class="row-s">${esc(subtitle)}${pending.has(e.id) ? '<i class="pend" title="Waiting to sync"></i>' : ''}</span></span>
     <span class="row-amt">${isInc ? '+' : '−'}${esc(num(e.amount))}</span>
   </button>`;
 }
@@ -376,7 +378,7 @@ function fillActivity() {
   const q = ui.q.trim().toLowerCase();
   const list = m.entries.filter((e) =>
     (ui.filter === 'all' || e.type === ui.filter) &&
-    (!q || `${e.description} ${e.category} ${e.sub} ${e.amount}`.toLowerCase().includes(q)));
+    (!q || `${e.description} ${e.seller || ''} ${e.category} ${e.sub} ${e.amount}`.toLowerCase().includes(q)));
   if (!list.length) {
     $('#actList').innerHTML = `<div class="empty-big small">${icon('search', 32, 1.5)}<p>${q || ui.filter !== 'all' ? 'No matches.' : 'No transactions this month.'}</p></div>`;
     return;
@@ -937,8 +939,8 @@ function openSheet(id) {
     return m && t.slice(0, 7) !== m.key ? m.key + '-01' : t;
   })();
   ui.form = e
-    ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description, account: e.account }
-    : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '', account: defaultFormAccount() };
+    ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description, account: e.account, seller: e.seller || '' }
+    : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '', account: defaultFormAccount(), seller: '' };
   ui.armedDelete = false;
   const body = `<div id="formMain"><div class="seg" id="fType"></div>
       <div class="amt" id="fAmt"></div>
@@ -948,14 +950,15 @@ function openSheet(id) {
       <div class="lbl">Date</div>
       <div class="chips datechips" id="fDates"></div>
       <div class="chips acc-pick" id="fAccts" aria-label="Account"></div>
-      <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label></div>
+      <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label>
+      <p class="muted sm note-hint" id="fNoteHint"></p></div>
       <div id="calWrap"></div><div id="quickWrap"></div>`;
   const foot = (e ? '' : `<button class="btn ghost sq" id="quickToggle" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 24)}</button>`) +
     `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>` +
     (e ? '' : '<button class="btn primary big" data-act="quick-add" id="quickBtn">Add selected</button>');
   present(e ? 'Edit transaction' : 'New transaction',
     e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : '', body, 'compact', foot);
-  $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; });
+  $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; ui.form.autoNote = null; });
   ui.adding = null;
   ui.newName = '';
   ui.picking = false;
@@ -978,7 +981,7 @@ function quickCtx() {
 }
 
 const quickData = (r) => ({
-  date: r.date, description: r.description, amount: r.amount, type: r.type,
+  date: r.date, description: r.description || r.seller || '', seller: r.seller || '', amount: r.amount, type: r.type,
   category: r.type === 'Income' ? 'Income' : r.category, sub: r.type === 'Income' ? 'Income' : r.sub,
   account: r.account || defaultFormAccount(),
 });
@@ -1037,6 +1040,7 @@ function quickBadge(r) {
   if (r.currency !== 'EGP') return [`${r.currency} amount, check it`, 'warn'];
   if (!r.category || !r.sub) return ['Pick a category', 'warn'];
   if (!r.ready) return ['Check the category', 'check'];
+  if (r.suggested) return ['Suggested note', 'check'];
   return ['', ''];
 }
 
@@ -1054,7 +1058,7 @@ function renderQuickRows() {
       return `<div class="q-row t-${tone}">
         <input type="checkbox" class="q-check" data-qsel="${i}" ${q.sel.has(r) ? 'checked' : ''} ${can ? '' : 'disabled'} aria-label="Select">
         <button class="q-main" data-act="quick-edit" data-i="${i}">
-          <b>${esc(r.description || (r.type === 'Income' ? 'Income' : 'No note'))}</b>
+          <b>${esc(r.description || (r.type === 'Income' ? 'Income' : 'No note'))}${r.seller && r.description && r.seller !== r.description ? ` <span class="row-seller">${esc(r.seller)}</span>` : ''}</b>
           <small>${esc(where)}${multiAcc() && r.account ? ' · ' + esc(r.account) : ''} · ${esc(dateShort(r.date))}${badge ? ` <i class="q-badge t-${tone}">${esc(badge)}</i>` : ''}</small>
         </button>
         <span class="q-amt ${r.type === 'Income' ? 'inc' : ''}">${r.type === 'Income' ? '+' : '−'}${esc(num(r.amount))}</span>
@@ -1087,7 +1091,7 @@ function editQuickRow(i) {
   const r = ui.quick.rows[i];
   if (!r) return;
   ui.quick.current = r;
-  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount() };
+  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount(), seller: r.seller || '', autoNote: r.suggested ? r.description : null };
   const d = $('#fDesc');
   if (d) d.value = r.description;
   leaveQuick();
@@ -1117,7 +1121,8 @@ async function checkSmsInbox(force = false) {
     const done = [], logged = [], review = [];
     for (const m of list) {
       const rows = parseMessages(m.text, ctx).filter((r) => r.source === 'sms');
-      if (rows.length && rows.some((r) => !r.dup && !r.ready)) { review.push(m); continue; }
+      // a suggested note is never logged silently: the message waits in the review sheet (next time the app is open, if it can't show now)
+      if (rows.length && rows.some((r) => !r.dup && (!r.ready || r.suggested))) { review.push(m); continue; }
       const fresh = rows.filter((r) => !r.dup);
       if (fresh.length) { logged.push(...fresh); ctx.history = ctx.history.concat(fresh.map(quickData)); }
       done.push(m.id);
@@ -1136,7 +1141,7 @@ async function checkSmsInbox(force = false) {
       openSheet(null);
       ui.quick = { text: review.map((m) => m.text).join('\n\n'), rows: [], sel: new Set(), current: null };
       enterQuick();
-      quickHint('From your bank SMS: pick a category, then tap Add selected.');
+      quickHint(ui.quick.rows.some((r) => r.suggested && r.ready) ? 'From your bank SMS: check the suggested notes (tap one to change it), then tap Add selected.' : 'From your bank SMS: pick a category, then tap Add selected.');
     }
   } catch (e) { /* the sheet script may be older or offline: try again later */ }
   finally { smsBusy = false; }
@@ -1540,9 +1545,35 @@ function setChips(sel, html) {
   }
 }
 
+// New entries get the same note suggestions as bank SMS (fuel by the size of the fill, a repeat of seller + amount).
+// Only an empty note, or one we filled in ourselves, is ever replaced, so nothing the person typed is overwritten.
+function autoNote() {
+  const f = ui.form;
+  const box = $('#fDesc');
+  if (!f || !box) return;
+  let why = '';
+  if (!f.id && f.type === 'Expense') {
+    const sug = suggestNote({ seller: f.seller, amount: Number(f.amt), sub: f.sub }, quickCtx().history);
+    const mine = !f.desc.trim() || f.desc === f.autoNote || (f.seller && f.desc === f.seller);
+    if (sug && mine) { f.desc = sug.note; f.autoNote = sug.note; why = sug.why; }
+    else if (!sug && f.autoNote && f.desc === f.autoNote) { f.desc = f.seller || ''; f.autoNote = null; }
+    else if (sug && f.desc === f.autoNote) why = sug.why;
+    if (box.value !== f.desc) box.value = f.desc;
+  }
+  const hint = $('#fNoteHint');
+  if (hint) {
+    const parts = [];
+    if (f.seller && f.seller !== f.desc) parts.push(`Seller: ${f.seller}`);
+    if (why) parts.push(`Suggested note (${why})`);
+    hint.textContent = parts.join(' · ');
+    hint.hidden = !parts.length;
+  }
+}
+
 function refreshForm() {
   const f = ui.form;
   if (!f) return;
+  autoNote();
   const v = store.view();
   $('#fType').innerHTML = ['Expense', 'Income'].map((t) => `<button class="${f.type === t ? 'on ' + t.toLowerCase() : ''}" data-act="type" data-t="${t}">${t}</button>`).join('');
   $('#fAmt').className = 'amt ' + f.type.toLowerCase() + (f.amt ? '' : ' empty');
@@ -1614,7 +1645,7 @@ function saveForm() {
   if (f.type === 'Expense' && !f.category) return fail('Pick a category.');
   if (f.type === 'Expense' && !f.sub) return fail('Pick a sub-category.');
   const data = {
-    date: f.date, description: f.desc, amount, type: f.type,
+    date: f.date, description: (f.desc || '').trim() || f.seller || '', seller: f.seller || undefined, amount, type: f.type,
     category: f.type === 'Income' ? 'Income' : f.category,
     sub: f.type === 'Income' ? 'Income' : f.sub,
     account: f.account || undefined,
