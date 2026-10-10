@@ -944,26 +944,25 @@ function openSheet(id) {
     return m && t.slice(0, 7) !== m.key ? m.key + '-01' : t;
   })();
   ui.form = e
-    ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description, account: e.account, seller: e.seller || '' }
-    : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '', account: defaultFormAccount(), seller: '' };
+    ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description, account: e.account, seller: e.seller || '', step: 'details' }
+    : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '', account: defaultFormAccount(), seller: '', step: 'amt' };
   ui.armedDelete = false;
   const body = `<div id="formMain"><div class="seg" id="fType"></div>
-      <div class="amt" id="fAmt"></div>
-      <div class="keypad" id="keypad">${KEYS.map((k) => `<button data-act="key" data-k="${k}" aria-label="${k === 'del' ? 'Delete digit' : k}">${k === 'del' ? icon('backspace', 20) : k}</button>`).join('')}</div>
-      <div id="fCatWrap"><div class="lbl">Category</div><div class="chips hs" id="fCats"></div>
+      <button class="amt" id="fAmt" data-act="amt-edit" aria-label="Amount"></button>
+      <div id="fKeys"><div class="keypad" id="keypad">${KEYS.map((k) => `<button data-act="key" data-k="${k}" aria-label="${k === 'del' ? 'Delete digit' : k}">${k === 'del' ? icon('backspace', 20) : k}</button>`).join('')}</div>
+      <div class="amt-acts"><button class="amt-x" data-act="amt-cancel" aria-label="Cancel">${icon('close', 22, 2.4)}</button><button class="amt-ok" data-act="amt-ok" aria-label="Confirm amount">${icon('check', 24, 2.8)}</button></div></div>
+      <div id="fDetails"><div id="fCatWrap"><div class="lbl">Category</div><div class="chips hs" id="fCats"></div>
       <div class="lbl">Sub-category</div><div class="chips hs" id="fSubs"></div></div>
-      <div class="lbl">Date</div>
-      <div class="chips datechips" id="fDates"></div>
-      <div class="chips acc-pick" id="fAccts" aria-label="Account"></div>
-      <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label>
-      <div class="seller-wrap" id="fSellerWrap"></div>
-      <p class="muted sm note-hint" id="fNoteHint"></p></div>
+      <div class="chips hs meta" id="fMeta"></div>
+      <div class="notebox"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"><div id="fSellerWrap"></div></div>
+      <p class="muted sm note-hint" id="fNoteHint"></p></div></div>
       <div id="calWrap"></div><div id="quickWrap"></div>`;
-  const foot = (e ? '' : `<button class="btn ghost sq" id="quickToggle" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 24)}</button>`) +
-    `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>` +
+  const foot = `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>` +
     (e ? '' : '<button class="btn primary big" data-act="quick-add" id="quickBtn">Add selected</button>');
   present(e ? 'Edit transaction' : 'New transaction',
-    e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : '', body, 'compact', foot);
+    e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>`
+      : `<button class="close" id="quickToggle" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 22)}</button>`,
+    body, 'compact entry', foot);
   $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; ui.form.autoNote = null; });
   ui.form.showSeller = !!ui.form.seller;
   $('#fSellerWrap').addEventListener('input', (ev) => { if (ev.target.id === 'fSeller') { ui.form.seller = ev.target.value; autoNote(); } });
@@ -1100,7 +1099,7 @@ function editQuickRow(i) {
   const r = ui.quick.rows[i];
   if (!r) return;
   ui.quick.current = r;
-  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount(), seller: r.seller || '', showSeller: !!r.seller, autoNote: r.suggested ? r.description : null };
+  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount(), seller: r.seller || '', showSeller: !!r.seller, autoNote: r.suggested ? r.description : null, step: 'details' };
   renderSellerField();
   const d = $('#fDesc');
   if (d) d.value = r.description;
@@ -1580,14 +1579,12 @@ function autoNote() {
   }
 }
 
-// Seller: hidden behind a small button until there is one; entries from a bank SMS open with it showing.
+// Seller: a small grey line under the note, switched on and off by the Seller chip; entries with a seller open with it showing.
 function renderSellerField() {
   const f = ui.form;
   const box = $('#fSellerWrap');
   if (!f || !box) return;
-  box.innerHTML = f.showSeller
-    ? `<label class="note seller-field"><input id="fSeller" placeholder="Seller (e.g. Amazon)" value="${esc(f.seller)}" autocomplete="off" maxlength="120"><button class="icon-btn" data-act="seller-hide" aria-label="Remove seller">${icon('close', 16, 2.4)}</button></label>`
-    : `<button class="chip add" data-act="seller-show">${icon('plus', 14, 2.4)}Seller</button>`;
+  box.innerHTML = f.showSeller ? `<input id="fSeller" class="seller-line" placeholder="Seller (e.g. Amazon)" value="${esc(f.seller)}" autocomplete="off" maxlength="120">` : '';
 }
 
 function refreshForm() {
@@ -1597,7 +1594,9 @@ function refreshForm() {
   const v = store.view();
   $('#fType').innerHTML = ['Expense', 'Income'].map((t) => `<button class="${f.type === t ? 'on ' + t.toLowerCase() : ''}" data-act="type" data-t="${t}">${t}</button>`).join('');
   $('#fAmt').className = 'amt ' + f.type.toLowerCase() + (f.amt ? '' : ' empty');
-  $('#fAmt').innerHTML = `<span class="cur">${esc(cur())}</span><span>${esc(fmtTyped(f.amt))}</span>`;
+  $('#fAmt').innerHTML = `<span class="cur">${esc(cur())}</span><span>${esc(fmtTyped(f.amt))}</span><small class="amt-edit">tap to edit</small>`;
+  const sheet = $('.sheet');
+  if (sheet) sheet.classList.toggle('step-amt', f.step === 'amt');
   const isExp = f.type === 'Expense';
   $('#fCatWrap').style.display = isExp ? '' : 'none';
   if (isExp) {
@@ -1615,21 +1614,28 @@ function refreshForm() {
       if (inp && document.activeElement !== inp) { inp.focus(); inp.scrollIntoView({ inline: 'nearest', block: 'nearest' }); }
     }
   }
+  // date, account and seller share one scrolling line of small chips
   const showAcc = multiAcc() || (f.account && f.account !== (accList()[0] || {}).name);
-  $('#fAccts').style.display = showAcc ? '' : 'none';
+  let accChips = '';
   if (showAcc) {
     const opts = liveAccts().slice();
     const cur = accOf(f.account);
     if (cur && !opts.includes(cur)) opts.push(cur);   // keep an archived account usable on entries that already have it
-    $('#fAccts').innerHTML = opts.map((a) => `<button class="chip ${f.account === a.name ? 'on' : ''}" data-act="facc" data-v="${esc(a.name)}">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}${esc(a.name)}</button>`).join('');
+    accChips = '<i class="meta-gap"></i>' + opts.map((a) => `<button class="chip ${f.account === a.name ? 'on' : ''}" data-act="facc" data-v="${esc(a.name)}">${icon(a.type === 'cash' ? 'cash' : 'card', 15)}${esc(a.name)}</button>`).join('');
   }
   const today = todayStr();
   const yest = shiftDate(today, -1);
   const custom = f.date !== today && f.date !== yest;
-  $('#fDates').innerHTML =
+  const meta = $('#fMeta');
+  const metaLeft = meta.scrollLeft;   // keep where the person scrolled it; no jumping to the selected chip
+  meta.innerHTML = (
     `<button class="chip ${f.date === today ? 'on' : ''}" data-act="date-today">Today</button>` +
     `<button class="chip ${f.date === yest ? 'on' : ''}" data-act="date-yesterday">Yesterday</button>` +
-    `<button class="chip pick ${custom ? 'on' : ''}" data-act="date-pick">${icon('calendar', 16)}${custom ? esc(dateShort(f.date)) : 'Pick date'}</button>`;
+    `<button class="chip ${custom ? 'on' : ''}" data-act="date-pick">${icon('calendar', 15)}${custom ? esc(dateShort(f.date)) : 'Date'}</button>` +
+    accChips + '<i class="meta-gap"></i>' +
+    (f.showSeller ? `<button class="chip seller-on" data-act="seller-hide" aria-label="Remove seller">Seller${icon('close', 13, 2.6)}</button>`
+      : `<button class="chip add" data-act="seller-show">${icon('plus', 13, 2.4)}Seller</button>`));
+  meta.scrollLeft = metaLeft;
 }
 
 function pressKey(k) {
@@ -2180,8 +2186,15 @@ document.addEventListener('click', async (ev) => {
     case 'type': ui.form.type = el.dataset.t; ui.adding = null; haptic(6); refreshForm(); break;
     case 'cat': ui.form.category = el.dataset.v; ui.form.sub = ''; if (ui.adding === 'sub') ui.adding = null; haptic(6); refreshForm(); break;
     case 'sub': ui.form.sub = el.dataset.v; haptic(6); refreshForm(); break;
-    case 'seller-show': ui.form.showSeller = true; renderSellerField(); $('#fSeller').focus(); break;
-    case 'seller-hide': ui.form.showSeller = false; ui.form.seller = ''; renderSellerField(); autoNote(); break;
+    case 'seller-show': ui.form.showSeller = true; renderSellerField(); refreshForm(); $('#fSeller').focus(); break;
+    case 'seller-hide': ui.form.showSeller = false; ui.form.seller = ''; renderSellerField(); refreshForm(); break;
+    case 'amt-edit': if (ui.form && ui.form.step !== 'amt') { ui.form.amtBackup = ui.form.amt; ui.form.step = 'amt'; haptic(6); refreshForm(); } break;
+    case 'amt-ok':
+      if (!(Number(ui.form.amt) > 0)) { toast('Enter an amount greater than zero.', 'err'); shake(); break; }
+      ui.form.step = 'details'; ui.form.amtBackup = null; haptic(10); refreshForm(); break;
+    case 'amt-cancel':
+      if (ui.form.amtBackup != null) { ui.form.amt = ui.form.amtBackup; ui.form.amtBackup = null; ui.form.step = 'details'; } else ui.form.amt = '';
+      haptic(6); refreshForm(); break;
     case 'lock-method': {
       const want = el.dataset.v;
       const cur = lockCfg().method;
