@@ -348,12 +348,12 @@ export function weeklySeries(expenses, end) {
   return { days, total: days.reduce((n, d) => n + d.amt, 0), prevTotal: prev };
 }
 
-/** Where the money goes by name (the note), biggest first. Entries without a note are skipped. */
+/** Where the money goes by name (the seller, else the note), biggest first. Entries with neither are skipped. */
 export function topMerchants(expenses, limit = 5) {
   const m = new Map();
   expenses.forEach((e) => {
     if (e.type !== 'Expense') return;
-    const name = String(e.description || '').replace(/\s+/g, ' ').trim();
+    const name = String(e.seller || e.description || '').replace(/\s+/g, ' ').trim();
     if (!name) return;
     const k = name.toLowerCase();
     const cur = m.get(k) || { name, amt: 0, n: 0 };

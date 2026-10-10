@@ -1,5 +1,5 @@
 // node tests/quick.test.mjs
-import { parseMessages, parseDate, norm, wordsToDigits } from '../js/quick.js';
+import { parseMessages, parseDate, norm, wordsToDigits, suggestNote } from '../js/quick.js';
 
 let fails = 0;
 const ok = (c, m) => { if (!c) { fails++; console.log('FAIL:', m); } else console.log('ok  :', m); };
@@ -209,6 +209,28 @@ ok(rows[0].description.length > 0, 'the note keeps the original (Arabic) words')
   ok(nums('اشتريت لبن بخمسين وبنزين بأربع 130') === '50,430', 'a plain word price and an iOS-style price in one sentence');
   ok(nums('قهوة 50 وتاكسي 80') === '50,80' && nums('قهوة بخمسين وتاكسي 80') === '50,80', 'ordinary digits next to number words are not merged');
   ok(run('‏قهوة‏ بخمسين')[0].description === 'قهوة', 'invisible left/right marks never end up in a note');
+}
+
+// ---- seller and suggested notes
+{
+  const all = run(SMS);
+  const by = (amt) => all.find((r) => r.amount === amt);
+  const fuel = by(430);
+  ok(fuel.seller === 'Mobil Adel Mokh' && fuel.description === 'Fuel - Verna' && !!fuel.suggested, 'a small fuel fill is noted as the Verna, the station kept as the seller');
+  ok(by(889).seller === 'Amazon Marketpl' && by(889).description === 'Amazon Marketpl' && !by(889).suggested, 'no suggestion: the note stays the seller, as before');
+  const big = run('Your credit card ending with#6262 was charged for EGP 890.00 at CHILLOUT OBOUR on 05/10/26  at 10:00. Card available limit is EGP 1.')[0];
+  ok(big.description === 'Fuel - Haval' && big.seller === 'Chillout Obour', '890 of fuel is the Haval');
+  ok(suggestNote({ amount: 550, sub: 'Fuel' }, []).note === 'Fuel - Haval' && suggestNote({ amount: 549.99, sub: 'Fuel' }, []).note === 'Fuel - Verna', 'the cutoff is 550: 550 and over is the Haval');
+  ok(suggestNote({ amount: 600, sub: 'Fuel', fuelCutoff: 650 }, []).note === 'Fuel - Verna' && suggestNote({ amount: 650, sub: 'Fuel', fuelCutoff: 650 }, []).note === 'Fuel - Haval', 'the cutoff from Settings is used when set');
+  const hist = [
+    { ...E('2026-09-01', 'Gym membership', 1200, 'Health', 'Gym'), seller: 'Gold S Gym' },
+    { ...E('2026-08-01', 'Old note', 1200, 'Health', 'Gym'), seller: 'Gold S Gym' },
+    { ...E('2026-09-02', 'Gold S Gym', 300, 'Health', 'Gym'), seller: 'Gold S Gym' },
+  ];
+  ok(suggestNote({ seller: 'GOLD S GYM', amount: 1200, sub: 'Gym' }, hist).note === 'Gym membership', 'same seller and exact amount: the latest note used before');
+  ok(suggestNote({ seller: 'Gold S Gym', amount: 1201, sub: 'Gym' }, hist) === null, 'a different amount suggests nothing');
+  ok(suggestNote({ seller: 'Gold S Gym', amount: 300, sub: 'Gym' }, hist) === null, 'an earlier entry whose note was just the seller suggests nothing');
+  ok(suggestNote({ seller: 'Chillout Obour', amount: 890, sub: 'Fuel' }, [{ ...E('2026-09-01', 'Fuel - Verna', 890, 'Transport', 'Fuel'), seller: 'Chillout Obour' }]).note === 'Fuel - Verna', 'your own earlier note beats the fuel rule');
 }
 
 // ---- helpers

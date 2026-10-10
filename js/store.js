@@ -106,7 +106,7 @@ export function deleteEntry(id) {
   let trashId = null;
   if (e) {
     trashId = uid();
-    S.trash.unshift({ trashId, deletedAt: Date.now(), data: { date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: e.account } });
+    S.trash.unshift({ trashId, deletedAt: Date.now(), data: { date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: e.account, seller: e.seller } });
     S.trash = S.trash.slice(0, 100);
     db.set('trash', S.trash);
   }
@@ -146,6 +146,7 @@ const clean = (d) => ({
   category: d.category,
   sub: d.sub,
   ...(d.account ? { account: d.account } : {}),
+  ...(d.seller ? { seller: String(d.seller).trim() } : {}),
 });
 
 function enqueue(op) {
@@ -265,7 +266,7 @@ export function deleteAccount(name, moveTo, dropIds = new Set()) {
   for (const k of v.months) for (const e of v.by[k].entries) if (String(e.account).toLowerCase() === key) own.push(e);
   for (const e of own) {
     if (dropIds.has(e.id)) { deleteEntry(e.id); continue; }    // goes to Recently deleted, can be restored
-    enqueue({ type: 'update', id: e.id, data: clean({ date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: moveTo }) });
+    enqueue({ type: 'update', id: e.id, data: clean({ date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: moveTo, seller: e.seller }) });
     moved++;
   }
   for (const x of v.subs) if (String(x.account).toLowerCase() === key) saveSubscription({ ...x, account: moveTo });

@@ -7,7 +7,8 @@
  *
  * Sheet layout is unchanged (Summary / Categories / one tab per month). Each month tab gets a hidden
  * column G "ID" so edits, deletes and retried uploads can never duplicate or misplace a row, and a hidden
- * column H "Account" (blank = the default account). Spending accounts and their monthly limits live on a
+ * column H "Account" (blank = the default account), and a column I "Seller" (the shop from a bank SMS, kept apart
+ * from the note in B). Spending accounts and their monthly limits live on a
  * separate "Accounts" tab, recurring subscriptions on a "Subscriptions" tab. Nothing that existed before is
  * moved, renamed or removed.
  */
@@ -15,11 +16,11 @@
 var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';   // only needed the first time: it is then kept in Script Properties
 
 // Bumped with every change to this file. The app compares it and asks the script to update itself (selfUpdate_).
-var SCRIPT_VERSION = 8;
+var SCRIPT_VERSION = 9;
 var UPDATE_URL = 'https://cc-expenses.pages.dev/apps-script/Api.gs';
 
 var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
-var HEADERS = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category', 'ID', 'Account'];
+var HEADERS = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category', 'ID', 'Account', 'Seller'];
 var ACCOUNTS_SHEET = 'Accounts';
 var DEFAULT_ACCOUNT = 'Credit Card';
 var SUBS_SHEET = 'Subscriptions';
@@ -27,9 +28,10 @@ var SUBS_HEADERS = ['ID', 'Name', 'Amount', 'Day', 'Category', 'Sub-Category', '
 var BALANCE_LABELS = ['Starting Balance', 'Total Spent', 'Available Balance'];
 var HEADER_ROW = 4;
 var FIRST_ROW = 5;
-var NCOLS = 8;          // A:F data + G id + H account
+var NCOLS = 9;          // A:F data + G id + H account + I seller
 var ID_COL = 7;
 var ACC_COL = 8;
+var SELLER_COL = 9;
 
 // ------------------------------------------------------------------ HTTP entry points
 
@@ -546,7 +548,8 @@ function readEntries_(ws) {
   vals.forEach(function (v) {
     if (!isDataRow_(v)) return;
     out.push({ id: String(v[6]), date: fmtDate_(v[0]), description: String(v[1]), amount: Number(v[2]) || 0,
-               type: String(v[3]), category: String(v[4]), sub: String(v[5]), account: String(v[7] || '') || defaultAccount_() });
+               type: String(v[3]), category: String(v[4]), sub: String(v[5]), account: String(v[7] || '') || defaultAccount_(),
+               seller: String(v[8] || '') });
   });
   return out;
 }
@@ -576,12 +579,13 @@ function sortSheet_(ws) {
 var _accHeaderDone = {};   // sheets whose "Account" header was checked during this request
 
 function writeRow_(ws, row, v, id) {
-  ws.getRange(row, 1, 1, NCOLS).setValues([[v.date, v.description, v.amount, v.type, v.category, v.sub, id, v.account]]);
+  ws.getRange(row, 1, 1, NCOLS).setValues([[v.date, v.description, v.amount, v.type, v.category, v.sub, id, v.account, v.seller]]);
   ws.getRange(row, 1).setNumberFormat('dd-mmm-yy');
   var name = ws.getName();
   if (!_accHeaderDone[name]) {                     // sheets created before accounts existed get their header once
     _accHeaderDone[name] = true;
     if (!ws.getRange(HEADER_ROW, ACC_COL).getValue()) ws.getRange(HEADER_ROW, ACC_COL).setValue(HEADERS[ACC_COL - 1]);
+    if (!ws.getRange(HEADER_ROW, SELLER_COL).getValue()) ws.getRange(HEADER_ROW, SELLER_COL).setValue(HEADERS[SELLER_COL - 1]);
     hideHelperColumns_(ws);
   }
 }
@@ -607,7 +611,8 @@ function validate_(t) {
   }
   var account = resolveAccount_(t.account);
   return { year: y, month0: mo - 1, date: dt, description: String(t.description || '').trim().slice(0, 200),
-           amount: amount, type: t.type, category: category, sub: sub, account: account };
+           amount: amount, type: t.type, category: category, sub: sub, account: account,
+           seller: String(t.seller || '').trim().slice(0, 120) };
 }
 
 // ------------------------------------------------------------------ accounts (credit card, cash, ...)

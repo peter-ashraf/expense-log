@@ -1,9 +1,12 @@
 // Quick add: turns pasted bank SMS or a line of typed / spoken text into transactions.
 // Pure functions (no DOM) so they can be tested on their own. English and Arabic (including Egyptian wording).
 //
-//   parseMessages(text, { today, categories, accounts, history }) -> rows
-//   row = { source, raw, type, amount, currency, date, time, description, category, sub, account,
-//           confidence: 'high' | 'medium' | 'low', ready, dup, why }
+//   parseMessages(text, { today, categories, accounts, history, fuelCutoff }) -> rows
+//   row = { source, raw, type, amount, currency, date, time, description, seller, category, sub, account,
+//           confidence: 'high' | 'medium' | 'low', ready, dup, why, suggested }
+//
+// A bank SMS row keeps the shop in `seller`. Its `description` (the note) is the shop too, unless suggestNote() found a
+// better one, in which case `suggested` says why and the app asks before logging it.
 //
 // A row is `ready` only when the amount, category and sub-category are all known AND we are confident about them,
 // so "add all ready" can never silently file something under a wild guess.
@@ -121,9 +124,10 @@ function buildHistory(history) {
     if (e.type !== 'Expense' || !e.category) continue;
     const key = e.category + '\u0001' + e.sub;
     bump(catSubs, e.category, e.sub);
-    const d = norm(e.description).replace(/\s+/g, ' ').trim();
-    if (d) bump(exact, d, key);
-    for (const t of new Set(tokens(e.description))) bump(byToken, t, key);
+    // the seller is what a bank SMS names, so it teaches the most; a note of its own ("Fuel - Haval") helps too
+    const names = new Set([e.seller, e.description].map((x) => norm(x).replace(/\s+/g, ' ').trim()).filter(Boolean));
+    for (const d of names) bump(exact, d, key);
+    for (const t of new Set([...tokens(e.seller), ...tokens(e.description)])) bump(byToken, t, key);
   }
   return { byToken, exact, catSubs };
 }
@@ -187,6 +191,34 @@ function decide(text, ctx, h) {
   return { category: '', sub: '', confidence: 'low', why: '' };
 }
 
+// ------------------------------------------------------------------ notes: what to call an entry
+// The note used last time for the same seller and the exact same amount wins. Otherwise fuel is named after the car by
+// the size of the fill: the Haval has the bigger tank, so the cutoff and over is the Haval, anything less the Verna.
+// The cutoff can be changed in Settings (fuel prices move); FUEL_BIG_FILL is the default.
+export const FUEL_BIG_FILL = 550;
+const nameKey = (s) => norm(s).replace(/\s+/g, ' ').trim();
+
+export function suggestNote({ seller, amount, sub, fuelCutoff }, history) {
+  const cut = Number(fuelCutoff) > 0 ? Number(fuelCutoff) : FUEL_BIG_FILL;
+  const s = nameKey(seller);
+  const amt = Number(amount).toFixed(2);
+  if (s) {
+    let best = null;
+    for (const e of history || []) {
+      if (!e.seller || !e.description || e.type === 'Income') continue;
+      if (Number(e.amount).toFixed(2) !== amt || nameKey(e.seller) !== s || nameKey(e.description) === s) continue;
+      if (!best || e.date > best.date) best = e;
+    }
+    if (best) return { note: best.description, why: 'same seller and amount as before' };
+  }
+  if (nameKey(sub) === 'fuel' && Number(amount) > 0) {
+    return Number(amount) >= cut
+      ? { note: 'Fuel - Haval', why: `fuel ${cut} and over` }
+      : { note: 'Fuel - Verna', why: `fuel under ${cut}` };
+  }
+  return null;
+}
+
 // ------------------------------------------------------------------ number words ("forty five", "two hundred and fifty")
 // Speech engines sometimes hand back words instead of digits. A lone small number ("two coffees") is left alone so it
 // can't be mistaken for the price; anything from eleven up, or with tens / hundreds / thousands, is converted.
@@ -233,10 +265,12 @@ function parseSms(chunk, ctx, h) {
   const date = (m[4] && parseDate(m[4], ctx.today)) || ctx.today;
   const row = {
     source: 'sms', raw: chunk.trim(), type, amount, currency: currencyOf(flat.slice(Math.max(0, m.index - 4), m.index + m[0].length), m[2]),
-    date, time: m[5] || '', description: merchant || (type === 'Income' ? 'Refund' : ''), account: pickAccount(flat, ctx, 'sms'),
+    date, time: m[5] || '', description: merchant || (type === 'Income' ? 'Refund' : ''), seller: merchant, account: pickAccount(flat, ctx, 'sms'),
   };
   if (type === 'Income') { Object.assign(row, { category: 'Income', sub: 'Income', confidence: 'high', why: 'money coming in' }); return row; }
   Object.assign(row, decide(merchant || flat, ctx, h));
+  const note = suggestNote({ seller: merchant, amount, sub: row.sub, fuelCutoff: ctx.fuelCutoff }, ctx.history);
+  if (note) { row.description = note.note; row.suggested = note.why; }
   return row;
 }
 

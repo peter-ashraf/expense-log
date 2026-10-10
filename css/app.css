@@ -175,6 +175,9 @@ body.onboard #topbar { display: none; }
 .bubble.sm { width: 32px; height: 32px; border-radius: 11px; }
 .row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
 .row-t { font-weight: 620; font-size: 15.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row-t:has(.row-seller) { display: flex; align-items: baseline; gap: 7px; }
+.row-note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.row-seller { flex: 0 10000 auto; min-width: 0; font-size: 12.5px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-s { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-amt { font-weight: 700; font-size: 15.5px; white-space: nowrap; letter-spacing: -.01em; }
 .row.inc .row-amt { color: var(--pos); }
@@ -313,6 +316,39 @@ body.onboard #tabbar { display: none; }
 .date-pill input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%; cursor: pointer; }
 .note { display: block; } .note input { width: 100%; height: 46px; padding: 0 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); outline: 0; font-size: 16px; }
 .note input:focus { border-color: var(--accent); }
+.note-hint { margin: 6px 4px 0; }
+.note-hint[hidden] { display: none; }
+
+/* ---------- add / edit form: two steps (amount, then details) in a sheet of one fixed height ---------- */
+.sheet.entry { height: min(680px, calc(100% - var(--safe-t) - 22px - max(8px, calc(var(--safe-b) - 22px)))); }
+button.amt { width: 100%; }
+.amt .amt-edit { display: none; }
+.sheet.step-amt #fDetails, .sheet.step-amt:not(.quickmode) .sheet-foot { display: none; }
+.sheet.step-amt .sheet-body { display: flex; flex-direction: column; }
+.sheet.step-amt #formMain { flex: 1; display: flex; flex-direction: column; }
+.sheet.step-amt .amt { flex: 1; align-items: center; font-size: 54px; cursor: default; }
+.sheet.step-amt .amt .cur { font-size: 22px; }
+.sheet.step-amt .keypad { gap: 8px; margin-bottom: 0; }
+.sheet.step-amt .keypad button { height: 58px; font-size: 24px; }
+.sheet:not(.step-amt) #fKeys { display: none; }
+.sheet:not(.step-amt) .amt { align-items: baseline; padding: 10px 14px; margin-bottom: 4px; min-height: 0; font-size: 34px; border-radius: 18px;
+  background: var(--surface); border: 1px solid var(--line); transition: transform .12s; }
+.sheet:not(.step-amt) .amt:active { transform: scale(.98); }
+.sheet:not(.step-amt) .amt .amt-edit { display: inline; font-size: 13px; font-weight: 500; letter-spacing: 0; color: var(--muted); }
+.amt-acts { display: flex; justify-content: center; gap: 28px; margin: 16px 0 4px; }
+.amt-acts button { width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; transition: transform .12s; }
+.amt-acts button:active { transform: scale(.92); }
+.amt-x { background: var(--surface); border: 1px solid var(--line); color: var(--muted); }
+.amt-ok { color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); box-shadow: 0 8px 20px color-mix(in srgb, var(--accent) 35%, transparent); }
+#fMeta { margin-top: 12px; margin-bottom: 10px; align-items: center; }
+#fMeta .chip { padding: 6px 11px; font-size: 13px; gap: 5px; }
+#fMeta .chip.seller-on { background: var(--accent); border-color: transparent; color: #fff; }
+.meta-gap { flex: none; width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
+.notebox { border-radius: 16px; border: 1px solid var(--line); background: var(--surface); overflow: hidden; }
+.notebox:focus-within { border-color: var(--accent); }
+.notebox input { display: block; width: 100%; border: 0; outline: 0; background: none; padding: 0 14px; }
+#fDesc { height: 46px; font-size: 16px; font-weight: 600; }
+.seller-line { height: 34px; margin-top: -8px; font-size: 14px; color: var(--muted); }
 .mlist { display: flex; flex-direction: column; gap: 6px; padding-bottom: 6px; }
 .mrow { display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); font-weight: 650; }
 .mrow span { flex: 1; text-align: left; } .mrow b { color: var(--muted); font-weight: 600; font-size: 14px; }
