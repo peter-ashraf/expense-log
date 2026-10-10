@@ -1,7 +1,7 @@
 // Quick add: turns pasted bank SMS or a line of typed / spoken text into transactions.
 // Pure functions (no DOM) so they can be tested on their own. English and Arabic (including Egyptian wording).
 //
-//   parseMessages(text, { today, categories, accounts, history }) -> rows
+//   parseMessages(text, { today, categories, accounts, history, fuelCutoff }) -> rows
 //   row = { source, raw, type, amount, currency, date, time, description, seller, category, sub, account,
 //           confidence: 'high' | 'medium' | 'low', ready, dup, why, suggested }
 //
@@ -193,11 +193,13 @@ function decide(text, ctx, h) {
 
 // ------------------------------------------------------------------ notes: what to call an entry
 // The note used last time for the same seller and the exact same amount wins. Otherwise fuel is named after the car by
-// the size of the fill: the Haval has the bigger tank, so FUEL_BIG_FILL and over is the Haval, anything less the Verna.
+// the size of the fill: the Haval has the bigger tank, so the cutoff and over is the Haval, anything less the Verna.
+// The cutoff can be changed in Settings (fuel prices move); FUEL_BIG_FILL is the default.
 export const FUEL_BIG_FILL = 550;
 const nameKey = (s) => norm(s).replace(/\s+/g, ' ').trim();
 
-export function suggestNote({ seller, amount, sub }, history) {
+export function suggestNote({ seller, amount, sub, fuelCutoff }, history) {
+  const cut = Number(fuelCutoff) > 0 ? Number(fuelCutoff) : FUEL_BIG_FILL;
   const s = nameKey(seller);
   const amt = Number(amount).toFixed(2);
   if (s) {
@@ -210,9 +212,9 @@ export function suggestNote({ seller, amount, sub }, history) {
     if (best) return { note: best.description, why: 'same seller and amount as before' };
   }
   if (nameKey(sub) === 'fuel' && Number(amount) > 0) {
-    return Number(amount) >= FUEL_BIG_FILL
-      ? { note: 'Fuel - Haval', why: `fuel ${FUEL_BIG_FILL} and over` }
-      : { note: 'Fuel - Verna', why: `fuel under ${FUEL_BIG_FILL}` };
+    return Number(amount) >= cut
+      ? { note: 'Fuel - Haval', why: `fuel ${cut} and over` }
+      : { note: 'Fuel - Verna', why: `fuel under ${cut}` };
   }
   return null;
 }
@@ -267,7 +269,7 @@ function parseSms(chunk, ctx, h) {
   };
   if (type === 'Income') { Object.assign(row, { category: 'Income', sub: 'Income', confidence: 'high', why: 'money coming in' }); return row; }
   Object.assign(row, decide(merchant || flat, ctx, h));
-  const note = suggestNote({ seller: merchant, amount, sub: row.sub }, ctx.history);
+  const note = suggestNote({ seller: merchant, amount, sub: row.sub, fuelCutoff: ctx.fuelCutoff }, ctx.history);
   if (note) { row.description = note.note; row.suggested = note.why; }
   return row;
 }

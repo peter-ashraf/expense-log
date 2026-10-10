@@ -1,7 +1,7 @@
 import * as store from './store.js';
 import { icon, catHue } from './icons.js';
 import { computeInsights, computeAllTime, computeStreak, weeklySeries, topMerchants } from './insights.js';
-import { suggestNote, parseMessages } from './quick.js';
+import { suggestNote, FUEL_BIG_FILL, parseMessages } from './quick.js';
 import { esc, num as rawNum, num0 as rawNum0, money as rawMoney, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 import { readCsvEntries, decodeText } from './csv.js';
@@ -821,6 +821,11 @@ function renderSettings(view) {
       <div class="card-h"><h3>Currency</h3></div>
       <label class="field"><span>Currency symbol</span><input id="curInput" maxlength="4" placeholder="e.g. $, €, EGP" value="${esc(st.settings.currency)}" autocomplete="off"></label>
       <p class="muted sm">Shown next to amounts. Doesn’t change your data.</p>
+    </section>
+    <section class="card">
+      <div class="card-h"><h3>Fuel notes</h3></div>
+      <label class="field"><span>Haval from this amount</span><input id="fuelInput" type="text" inputmode="decimal" placeholder="${FUEL_BIG_FILL}" value="${Number(st.settings.fuelCutoff) > 0 ? esc(String(st.settings.fuelCutoff)) : ''}" autocomplete="off"></label>
+      <p class="muted sm" style="margin-top:10px">Fuel at this amount or more is noted “Fuel - Haval”, anything less “Fuel - Verna”. Raise it when fuel prices go up. Empty uses ${FUEL_BIG_FILL}.</p>
     </section>`;
   } else if (p === 'appearance') {
     body = `<section class="card">
@@ -951,6 +956,7 @@ function openSheet(id) {
       <div class="chips datechips" id="fDates"></div>
       <div class="chips acc-pick" id="fAccts" aria-label="Account"></div>
       <label class="note"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"></label>
+      <div class="seller-wrap" id="fSellerWrap"></div>
       <p class="muted sm note-hint" id="fNoteHint"></p></div>
       <div id="calWrap"></div><div id="quickWrap"></div>`;
   const foot = (e ? '' : `<button class="btn ghost sq" id="quickToggle" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 24)}</button>`) +
@@ -959,6 +965,9 @@ function openSheet(id) {
   present(e ? 'Edit transaction' : 'New transaction',
     e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>` : '', body, 'compact', foot);
   $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; ui.form.autoNote = null; });
+  ui.form.showSeller = !!ui.form.seller;
+  $('#fSellerWrap').addEventListener('input', (ev) => { if (ev.target.id === 'fSeller') { ui.form.seller = ev.target.value; autoNote(); } });
+  renderSellerField();
   ui.adding = null;
   ui.newName = '';
   ui.picking = false;
@@ -977,7 +986,7 @@ let rec = null;
 
 function quickCtx() {
   const v = store.view();
-  return { today: todayStr(), categories: v.categories, accounts: v.accounts, history: v.months.flatMap((k) => v.by[k].entries) };
+  return { today: todayStr(), categories: v.categories, accounts: v.accounts, history: v.months.flatMap((k) => v.by[k].entries), fuelCutoff: store.getState().settings.fuelCutoff };
 }
 
 const quickData = (r) => ({
@@ -1091,7 +1100,8 @@ function editQuickRow(i) {
   const r = ui.quick.rows[i];
   if (!r) return;
   ui.quick.current = r;
-  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount(), seller: r.seller || '', autoNote: r.suggested ? r.description : null };
+  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount(), seller: r.seller || '', showSeller: !!r.seller, autoNote: r.suggested ? r.description : null };
+  renderSellerField();
   const d = $('#fDesc');
   if (d) d.value = r.description;
   leaveQuick();
@@ -1553,7 +1563,8 @@ function autoNote() {
   if (!f || !box) return;
   let why = '';
   if (!f.id && f.type === 'Expense') {
-    const sug = suggestNote({ seller: f.seller, amount: Number(f.amt), sub: f.sub }, quickCtx().history);
+    const ctx = quickCtx();
+    const sug = suggestNote({ seller: f.seller, amount: Number(f.amt), sub: f.sub, fuelCutoff: ctx.fuelCutoff }, ctx.history);
     const mine = !f.desc.trim() || f.desc === f.autoNote || (f.seller && f.desc === f.seller);
     if (sug && mine) { f.desc = sug.note; f.autoNote = sug.note; why = sug.why; }
     else if (!sug && f.autoNote && f.desc === f.autoNote) { f.desc = f.seller || ''; f.autoNote = null; }
@@ -1563,11 +1574,20 @@ function autoNote() {
   const hint = $('#fNoteHint');
   if (hint) {
     const parts = [];
-    if (f.seller && f.seller !== f.desc) parts.push(`Seller: ${f.seller}`);
     if (why) parts.push(`Suggested note (${why})`);
     hint.textContent = parts.join(' · ');
     hint.hidden = !parts.length;
   }
+}
+
+// Seller: hidden behind a small button until there is one; entries from a bank SMS open with it showing.
+function renderSellerField() {
+  const f = ui.form;
+  const box = $('#fSellerWrap');
+  if (!f || !box) return;
+  box.innerHTML = f.showSeller
+    ? `<label class="note seller-field"><input id="fSeller" placeholder="Seller (e.g. Amazon)" value="${esc(f.seller)}" autocomplete="off" maxlength="120"><button class="icon-btn" data-act="seller-hide" aria-label="Remove seller">${icon('close', 16, 2.4)}</button></label>`
+    : `<button class="chip add" data-act="seller-show">${icon('plus', 14, 2.4)}Seller</button>`;
 }
 
 function refreshForm() {
@@ -2160,6 +2180,8 @@ document.addEventListener('click', async (ev) => {
     case 'type': ui.form.type = el.dataset.t; ui.adding = null; haptic(6); refreshForm(); break;
     case 'cat': ui.form.category = el.dataset.v; ui.form.sub = ''; if (ui.adding === 'sub') ui.adding = null; haptic(6); refreshForm(); break;
     case 'sub': ui.form.sub = el.dataset.v; haptic(6); refreshForm(); break;
+    case 'seller-show': ui.form.showSeller = true; renderSellerField(); $('#fSeller').focus(); break;
+    case 'seller-hide': ui.form.showSeller = false; ui.form.seller = ''; renderSellerField(); autoNote(); break;
     case 'lock-method': {
       const want = el.dataset.v;
       const cur = lockCfg().method;
@@ -2350,6 +2372,14 @@ document.addEventListener('change', (e) => {
     store.updateAccount(e.target.dataset.name, { limit: val });
     e.target.value = val || '';
     toast(val ? 'Limit saved' : 'Limit removed', 'ok');
+    return;
+  }
+  if (e.target && e.target.id === 'fuelInput') {
+    const n = parseFloat(String(e.target.value).replace(/,/g, '').trim());
+    const val = Number.isFinite(n) && n > 0 ? Math.round(n * 100) / 100 : 0;
+    store.saveSettings({ fuelCutoff: val });
+    e.target.value = val || '';
+    toast(`Fuel cutoff: ${val || FUEL_BIG_FILL}`, 'ok');
     return;
   }
   if (e.target && e.target.id === 'budgetInput') {

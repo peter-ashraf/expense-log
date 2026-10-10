@@ -317,6 +317,10 @@ body.onboard #tabbar { display: none; }
 .note { display: block; } .note input { width: 100%; height: 46px; padding: 0 14px; border-radius: 16px; border: 1px solid var(--line); background: var(--surface); outline: 0; font-size: 16px; }
 .note input:focus { border-color: var(--accent); }
 .note-hint { margin: 6px 4px 0; }
+.seller-wrap { margin-top: 8px; }
+.seller-field { position: relative; }
+.seller-field input { height: 40px; font-size: 14.5px; padding-right: 44px; color: var(--muted); }
+.seller-field .icon-btn { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); min-width: 32px; width: 32px; height: 32px; padding: 0; }
 .note-hint[hidden] { display: none; }
 .mlist { display: flex; flex-direction: column; gap: 6px; padding-bottom: 6px; }
 .mrow { display: flex; align-items: center; gap: 10px; height: 54px; padding: 0 16px; border-radius: 16px; background: var(--surface); border: 1px solid var(--line); font-weight: 650; }

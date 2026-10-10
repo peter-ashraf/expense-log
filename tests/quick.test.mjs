@@ -221,6 +221,7 @@ ok(rows[0].description.length > 0, 'the note keeps the original (Arabic) words')
   const big = run('Your credit card ending with#6262 was charged for EGP 890.00 at CHILLOUT OBOUR on 05/10/26  at 10:00. Card available limit is EGP 1.')[0];
   ok(big.description === 'Fuel - Haval' && big.seller === 'Chillout Obour', '890 of fuel is the Haval');
   ok(suggestNote({ amount: 550, sub: 'Fuel' }, []).note === 'Fuel - Haval' && suggestNote({ amount: 549.99, sub: 'Fuel' }, []).note === 'Fuel - Verna', 'the cutoff is 550: 550 and over is the Haval');
+  ok(suggestNote({ amount: 600, sub: 'Fuel', fuelCutoff: 650 }, []).note === 'Fuel - Verna' && suggestNote({ amount: 650, sub: 'Fuel', fuelCutoff: 650 }, []).note === 'Fuel - Haval', 'the cutoff from Settings is used when set');
   const hist = [
     { ...E('2026-09-01', 'Gym membership', 1200, 'Health', 'Gym'), seller: 'Gold S Gym' },
     { ...E('2026-08-01', 'Old note', 1200, 'Health', 'Gym'), seller: 'Gold S Gym' },
