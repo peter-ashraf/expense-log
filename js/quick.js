@@ -11,7 +11,7 @@
 // A row is `ready` only when the amount, category and sub-category are all known AND we are confident about them,
 // so "add all ready" can never silently file something under a wild guess.
 
-const CUR = '(?:EGP|LE|L\\.E\\.?|USD|EUR|GBP|SAR|AED|KWD|QAR|جنيه|ج\\.م)';
+const CUR = '(?:EGP|LE|L\\.E\\.?|USD|EUR|GBP|SAR|AED|KWD|QAR|جنيه|ج\\.?م)';
 const STOP = new Set(['the', 'and', 'for', 'from', 'with', 'via', 'card', 'credit', 'debit', 'charged', 'pay', 'payment', 'bill', 'was', 'your', 'ending', 'using', 'available', 'limit', 'more', 'details', 'please', 'visit', 'مبلغ', 'من', 'على', 'في']);
 
 // ------------------------------------------------------------------ text helpers
@@ -252,10 +252,14 @@ const SMS_CREDIT = new RegExp(
 const SMS_REFUND_AR = new RegExp(
   'لرد\\s+مبلغ\\s+من\\s+(.+?)\\s+بقيمة\\s*(?:' + CUR + '\\s*)?-?\\s*([\\d,]+(?:\\.\\d{1,2})?)\\s*(' + CUR + ')?', 's');
 
+// CIB card payment (Arabic): "تم سداد مبلغ 15940.41 جم فى بطاقتكم الائتمانية المنتهية بـ 6262 بتاريخ 30-09-26" -> income on the card
+const SMS_PAYMENT_AR = new RegExp(
+  'تم\\s+سداد\\s+مبلغ\\s*(?:' + CUR + '\\s*)?([\\d,]+(?:\\.\\d{1,2})?)\\s*(' + CUR + ')?.*?(?:بتاريخ\\s+(\\d{1,2}[\\/.-]\\d{1,2}[\\/.-]\\d{2,4}))?', 's');
+
 function currencyOf(full, after) {
   const c = (/\b(EGP|LE|USD|EUR|GBP|SAR|AED|KWD|QAR)\b/i.exec(full) || [])[1];
   const a = (after || '').toUpperCase().replace(/\./g, '');
-  return (c || a || 'EGP').toUpperCase().replace('LE', 'EGP');
+  return (c || (/^(جنيه|جم)$/.test(a) ? 'EGP' : a) || 'EGP').toUpperCase().replace('LE', 'EGP');
 }
 
 function parseSms(chunk, ctx, h) {
@@ -267,19 +271,24 @@ function parseSms(chunk, ctx, h) {
     const r = SMS_REFUND_AR.exec(flat);
     if (r) { m = [r[0], r[2], r[3], r[1]]; m.index = r.index; refundRequest = true; }
   }
+  let payment = false;
+  if (!m) {
+    const p = SMS_PAYMENT_AR.exec(flat);
+    if (p) { m = [p[0], p[1], p[2], '', p[3] || (/بتاريخ\s+(\d{1,2}[\/.-]\d{1,2}[\/.-]\d{2,4})/.exec(flat) || [])[1]]; m.index = p.index; payment = true; }
+  }
   if (!m) { m = SMS_CREDIT.exec(flat); type = 'Income'; }
   if (!m) return null;
-  if (refundRequest) type = 'Income';
+  if (refundRequest || payment) type = 'Income';
   const amount = Number(m[1].replace(/,/g, ''));
   if (!(amount > 0)) return null;
   const merchant = tidyMerchant(m[3] || '');
   const date = (m[4] && parseDate(m[4], ctx.today)) || ctx.today;
   const row = {
     source: 'sms', raw: chunk.trim(), type, amount, currency: currencyOf(flat.slice(Math.max(0, m.index - 4), m.index + m[0].length), m[2]),
-    date, time: m[5] || '', description: merchant || (type === 'Income' ? 'Refund' : ''), seller: merchant, account: pickAccount(flat, ctx, 'sms'),
+    date, time: m[5] || '', description: merchant || (payment ? 'Card payment' : type === 'Income' ? 'Refund' : ''), seller: merchant, account: pickAccount(flat, ctx, 'sms'),
   };
   if (refundRequest) row.refundRequest = true;
-  if (type === 'Income') { Object.assign(row, { category: 'Income', sub: 'Income', confidence: 'high', why: refundRequest ? 'refund requested' : 'money coming in' }); return row; }
+  if (type === 'Income') { Object.assign(row, { category: 'Income', sub: 'Income', confidence: 'high', why: payment ? 'card payment' : refundRequest ? 'refund requested' : 'money coming in' }); return row; }
   Object.assign(row, decide(merchant || flat, ctx, h));
   const note = suggestNote({ seller: merchant, amount, sub: row.sub, fuelCutoff: ctx.fuelCutoff }, ctx.history);
   if (note) { row.description = note.note; row.suggested = note.why; }

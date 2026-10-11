@@ -64,6 +64,8 @@ rows = run('Your credit card ending with#6262 was credited with EGP 250.00 from 
 ok(rows[0] && rows[0].type === 'Income' && rows[0].amount === 250 && rows[0].ready, 'a refund / credit message becomes income');
 rows = run('تم استلام الطلب لرد مبلغ من Jumia Mall بقيمة EGP -686.25 وسيتم اضافته للبطاقة الائتمانية # 6262 بمجرد استلام المبلغ من التاجر. للمزيد من التفاصيل http://cib.eg/mb');
 ok(rows.length === 1 && rows[0].type === 'Income' && rows[0].amount === 686.25 && rows[0].seller === 'Jumia Mall' && rows[0].account === 'Credit Card' && rows[0].currency === 'EGP' && rows[0].ready, 'CIB Arabic refund request (minus sign) becomes card income, ready to log');
+rows = run('تم سداد مبلغ 15940.41 جم فى بطاقتكم الائتمانية المنتهية بـ 6262 بتاريخ 30-09-26');
+ok(rows.length === 1 && rows[0].type === 'Income' && rows[0].amount === 15940.41 && rows[0].date === '2026-09-30' && rows[0].account === 'Credit Card' && rows[0].currency === 'EGP' && rows[0].ready, 'CIB Arabic card payment becomes card income on its date');
 const refunded = [{ ...E('2026-09-28', 'Jumia Mall', 686.25, 'Income', 'Income', 'Income'), seller: 'Jumia Mall' }];
 rows = run('Your credit card ending with#6262 was credited with EGP 686.25 from JUMIA MALL on 04/10/26 at 12:00. Available limit is 1.', refunded);
 ok(rows[0].dup && !rows[0].ready, 'the later "credited" SMS for an already-logged refund request is not logged again');
