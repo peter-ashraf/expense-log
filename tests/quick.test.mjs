@@ -62,6 +62,13 @@ rows = run('Your credit card ending with#6262 was charged for USD 12.99 at SPOTI
 ok(rows[0].currency === 'USD' && rows[0].category === 'Subscriptions' && rows[0].sub === 'Spotify' && !rows[0].ready, 'foreign-currency charges are recognised but never auto-ready');
 rows = run('Your credit card ending with#6262 was credited with EGP 250.00 from AMAZON REFUND on 03/10/26 at 12:00. Available limit is 1.');
 ok(rows[0] && rows[0].type === 'Income' && rows[0].amount === 250 && rows[0].ready, 'a refund / credit message becomes income');
+rows = run('تم استلام الطلب لرد مبلغ من Jumia Mall بقيمة EGP -686.25 وسيتم اضافته للبطاقة الائتمانية # 6262 بمجرد استلام المبلغ من التاجر. للمزيد من التفاصيل http://cib.eg/mb');
+ok(rows.length === 1 && rows[0].type === 'Income' && rows[0].amount === 686.25 && rows[0].seller === 'Jumia Mall' && rows[0].account === 'Credit Card' && rows[0].currency === 'EGP' && rows[0].ready, 'CIB Arabic refund request (minus sign) becomes card income, ready to log');
+const refunded = [{ ...E('2026-09-28', 'Jumia Mall', 686.25, 'Income', 'Income', 'Income'), seller: 'Jumia Mall' }];
+rows = run('Your credit card ending with#6262 was credited with EGP 686.25 from JUMIA MALL on 04/10/26 at 12:00. Available limit is 1.', refunded);
+ok(rows[0].dup && !rows[0].ready, 'the later "credited" SMS for an already-logged refund request is not logged again');
+rows = run('Your credit card ending with#6262 was credited with EGP 686.25 from AMAZON on 04/10/26 at 12:00. Available limit is 1.', refunded);
+ok(!rows[0].dup && rows[0].ready, 'a credit from a different shop with the same amount still logs');
 
 // ---- typed text, English
 rows = run('coffee 45');

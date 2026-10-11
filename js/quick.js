@@ -247,6 +247,11 @@ const SMS_CREDIT = new RegExp(
   '(?:credited|refund(?:ed)?|deposit(?:ed)?|received)\\s+(?:with|for|of|amount)?\\s*(?:' + CUR + '\\s*)?([\\d,]+(?:\\.\\d{1,2})?)\\s*(' + CUR + ')?' +
   '(?:\\s+(?:from|by|at)\\s+(.+?))?(?:\\s+on\\s+(\\d{1,2}[\\/.-]\\d{1,2}[\\/.-]\\d{2,4})(?:\\s+at\\s+(\\d{1,2}:\\d{2}))?)?(?:[.,]|\\s+Available|\\s+Your|$)', 'is');
 
+// CIB refund request (Arabic): "تم استلام الطلب لرد مبلغ من Jumia Mall بقيمة EGP -686.25 وسيتم اضافته للبطاقة الائتمانية # 6262 ..."
+// The amount carries a minus sign but it is money coming back, so it is income, logged when the request SMS arrives.
+const SMS_REFUND_AR = new RegExp(
+  'لرد\\s+مبلغ\\s+من\\s+(.+?)\\s+بقيمة\\s*(?:' + CUR + '\\s*)?-?\\s*([\\d,]+(?:\\.\\d{1,2})?)\\s*(' + CUR + ')?', 's');
+
 function currencyOf(full, after) {
   const c = (/\b(EGP|LE|USD|EUR|GBP|SAR|AED|KWD|QAR)\b/i.exec(full) || [])[1];
   const a = (after || '').toUpperCase().replace(/\./g, '');
@@ -257,8 +262,14 @@ function parseSms(chunk, ctx, h) {
   const flat = chunk.replace(/\s+/g, ' ').trim();
   let m = SMS_SPEND.exec(flat);
   let type = 'Expense';
+  let refundRequest = false;
+  if (!m) {
+    const r = SMS_REFUND_AR.exec(flat);
+    if (r) { m = [r[0], r[2], r[3], r[1]]; m.index = r.index; refundRequest = true; }
+  }
   if (!m) { m = SMS_CREDIT.exec(flat); type = 'Income'; }
   if (!m) return null;
+  if (refundRequest) type = 'Income';
   const amount = Number(m[1].replace(/,/g, ''));
   if (!(amount > 0)) return null;
   const merchant = tidyMerchant(m[3] || '');
@@ -267,7 +278,8 @@ function parseSms(chunk, ctx, h) {
     source: 'sms', raw: chunk.trim(), type, amount, currency: currencyOf(flat.slice(Math.max(0, m.index - 4), m.index + m[0].length), m[2]),
     date, time: m[5] || '', description: merchant || (type === 'Income' ? 'Refund' : ''), seller: merchant, account: pickAccount(flat, ctx, 'sms'),
   };
-  if (type === 'Income') { Object.assign(row, { category: 'Income', sub: 'Income', confidence: 'high', why: 'money coming in' }); return row; }
+  if (refundRequest) row.refundRequest = true;
+  if (type === 'Income') { Object.assign(row, { category: 'Income', sub: 'Income', confidence: 'high', why: refundRequest ? 'refund requested' : 'money coming in' }); return row; }
   Object.assign(row, decide(merchant || flat, ctx, h));
   const note = suggestNote({ seller: merchant, amount, sub: row.sub, fuelCutoff: ctx.fuelCutoff }, ctx.history);
   if (note) { row.description = note.note; row.suggested = note.why; }
@@ -598,6 +610,22 @@ function splitChunks(text) {
   return out;
 }
 
+// an income with the same amount in the 60 days before, whose seller matches (or this credit names no shop)
+function refundAlreadyLogged(r, history, claimed) {
+  const day = (d) => Date.parse(d + 'T00:00:00Z') / 86400000;
+  const seller = norm(r.seller || '');
+  for (const e of history) {
+    if (claimed.has(e) || e.type !== 'Income' || !e.seller || Number(e.amount).toFixed(2) !== Number(r.amount).toFixed(2)) continue;
+    const gap = day(r.date) - day(e.date);
+    if (!(gap >= 0 && gap <= 60)) continue;
+    const s = norm(e.seller);
+    if (seller && !(seller.includes(s) || s.includes(seller))) continue;
+    claimed.add(e);
+    return true;
+  }
+  return false;
+}
+
 export function parseMessages(text, ctx) {
   const h = buildHistory(ctx.history);
   const rows = [];
@@ -609,6 +637,7 @@ export function parseMessages(text, ctx) {
       rows.push(...parseUtterance(line, ctx, h));
     }
   }
+  const claimed = new Set();
   // already logged? same day, same amount, same kind (you may have typed it in before the SMS arrived)
   const seen = new Map();
   for (const e of ctx.history || []) {
@@ -619,6 +648,8 @@ export function parseMessages(text, ctx) {
     const k = [r.date, Number(r.amount).toFixed(2), r.type].join('|');
     r.dup = (seen.get(k) || 0) > 0;
     if (r.dup) seen.set(k, seen.get(k) - 1);   // two identical SMS only match two existing entries
+    // a refund is logged when the request SMS arrives, so a later "credited" SMS for the same refund is not logged twice
+    if (!r.dup && r.source === 'sms' && r.type === 'Income' && !r.refundRequest) r.dup = refundAlreadyLogged(r, ctx.history || [], claimed);
     r.ready = !r.dup && r.confidence === 'high' && !!r.amount && (r.type === 'Income' || (!!r.category && !!r.sub)) && r.currency === 'EGP';
   }
   return rows;
