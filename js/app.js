@@ -27,9 +27,9 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.16.3';
+const APP_VERSION = '3.17.0';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
-const SCRIPT_LATEST = 9;
+const SCRIPT_LATEST = 10;
 
 const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -204,11 +204,12 @@ function entryRow(e, pending) {
   // a note of its own: the shop it was bought from sits beside it, small and grey
   const seller = e.seller && e.description && e.seller.trim().toLowerCase() !== e.description.trim().toLowerCase() ? e.seller : '';
   const subtitle = (isInc ? 'Income' : `${e.category} · ${e.sub}`) + (ui.account === 'all' && multiAcc() && e.account ? ` · ${e.account}` : '');
-  return `<button class="row ${isInc ? 'inc' : 'exp'}" data-act="edit" data-id="${esc(e.id)}">
+  const tag = store.isViewer() ? 'div' : 'button';   // view only: rows don't open the editor
+  return `<${tag} class="row ${isInc ? 'inc' : 'exp'}" ${tag === 'button' ? `data-act="edit" data-id="${esc(e.id)}"` : ''}>
     <span class="bubble" style="${hueStyle(isInc ? 'Income' : e.category)}">${icon(isInc ? 'income' : e.category, 20)}</span>
     <span class="row-main"><span class="row-t">${seller ? `<span class="row-note">${esc(title)}</span><span class="row-seller">${esc(seller)}</span>` : esc(title)}</span><span class="row-s">${esc(subtitle)}${pending.has(e.id) ? '<i class="pend" title="Waiting to sync"></i>' : ''}</span></span>
     <span class="row-amt">${isInc ? '+' : '−'}${esc(num(e.amount))}</span>
-  </button>`;
+  </${tag}>`;
 }
 
 // ---------------------------------------------------------------- top bar
@@ -236,7 +237,7 @@ function renderTop() {
 
 // ---------------------------------------------------------------- tab bar
 function renderTabbar() {
-  const tabs = [['home', 'Home', 'home'], ['activity', 'Activity', 'list'], ['add', '', 'plus'], ['insights', 'Insights', 'chart'], ['settings', 'Settings', 'gear']];
+  const tabs = [['home', 'Home', 'home'], ['activity', 'Activity', 'list'], ['add', '', 'plus'], ['insights', 'Insights', 'chart'], ['settings', 'Settings', 'gear']].filter((t) => t[0] !== 'add' || !store.isViewer());
   $('#tabbar').innerHTML = tabs.map(([id, label, ic]) =>
     id === 'add'
       ? `<button class="fab" data-act="new" aria-label="Add transaction">${icon('plus', 26, 2.4)}</button>`
@@ -268,11 +269,21 @@ function renderTab() {
 function emptyState(st) {
   const box = (h, p, btn) => `<div class="empty-big">${icon('cloud', 40, 1.5)}<h2>${h}</h2><p>${p}</p>${btn ? '<button class="btn" data-act="sync">' + icon('cloud', 18) + 'Try again</button>' : ''}</div>`;
   if (!st.lastSync) {
+    if (store.isViewer() && st.status === 'error') return box('Couldn’t open this view', esc(st.error) + ' You can leave view-only mode in Settings.', true);
     if (st.status === 'syncing' || st.status === 'idle') return box('Loading your sheet…', 'Getting everything from your Google Sheet. Settings is open meanwhile.');
     if (st.status === 'offline') return box('You’re offline', 'Your entries will load from your Google Sheet once you’re back online.', true);
     if (st.status === 'retrying' || st.status === 'error') return box('Couldn’t load your sheet', esc(st.error || 'The Google Sheet didn’t answer.') + ' You can check the connection in Settings.', true);
   }
-  return box('Nothing here yet', 'Tap the + button to add your first transaction.');
+  return box('Nothing here yet', store.isViewer() ? 'Nothing has been logged yet.' : 'Tap the + button to add your first transaction.');
+}
+
+// ---- view-only links ----
+function viewerHi() {
+  const vw = store.getState().snap.viewer || {};
+  return `<section class="card viewer-hi">
+      <div class="vh-top"><b>Hi ${esc(vw.name || 'there')} 👋</b><span class="badge vo">${icon('eye', 13)}View only</span></div>
+      ${vw.note ? `<p class="vh-note">${esc(vw.note)}</p>` : ''}
+    </section>`;
 }
 
 function catTotals(m) {
@@ -306,7 +317,7 @@ function renderHome(view, m) {
   v.months.forEach((k) => v.by[k].entries.forEach((e) => allDates.add(e.date)));
   const sk = computeStreak(allDates, todayStr(), weekStart());
   const dowName = (iso) => new Intl.DateTimeFormat(undefined, { weekday: 'narrow' }).format(new Date(iso + 'T12:00:00'));
-  const streakCard = v.months.length ? `<section class="card streak">
+  const streakCard = v.months.length && !store.isViewer() ? `<section class="card streak">
       <div class="streak-h"><span class="flame ${sk.streak ? 'lit' : ''}">${icon('flame', 22, 1.8)}</span>
         <div class="streak-t"><b>${sk.streak ? `${sk.streak}-day streak` : 'Start a streak'}</b>
         <small>${sk.streak ? (sk.loggedToday ? `Best so far: ${sk.best} day${sk.best === 1 ? '' : 's'}` : 'Log something today to keep it going') : 'Log an entry today to begin'}</small></div></div>
@@ -326,6 +337,7 @@ function renderHome(view, m) {
       }).join('')}
     </section>` : '';
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
+    ${store.isViewer() ? viewerHi() : ''}
     ${accChips()}
     <section class="hero">
       <div class="hero-label">${esc(heroLabel)}</div>
@@ -748,7 +760,8 @@ async function saveEncryption() {
 }
 
 // ---------------------------------------------------------------- settings: a short top level, then one page per topic
-const SET_TITLES = { subs: 'Subscriptions', accounts: 'Accounts & budget', appearance: 'Appearance', security: 'Privacy & security', data: 'Data', about: 'About' };
+const SET_TITLES = { subs: 'Subscriptions', accounts: 'Accounts & budget', share: 'Share view-only', appearance: 'Appearance', security: 'Privacy & security', data: 'Data', about: 'About' };
+const VIEWER_PAGES = ['subs', 'appearance', 'security', 'about'];   // the only pages a view-only link opens
 
 function srow(page, ic, hue, title, sub) {
   return `<button class="srow" data-act="settings-go" data-p="${page}">
@@ -758,7 +771,74 @@ function srow(page, ic, hue, title, sub) {
     </button>`;
 }
 
+// View-only mode: sync, who you are, and the settings that only change this phone.
+function viewerSettingsHome(st) {
+  const last = st.lastSync ? new Date(st.lastSync).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
+  const theme = { light: 'Light', dark: 'Dark', system: 'Match my phone' }[st.settings.theme || 'system'];
+  const vw = st.snap.viewer || {};
+  return `<div class="page ${ui.animate ? 'enter' : ''}">
+    ${viewerHi()}
+    <section class="card sync-card">
+      <div class="card-h"><h3>Sync</h3><span class="badge ${st.status}">${esc(st.status === 'idle' ? 'ready' : st.status)}</span></div>
+      <div class="kv"><span>Source</span><b>${esc(st.cfg.demo ? 'Demo (shared view)' : 'Shared view')}</b></div>
+      <div class="kv"><span>Last updated</span><b>${esc(last)}</b></div>
+      ${st.error && (st.status === 'error' || st.status === 'retrying') ? `<p class="warn">${esc(st.error)}</p>` : ''}
+      <button class="btn" data-act="sync">${icon('cloud', 18)}Refresh</button>
+    </section>
+    <p class="set-h">General</p>
+    <div class="slist">
+      ${srow('appearance', 'sun', 40, 'Appearance', theme)}
+      ${srow('security', 'lock', 150, 'App lock', { bio: 'Face ID', pin: 'PIN', off: 'No lock' }[lockCfg().method || 'off'] || 'No lock')}
+      ${srow('about', 'device', 300, 'About', `v${APP_VERSION}`)}
+    </div>
+    <section class="card">
+      <div class="card-h"><h3>View only</h3></div>
+      <p class="muted sm" style="margin-top:0">${vw.name ? esc(vw.name) + ', this' : 'This'} is a read-only view of someone’s expenses. Nothing you do here changes them.</p>
+      <button class="btn danger" data-act="viewer-leave">Leave view-only mode</button>
+      <p class="muted sm">Forgets this link and the copy on this phone.</p>
+    </section>
+  </div>`;
+}
+
+// ---- owner: view-only links (the link holds a token that can only read; see view_ in Api.gs)
+const shr = { list: null, busy: false, error: '', made: null };
+function shareLink(token) {
+  const cfg = store.getState().cfg;
+  return location.origin + location.pathname + '#v=' + encodeURIComponent(cfg.demo ? 'demo' : cfg.url) + '&t=' + encodeURIComponent(token);
+}
+function loadShares() {
+  if (shr.busy) return;
+  shr.busy = true; shr.error = '';
+  store.shareList().then((l) => { shr.list = l; }).catch((e) => { shr.error = (e && e.message) || 'Could not load the links'; })
+    .finally(() => { shr.busy = false; if (ui.tab === 'settings' && ui.settingsPage === 'share') renderSettings($('#view')); });
+}
+function shareCard(st) {
+  const old = !(st.cfg && st.cfg.demo) && st.scriptVersion !== undefined && !(st.scriptVersion >= 10);
+  const when = (iso) => new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+  const list = shr.list || [];
+  return `<section class="card">
+      <div class="card-h"><h3>New link</h3></div>
+      <p class="muted sm" style="margin-top:0">Someone with the link sees your entries, balances and subscriptions, but can’t change anything. You can turn a link off at any time.</p>
+      ${old ? '<p class="warn">Your Google Sheet script needs updating first (Settings › About).</p>' : ''}
+      <label class="field"><span>Their name</span><input id="shName" maxlength="40" placeholder="e.g. Sara" autocomplete="off"></label>
+      <label class="field"><span>A short note (optional)</span><input id="shNote" maxlength="140" placeholder="e.g. Our monthly spending" autocomplete="off"></label>
+      <button class="btn" data-act="share-new" ${old ? 'disabled' : ''}>${icon('plus', 18)}New link</button>
+      ${shr.made ? `<div class="share-made"><p class="muted sm">Link for <b>${esc(shr.made.name)}</b>. Anyone with it can view, so send it only to them.</p>
+        <input class="share-url" readonly value="${esc(shr.made.link)}" aria-label="View-only link">
+        <div class="row-btns"><button class="btn ghost" data-act="share-copy" data-link="${esc(shr.made.link)}">Copy link</button>${navigator.share ? `<button class="btn ghost" data-act="share-send" data-link="${esc(shr.made.link)}" data-name="${esc(shr.made.name)}">Share…</button>` : ''}</div></div>` : ''}
+    </section>
+    <section class="card">
+      <div class="card-h"><h3>People with a link</h3><span class="badge ${list.length ? 'synced' : ''}">${shr.list ? list.length : '…'}</span></div>
+      ${shr.error ? `<p class="warn">${esc(shr.error)}</p>` : ''}
+      ${!shr.list ? `<p class="muted pad">${shr.busy ? 'Loading…' : ''}</p>` : !list.length ? '<p class="muted pad">Nobody yet.</p>' : list.map((x) => `<div class="share-row">
+        <span class="share-t"><b>${esc(x.name)}</b><small>Created ${esc(when(x.created))} · ${x.lastOpened ? 'last opened ' + esc(when(x.lastOpened)) : 'not opened yet'}${x.note ? ` · “${esc(x.note)}”` : ''}</small></span>
+        <span class="acc-acts"><button class="chip" data-act="share-copy" data-link="${esc(shareLink(x.token))}">Copy</button><button class="chip danger" data-act="share-revoke" data-t="${esc(x.token)}" data-name="${esc(x.name)}">Revoke</button></span>
+      </div>`).join('')}
+    </section>`;
+}
+
 function settingsHome(st) {
+  if (store.isViewer()) return viewerSettingsHome(st);
   const n = st.queue.length;
   const last = st.lastSync ? new Date(st.lastSync).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
   const demo = st.cfg && st.cfg.demo;
@@ -787,6 +867,7 @@ function settingsHome(st) {
     <div class="slist">
       ${srow('accounts', 'card', 255, 'Accounts & budget', accSub)}
       ${srow('subs', 'subscriptions', 20, 'Subscriptions', subsSub)}
+      ${demo || st.scriptVersion >= 10 || st.scriptVersion === undefined ? srow('share', 'eye', 330, 'Share view-only', shr.list ? `${shr.list.length} ${shr.list.length === 1 ? 'person' : 'people'}` : 'A read-only link for family') : ''}
       ${srow('appearance', 'sun', 40, 'Appearance', theme)}
     </div>
     <p class="set-h">Protection</p>
@@ -803,14 +884,17 @@ function settingsHome(st) {
 
 function renderSettings(view) {
   const st = store.getState();
-  const p = SET_TITLES[ui.settingsPage] ? ui.settingsPage : null;
+  const p = SET_TITLES[ui.settingsPage] && (!store.isViewer() || VIEWER_PAGES.includes(ui.settingsPage)) ? ui.settingsPage : null;
   if (!p) { ui.settingsPage = null; view.innerHTML = settingsHome(st); return; }
   if (p === 'subs') { renderSubsPage(view, { fmt, toast, animate: ui.animate }); return; }
   const demo = st.cfg && st.cfg.demo;
   const head = `<h2 class="page-title">${esc(SET_TITLES[p])}</h2>`;
   let body = '';
 
-  if (p === 'accounts') {
+  if (p === 'share') {
+    if (!shr.list && !shr.error) loadShares();
+    body = shareCard(st);
+  } else if (p === 'accounts') {
     body = `${accountsCard(st)}
     <section class="card">
       <div class="card-h"><h3>Monthly budget</h3><span class="badge ${Number(st.settings.budget) > 0 ? 'synced' : ''}">${Number(st.settings.budget) > 0 ? 'On' : 'Off'}</span></div>
@@ -841,7 +925,7 @@ function renderSettings(view) {
     </section>`;
   } else if (p === 'security') {
     body = `${securityCard(st)}
-    ${encryptionCard()}
+    ${store.isViewer() ? '' : encryptionCard()}
     <section class="card">
       <div class="card-h"><h3>Hide numbers</h3></div>
       <p class="muted sm" style="margin-top:0">Tap the big balance on Home to hide every number in the app, then tap it again to show them. Handy when someone is looking over your shoulder.</p>
@@ -870,12 +954,15 @@ function renderSettings(view) {
       <p class="muted sm" style="margin-top:8px">Gets the newest version immediately and reloads. Your data is not touched.</p>
       <p class="muted xs">${esc(fitApp.info || '')}</p>
     </section>
-    ${demo ? '' : scriptCard(st)}
-    <section class="card">
+    ${demo || store.isViewer() ? '' : scriptCard(st)}
+    ${store.isViewer() ? `<section class="card">
+      <div class="card-h"><h3>This device</h3></div>
+      <button class="btn danger" data-act="viewer-leave">Leave view-only mode</button>
+    </section>` : `<section class="card">
       <div class="card-h"><h3>This device</h3></div>
       <button class="btn danger" data-act="disconnect">${demo ? 'Exit demo' : 'Disconnect this device'}</button>
       <p class="muted sm">Disconnecting removes the local copy from this device. Your Google Sheet is untouched.</p>
-    </section>
+    </section>`}
     <section class="card">
       <div class="card-h"><h3>Share the app</h3></div>
       <p class="muted sm" style="margin-top:0">Anyone can use it with their own Google Sheet. Send them this guide: a blank sheet, one script, about 10 minutes.</p>
@@ -1119,7 +1206,7 @@ function smsRemember(ids) {
 
 async function checkSmsInbox(force = false) {
   const st = store.getState();
-  if (!st.cfg || st.cfg.demo || smsBusy || document.hidden || !(st.scriptVersion >= 7)) return;
+  if (!st.cfg || st.cfg.demo || st.cfg.viewer || smsBusy || document.hidden || !(st.scriptVersion >= 7)) return;
   if (!force && Date.now() - smsLast < 20000) return;
   smsBusy = true; smsLast = Date.now();
   try {
@@ -2051,10 +2138,14 @@ function openTrash(rerender = false) {
 }
 
 // ---------------------------------------------------------------- events
+// Everything that changes data. A view-only link never runs these (the store refuses them too).
+const WRITE_ACTS = /^(new|quick-.*|edit|save|delete|key|type|cat|sub|seller-.*|amt-.*|new-.*|date-.*|cal-.*|facc|acc-(add|delete|archive|type)|da-.*|import-.*|do-import|trash|restore|clear-trash|su-now|share-(new|revoke)|disconnect)$/;
+
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-act]');
   if (!el) return;
   const act = el.dataset.act;
+  if (store.isViewer() && WRITE_ACTS.test(act)) return;
   switch (act) {
     case 'open-subs': resetSubsUI(); ui.tab = 'settings'; ui.settingsPage = 'subs'; ui.animate = true; haptic(6); $('#view').innerHTML = ''; render(); break;
     case 'tab':
@@ -2345,6 +2436,41 @@ document.addEventListener('click', async (ev) => {
       break;
     }
     case 'su-now': maybeSelfUpdate(true); break;
+    case 'share-new': {
+      const name = (($('#shName') || {}).value || '').trim();
+      const note = (($('#shNote') || {}).value || '').trim();
+      if (!name) { toast('Type their name first.', 'err'); shake(); break; }
+      el.disabled = true;
+      try {
+        const r = await store.shareCreate(name, note);
+        shr.made = { name: r.name, link: shareLink(r.token) };
+        shr.list = null;
+        haptic(12); toast('Link ready', 'ok');
+      } catch (err) { toast(err.message || 'Could not create the link', 'err'); }
+      renderSettings($('#view'));
+      break;
+    }
+    case 'share-copy':
+      try { await navigator.clipboard.writeText(el.dataset.link); toast('Link copied', 'ok'); } catch (e) { const i = $('.share-url'); if (i) { i.select(); toast('Copy the selected link'); } else toast(el.dataset.link); }
+      break;
+    case 'share-send':
+      try { await navigator.share({ title: 'Expenses (view only)', text: `Hi ${el.dataset.name}, here’s a view-only link to our expenses:`, url: el.dataset.link }); } catch (e) { /* cancelled */ }
+      break;
+    case 'share-revoke':
+      if (!confirm(`Turn off ${el.dataset.name}’s link?\n\nIt stops working right away. You can make a new one later.`)) break;
+      try {
+        await store.shareRevoke(el.dataset.t);
+        if (shr.made && shr.made.link === shareLink(el.dataset.t)) shr.made = null;
+        shr.list = null; toast('Link turned off', 'ok');
+      } catch (err) { toast(err.message || 'Could not revoke the link', 'err'); }
+      renderSettings($('#view'));
+      break;
+    case 'viewer-leave':
+      if (!confirm('Leave view-only mode?\n\nThis forgets the link and the copy on this phone. You’d need the link again to come back.')) break;
+      await store.leaveViewer();
+      ui.tab = 'home'; ui.settingsPage = null; ui.animate = true; $('#view').innerHTML = '';
+      render(); store.sync();
+      break;
     case 'trash': openTrash(); break;
     case 'restore': {
       const id = store.restoreTrash(el.dataset.id);
@@ -2366,6 +2492,7 @@ document.addEventListener('click', async (ev) => {
 });
 
 document.addEventListener('change', (e) => {
+  if (store.isViewer() && e.target && (e.target.dataset.qsel !== undefined || (e.target.classList && e.target.classList.contains('acc-limit')))) return;
   if (e.target && e.target.dataset && e.target.dataset.qsel !== undefined && ui.quick) {
     const r = ui.quick.rows[+e.target.dataset.qsel];
     if (r) { if (e.target.checked) ui.quick.sel.add(r); else ui.quick.sel.delete(r); }
@@ -2451,8 +2578,9 @@ window.addEventListener('orientationchange', () => setTimeout(fitApp, 250));
 let lastStatusKey = '';
 function render() {
   const st = store.getState();
-  if (!st.cfg) { renderOnboarding(); return; }
+  if (!st.cfg) { document.body.classList.remove('viewer'); renderOnboarding(); return; }
   document.body.classList.remove('onboard');
+  document.body.classList.toggle('viewer', store.isViewer());
   renderTop();
   renderTabbar();
   renderTab();
@@ -2465,7 +2593,7 @@ initSlide(() => ui.tab + '|' + (ui.settingsPage || ''));
 const su = { busy: false, error: '', note: '' };
 function maybeSelfUpdate(force = false) {
   const st = store.getState();
-  if (!st.cfg || st.cfg.demo || su.busy || st.scriptVersion === undefined || st.scriptLoader) return;
+  if (!st.cfg || st.cfg.demo || st.cfg.viewer || su.busy || st.scriptVersion === undefined || st.scriptLoader) return;
   if (!st.scriptVersion) { su.note = 'old'; return; }
   if (st.scriptVersion >= SCRIPT_LATEST) { su.error = ''; su.note = ''; return; }
   const k = 'el_su_' + SCRIPT_LATEST;
@@ -2589,7 +2717,16 @@ async function bootSteps() {
     const p = new URLSearchParams(location.hash.slice(1));
     const url = p.get('u');
     const key = p.get('k');
+    const vUrl = p.get('v');
+    const tok = p.get('t');
     history.replaceState(null, '', location.pathname + location.search);
+    // View-only link: …/#v=<api url, or "demo">&t=<token>. An owner setup on this phone is kept, but ask first.
+    const cur = store.getState().cfg;
+    if (vUrl && tok && !(cur && cur.viewer && cur.token === tok)
+      && (!cur || cur.viewer || confirm('Open this view-only link?\n\nThis phone is set up with your own sheet. That stays saved (nothing uploads while you view) and comes back when you leave view-only mode in Settings.'))) {
+      ui.tab = 'home';
+      try { await store.connectViewer(vUrl === 'demo' ? { demo: true, token: tok } : { url: vUrl, token: tok }); toast('Opened view-only', 'ok'); } catch (e) { toast(e.message || 'Could not open the link', 'err'); }
+    }
     if (url && key && !store.getState().cfg) {
       renderOnboarding({ url, key });
       try { await store.connect({ url, key }); toast('Connected', 'ok'); } catch (e) { toast(e.message || 'Could not connect', 'err'); }

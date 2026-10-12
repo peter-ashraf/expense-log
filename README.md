@@ -23,3 +23,16 @@ Entries belong to an account (Credit Card, Cash, ...), each with an optional mon
 - Excel/CSV export adds a trailing `Account` column and an `Accounts` sheet only when there is more than one
   account; import reads the column when present.
 - After pasting the updated `apps-script/Api.gs`, deploy a new version (Deploy > Manage deployments > New version).
+
+
+## View-only links (v3.17)
+
+Settings > Share view-only makes a link for one person (name, optional note): `.../#v=<web-app url>&t=<token>`.
+
+- The token is random and kept on a hidden `Viewers` tab (`Token | Name | Note | Created | LastOpened | Revoked`).
+  It is never the access key: a request with a token can only run `view` (a read-only snapshot plus the viewer's
+  name and note); everything else is `Unauthorized`. Revoke stamps the `Revoked` column and the link stops at once.
+- Opening the link puts the app in view-only mode: a greeting, no add/edit/delete/import/quick-add/subscription or
+  account editing, no SMS inbox or script self-update, and the last loaded data stays readable offline. Its copy is
+  kept apart from an owner setup on the same phone (the app asks before switching); "Leave view-only mode" brings it back.
+- Needs script v10. It updates itself like before; otherwise paste the new `Api.gs` and deploy a new version.

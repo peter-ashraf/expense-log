@@ -4,6 +4,8 @@
  * Actions:  pull  -> full snapshot
  *           push  -> apply queued ops [{opId, type: add|update|delete, id, data}] idempotently, then snapshot
  *           smsAdd / smsList / smsDone -> bank SMS inbox filled by the iPhone Shortcut ("SMS Inbox" tab)
+ *           shareCreate / shareList / shareRevoke -> view-only links (hidden "Viewers" tab)
+ *           view  -> snapshot for a viewer token (the only action a token can ever do; tokens are never the key)
  *
  * Sheet layout is unchanged (Summary / Categories / one tab per month). Each month tab gets a hidden
  * column G "ID" so edits, deletes and retried uploads can never duplicate or misplace a row, and a hidden
@@ -16,7 +18,7 @@
 var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';   // only needed the first time: it is then kept in Script Properties
 
 // Bumped with every change to this file. The app compares it and asks the script to update itself (selfUpdate_).
-var SCRIPT_VERSION = 9;
+var SCRIPT_VERSION = 10;
 var UPDATE_URL = 'https://cc-expenses.pages.dev/apps-script/Api.gs';
 
 var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
@@ -45,7 +47,12 @@ function doPost(e) {
     var req = JSON.parse(e.postData.contents);
     var key = apiKey_();
     if (!key) throw new Error('API key is not set on the server.');
-    if (req.key !== key) throw new Error('Unauthorized');
+    if (req.key !== key) {
+      // a viewer token: read-only, one action, and never a way round the key
+      if (req.key || typeof req.token !== 'string' || !req.token || req.action !== 'view') throw new Error('Unauthorized');
+      out = withLock_(function () { return view_(req.token); });
+      return json_(out);
+    }
     out = withLock_(function () {
       if (req.action === 'push') return push_(req.ops || []);
       if (req.action === 'pull') return snapshot_();
@@ -53,12 +60,79 @@ function doPost(e) {
       if (req.action === 'smsAdd') return smsAdd_(req.sms);
       if (req.action === 'smsList') return smsList_();
       if (req.action === 'smsDone') return smsDone_(req.ids || []);
+      if (req.action === 'shareCreate') return shareCreate_(req.name, req.note);
+      if (req.action === 'shareList') return shareList_();
+      if (req.action === 'shareRevoke') return shareRevoke_(req.token);
       throw new Error('Unknown action');
     });
   } catch (err) {
     out = { ok: false, error: String(err && err.message || err) };
   }
   return json_(out);
+}
+
+// ------------------------------------------------------------------ view-only links
+// Each link carries a random token kept on a hidden "Viewers" tab. A token can only read (view_); the owner revokes it here.
+var VIEWERS_SHEET = 'Viewers';
+var VIEWERS_HEADERS = ['Token', 'Name', 'Note', 'Created', 'LastOpened', 'Revoked'];
+
+function viewersSheet_() {
+  var ss = SpreadsheetApp.getActive();
+  var sh = ss.getSheetByName(VIEWERS_SHEET);
+  if (!sh) {
+    sh = ss.insertSheet(VIEWERS_SHEET);
+    sh.getRange(1, 1, 1, VIEWERS_HEADERS.length).setValues([VIEWERS_HEADERS]).setFontWeight('bold');
+    sh.setFrozenRows(1);
+    sh.hideSheet();
+  }
+  return sh;
+}
+
+function viewerRows_() {
+  var sh = viewersSheet_();
+  var n = sh.getLastRow() - 1;
+  return n > 0 ? sh.getRange(2, 1, n, VIEWERS_HEADERS.length).getValues() : [];
+}
+
+function iso_(v) { return v instanceof Date ? v.toISOString() : String(v || ''); }
+
+function shareCreate_(name, note) {
+  name = String(name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+  note = String(note || '').replace(/\s+/g, ' ').trim().slice(0, 140);
+  if (!name) throw new Error('Name cannot be empty.');
+  var token = (Utilities.getUuid() + Utilities.getUuid()).replace(/-/g, '');
+  viewersSheet_().appendRow([token, name, note, new Date(), '', '']);
+  return { ok: true, token: token, name: name, note: note };
+}
+
+function shareList_() {
+  var out = [];
+  viewerRows_().forEach(function (r) {
+    if (r[0] && !r[5]) out.push({ token: String(r[0]), name: String(r[1]), note: String(r[2]), created: iso_(r[3]), lastOpened: iso_(r[4]) });
+  });
+  return { ok: true, viewers: out };
+}
+
+function shareRevoke_(token) {
+  token = String(token || '');
+  var n = 0;
+  if (token) viewerRows_().forEach(function (r, i) {
+    if (String(r[0]) === token && !r[5]) { viewersSheet_().getRange(i + 2, 6).setValue(new Date()); n++; }
+  });
+  return { ok: true, revoked: n };
+}
+
+function view_(token) {
+  var rows = viewerRows_();
+  for (var i = 0; i < rows.length; i++) {
+    if (rows[i][0] && String(rows[i][0]) === token && !rows[i][5]) {
+      viewersSheet_().getRange(i + 2, 5).setValue(new Date());
+      var snap = snapshot_();
+      snap.viewer = { name: String(rows[i][1]), note: String(rows[i][2]) };
+      return snap;
+    }
+  }
+  throw new Error('Unauthorized');
 }
 
 // ------------------------------------------------------------------ bank SMS inbox

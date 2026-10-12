@@ -57,6 +57,8 @@ class Sheet {
   appendRow(arr) { const r = this.getLastRow() + 1; arr.forEach((v, i) => this.set(r, i + 1, v)); }
   setColumnWidths() {}
   getIndex() { return this.ss.sheets.indexOf(this) + 1; }
+  hideSheet() { this.hiddenSheet = true; }
+  setColumnWidth() {}
 }
 const ss = {
   sheets: [], active: null,
@@ -338,6 +340,36 @@ ok(r.applied.join() === 'l1', 'legacy "category = sub-category" rows are still a
   const api3 = new Function(...Object.keys(g), raw + ';return {doPost}')(...Object.values(g));
   const c3 = (key) => JSON.parse(api3.doPost({ postData: { contents: JSON.stringify({ key, action: 'pull' }) } }).s);
   ok(c3('test-key').ok === true && c3('nope').error === 'Unauthorized', 'after an update the code has no key in it, and the saved key still works');
+}
+
+// ---- view-only links
+{
+  const tcall = (action, token, extra = {}) => JSON.parse(api.doPost({ postData: { contents: JSON.stringify({ token, action, ...extra }) } }).s);
+  ok(call('shareCreate', { name: '  ' }).error === 'Name cannot be empty.', 'shareCreate needs a name');
+  const c = call('shareCreate', { name: 'Mona', note: 'Our budget' });
+  ok(c.ok && c.token.length >= 10 && c.name === 'Mona' && c.note === 'Our budget', 'owner creates a view link');
+  const vs = ss.getSheetByName('Viewers');
+  ok(vs && vs.hiddenSheet && vs.get(1, 1) === 'Token' && vs.get(2, 1) === c.token, 'tokens live on a hidden Viewers tab');
+  const c2 = call('shareCreate', { name: 'Sam' });
+  ok(c2.token !== c.token, 'each link gets its own token');
+  let l = call('shareList');
+  ok(l.ok && l.viewers.length === 2 && l.viewers[0].name === 'Mona' && l.viewers[0].created && !l.viewers[0].lastOpened, 'shareList lists the links');
+  const v = tcall('view', c.token);
+  const own = call('pull');
+  ok(v.ok && v.viewer.name === 'Mona' && v.viewer.note === 'Our budget' && v.entries.length === own.entries.length && v.months.join() === own.months.join(), 'a token can view the same data as pull');
+  ok(call('shareList').viewers[0].lastOpened, 'view records when it was last opened');
+  const before = JSON.stringify(own.entries);
+  for (const a of ['push', 'pull', 'smsAdd', 'smsList', 'smsDone', 'selfUpdate', 'shareCreate', 'shareList', 'shareRevoke'])
+    ok(tcall(a, c.token, { ops: [{ opId: 'x', type: 'delete', id: own.entries[0].id }], sms: 'hi', name: 'X', token: c.token, url: 'u' }).error === 'Unauthorized', `a token cannot ${a}`);
+  ok(JSON.stringify(call('pull').entries) === before && call('shareList').viewers.length === 2, 'rejected token calls changed nothing');
+  ok(JSON.parse(api.doPost({ postData: { contents: JSON.stringify({ key: c.token, action: 'pull' }) } }).s).error === 'Unauthorized', 'a token is never accepted as the key');
+  ok(JSON.parse(api.doPost({ postData: { contents: JSON.stringify({ key: 'bad', token: c.token, action: 'view' }) } }).s).error === 'Unauthorized', 'a wrong key with a token is still rejected');
+  ok(tcall('view', 'nope').error === 'Unauthorized' && tcall('view', '').error === 'Unauthorized', 'unknown or empty tokens are rejected');
+  ok(call('shareRevoke', { token: c.token }).revoked === 1, 'owner revokes a link');
+  ok(tcall('view', c.token).error === 'Unauthorized', 'a revoked token is rejected');
+  l = call('shareList');
+  ok(l.viewers.length === 1 && l.viewers[0].name === 'Sam' && tcall('view', c2.token).ok, 'other links keep working');
+  ok(call('push', { ops: [] }).ok && call('smsList').ok, 'the owner key still does everything');
 }
 
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
