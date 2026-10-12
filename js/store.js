@@ -7,6 +7,8 @@ import { uid, monthKeyOf, round2 } from './util.js';
 // snap  : last known server state (authoritative once synced)
 // queue : local changes not yet confirmed by the server (add / update / delete)
 // view(): snap + queue applied on top, so the UI is always instant and offline-capable.
+// Viewer mode (a view-only link): cfg = { viewer: true, url, token }, kept under its own keys ('viewer', 'vsnap',
+// 'vlastSync') so the owner's setup on the same phone is left as it is. It only ever reads ('view'); nothing is queued.
 const S = {
   cfg: null,
   snap: { categories: { order: [], map: {} }, accounts: [], firstStart: 0, months: [], entries: [] },
@@ -31,21 +33,58 @@ export const getState = () => S;
 export const onChange = (fn) => { subs.add(fn); return () => subs.delete(fn); };
 function emit() { cache = null; subs.forEach((f) => f()); }
 
+export const isViewer = () => !!(S.cfg && S.cfg.viewer);
+const k = (name) => (isViewer() ? 'v' + name : name);   // where this mode keeps its copy
+// Backstop for viewer mode: every change to the data stops here, whatever the screen shows.
+function guard() { if (isViewer()) throw new Error('View only'); }
+
 async function persist() {
+  if (isViewer()) { try { await db.set('vsnap', S.snap); return true; } catch (e) { return false; } }
   try { await Promise.all([db.set('snap', S.snap), db.set('queue', S.queue)]); return true; } catch (e) { return false; }   // stuck storage: memory still has it, the next save retries
 }
 
+const EMPTY = () => ({ categories: { order: [], map: {} }, accounts: [], firstStart: 0, months: [], entries: [] });
+
 export async function init() {
-  S.cfg = (await db.get('cfg')) || null;
-  const snap = await db.get('snap');
-  if (snap) S.snap = snap;
-  S.queue = (await db.get('queue')) || [];
+  S.ownerCfg = (await db.get('cfg')) || null;
+  const vcfg = (await db.get('viewer')) || null;
+  S.cfg = vcfg || S.ownerCfg;
+  S.snap = (await db.get(k('snap'))) || EMPTY();
+  S.queue = vcfg ? [] : (await db.get('queue')) || [];
+  S.status = 'idle';
+  S.error = '';
   S.settings = Object.assign(S.settings, (await db.get('settings')) || {});
-  S.lastSync = (await db.get('lastSync')) || 0;
+  S.lastSync = (await db.get(k('lastSync'))) || 0;
   const cutoff = Date.now() - 60 * 86400000;
   S.trash = ((await db.get('trash')) || []).filter((t) => t.deletedAt > cutoff);
-  if (S.cfg) transport = makeTransport(S.cfg);
+  transport = S.cfg ? makeTransport(S.cfg) : null;
   emit();
+}
+
+// Opens a view-only link. The owner's setup (if any) stays saved and comes back with leaveViewer().
+export async function connectViewer(cfg) {
+  S.cfg = { viewer: true, ...cfg };
+  S.snap = EMPTY();
+  S.queue = [];
+  S.rejected = [];
+  S.lastSync = 0;
+  await db.set('viewer', S.cfg);
+  await persist();
+  transport = makeTransport(S.cfg);
+  emit();
+  await sync();
+  if (S.status === 'error') {
+    const msg = S.error;
+    await leaveViewer();
+    throw new Error(msg);
+  }
+}
+
+// Forgets the view-only link and its copy; back to the owner's setup, or to the start screen.
+export async function leaveViewer() {
+  clearTimeout(timer);
+  await Promise.all([db.set('viewer', null), db.set('vsnap', null), db.set('vlastSync', 0)]);
+  await init();
 }
 
 export async function connect(cfg) {
@@ -67,13 +106,14 @@ export async function connect(cfg) {
 
 // Rewrites everything saved on this phone from memory (used when encryption is switched on or off).
 export async function persistEverything() {
-  await Promise.all([db.set('cfg', S.cfg), persist(), db.set('settings', S.settings), db.set('lastSync', S.lastSync), db.set('trash', S.trash)]);
+  await Promise.all([db.set(isViewer() ? 'viewer' : 'cfg', S.cfg), persist(), db.set('settings', S.settings), db.set(k('lastSync'), S.lastSync), db.set('trash', S.trash)]);
 }
 
 export async function disconnect() {
   await db.clearAll();
   vault.forget();
   S.cfg = null;
+  S.ownerCfg = null;
   S.snap = { categories: { order: [], map: {} }, accounts: [], firstStart: 0, months: [], entries: [] };
   S.queue = [];
   S.status = 'idle';
@@ -91,12 +131,14 @@ export async function saveSettings(patch) {
 
 // ---- mutations --------------------------------------------------------------
 export function addEntry(data) {
+  guard();
   const id = uid();
   enqueue({ type: 'add', id, data: clean(data) });
   return id;
 }
-export function updateEntry(id, data) { enqueue({ type: 'update', id, data: clean(data) }); }
+export function updateEntry(id, data) { guard(); enqueue({ type: 'update', id, data: clean(data) }); }
 export function deleteEntry(id) {
+  guard();
   const v = view();
   let e = null;
   for (const k of v.months) {
@@ -116,6 +158,7 @@ export function deleteEntry(id) {
 
 // Put a deleted entry back (as a fresh entry with the same details).
 export function restoreTrash(trashId) {
+  guard();
   const i = S.trash.findIndex((t) => t.trashId === trashId);
   if (i < 0) return null;
   const [t] = S.trash.splice(i, 1);
@@ -124,6 +167,7 @@ export function restoreTrash(trashId) {
 }
 
 export function clearTrash() {
+  guard();
   S.trash = [];
   db.set('trash', S.trash);
   emit();
@@ -131,6 +175,7 @@ export function clearTrash() {
 
 // Many adds at once (used by Excel import): one save, one redraw, one sync.
 export function addMany(list) {
+  guard();
   for (const d of list) S.queue.push({ type: 'add', id: uid(), opId: uid(), ts: Date.now(), data: clean(d) });
   persist();
   emit();
@@ -150,6 +195,7 @@ const clean = (d) => ({
 });
 
 function enqueue(op) {
+  guard();
   op.opId = uid();
   op.ts = Date.now();
   if (op.type === 'saveSubscription' || op.type === 'deleteSubscription') {
@@ -205,12 +251,14 @@ export function nameError(name, existing, reserved = []) {
 }
 
 export function addCategory(name) {
+  guard();
   const n = String(name).replace(/\s+/g, ' ').trim();
   enqueue({ type: 'addCategory', id: uid(), name: n });
   return n;
 }
 
 export function addSub(category, name) {
+  guard();
   const n = String(name).replace(/\s+/g, ' ').trim();
   enqueue({ type: 'addSub', id: uid(), category, name: n });
   return n;
@@ -247,18 +295,21 @@ function resolveAccountName(list, name) {
 }
 
 export function addAccount(name, accType = 'card', limit = 0) {
+  guard();
   const n = String(name).replace(/\s+/g, ' ').trim();
   enqueue({ type: 'addAccount', id: uid(), name: n, accType, limit: Number(limit) > 0 ? round2(limit) : 0 });
   return n;
 }
 
 export function updateAccount(name, patch) {
+  guard();
   enqueue({ type: 'updateAccount', id: uid(), name, ...patch });
 }
 
 // Remove an account for good: entries in `dropIds` are deleted, the rest (and its subscriptions) move to `moveTo` first (in queue order, so the server
 // sees them moved before the account goes). Returns how many entries were moved.
 export function deleteAccount(name, moveTo, dropIds = new Set()) {
+  guard();
   const v = view();
   const key = name.toLowerCase();
   let moved = 0;
@@ -292,6 +343,7 @@ function mergedSubs() {
 }
 
 export function saveSubscription(sub) {
+  guard();
   const id = sub.id || uid();
   const data = {
     name: String(sub.name || '').replace(/\s+/g, ' ').trim(), amount: round2(sub.amount), day: Math.round(Number(sub.day)),
@@ -303,6 +355,7 @@ export function saveSubscription(sub) {
 }
 
 export function deleteSubscription(id) {
+  guard();
   enqueue({ type: 'deleteSubscription', id });
 }
 
@@ -350,6 +403,7 @@ export function view() {
 
 // ---- the Google Sheet's script updating itself ---------------------------------
 export async function selfUpdate() {
+  guard();
   if (!transport) throw new Error('Not connected');
   const r = await transport.call('selfUpdate', { url: S.cfg && S.cfg.url });
   if (r.version) S.scriptVersion = r.version;
@@ -359,12 +413,31 @@ export async function selfUpdate() {
 
 // Bank SMS waiting in the sheet's inbox (sent there by the iPhone Shortcut).
 export async function smsList() {
+  guard();
   if (!transport) throw new Error('Not connected');
   return (await transport.call('smsList')).sms || [];
 }
 export async function smsDone(ids) {
+  guard();
   if (!transport || !ids.length) return;
   await transport.call('smsDone', { ids });
+}
+
+// ---- view-only links (owner only) ---------------------------------------------
+export async function shareCreate(name, note) {
+  guard();
+  if (!transport) throw new Error('Not connected');
+  return transport.call('shareCreate', { name, note });
+}
+export async function shareList() {
+  guard();
+  if (!transport) throw new Error('Not connected');
+  return (await transport.call('shareList')).viewers || [];
+}
+export async function shareRevoke(token) {
+  guard();
+  if (!transport) throw new Error('Not connected');
+  await transport.call('shareRevoke', { token });
 }
 
 // ---- sync -------------------------------------------------------------------
@@ -399,20 +472,20 @@ export async function sync() {
   S.status = 'syncing';
   try {
     emit();
-    const ops = S.queue.slice(0, 20); // big batches go up in slices so each request stays quick
-    const r = ops.length ? await transport.call('push', { ops }, { signal: ctl.signal }) : await transport.call('pull', {}, { signal: ctl.signal });
+    const ops = isViewer() ? [] : S.queue.slice(0, 20); // big batches go up in slices so each request stays quick
+    const r = isViewer() ? await transport.call('view', {}, { signal: ctl.signal }) : ops.length ? await transport.call('push', { ops }, { signal: ctl.signal }) : await transport.call('pull', {}, { signal: ctl.signal });
     if (inflight !== ctl) return;   // dropped by unstick(): a newer sync owns the state now
     const done = new Set([...(r.applied || []), ...(r.rejected || []).map((x) => x.opId)]);
     if (r.rejected && r.rejected.length) S.rejected = r.rejected;
     S.queue = S.queue.filter((o) => !done.has(o.opId));
     S.scriptLoader = !!r.loader;
     S.scriptVersion = Number(r.scriptVersion) || 0;   // 0 = an older script that cannot update itself yet
-    S.snap = { categories: r.categories, accounts: r.accounts || [], subscriptions: r.subscriptions, firstStart: r.firstStart, months: r.months, entries: r.entries };
+    S.snap = { categories: r.categories, accounts: r.accounts || [], subscriptions: r.subscriptions, firstStart: r.firstStart, months: r.months, entries: r.entries, ...(r.viewer ? { viewer: r.viewer } : {}) };
     S.lastSync = Date.now();
     retries = 0;
     S.status = 'synced';
     S.error = '';
-    db.set('lastSync', S.lastSync).catch(() => {});
+    db.set(k('lastSync'), S.lastSync).catch(() => {});
   } catch (e) {
     if (inflight !== ctl) return;
     const msg = (e && e.message) || String(e);
@@ -425,7 +498,7 @@ export async function sync() {
       if (navigator.onLine) scheduleSync(Math.min(60000, 2500 * Math.pow(2, retries - 1)));
     } else {
       S.status = 'error';
-      S.error = msg;
+      S.error = isViewer() && /unauthorized/i.test(msg) ? 'This view-only link was turned off by its owner.' : msg;
       retries++;
       scheduleSync(Math.min(120000, 15000 * retries));
     }

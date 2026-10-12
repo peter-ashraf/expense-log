@@ -322,6 +322,7 @@ function onClick(e) {
   const card = e.target.closest('.wcard');
   if (!el) { if (card) { if (card === focused) unfocus(); else focus(card); } return; }
   const a = el.dataset.sa, id = el.dataset.id;
+  if (store.isViewer() && a !== 'day') return;   // view only: look, don't touch
   const s = id ? findSub(id) : null;
   if (a === 'rate' && s) { e.stopPropagation(); store.saveSubscription({ ...s, rating: s.rating === el.dataset.v ? '' : el.dataset.v }); haptic(5); rerender(); return; }
   if (a === 'paid' && s) { unfocus(() => { logPaid(s); rerender(); }); return; }

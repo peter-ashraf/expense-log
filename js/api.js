@@ -2,7 +2,7 @@ import { uid } from './util.js';
 
 // Transport layer: real Apps Script endpoint, or a local in-browser demo server.
 export function makeTransport(cfg) {
-  return cfg.demo ? demoTransport() : remoteTransport(cfg);
+  return cfg.demo ? demoTransport(cfg) : remoteTransport(cfg);
 }
 
 function remoteTransport(cfg) {
@@ -16,7 +16,7 @@ function remoteTransport(cfg) {
         const res = await fetch(cfg.url, {
           method: 'POST',
           headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-          body: JSON.stringify({ key: cfg.key, action, ...body }),
+          body: JSON.stringify({ ...(cfg.viewer ? { token: cfg.token } : { key: cfg.key }), action, ...body }),   // a viewer never holds the key
           redirect: 'follow',
           signal: ctl.signal,
         });
@@ -82,7 +82,7 @@ function seed() {
   return { firstStart: 150000, months: [mk(2), mk(1), mk(0)], entries, accounts, subscriptions, cats: JSON.parse(JSON.stringify(CATS)) };
 }
 
-function demoTransport() {
+function demoTransport(cfg = {}) {
   const load = () => {
     try { const s = JSON.parse(localStorage.getItem(DEMO_KEY)); if (s) return s; } catch (e) { /* fallthrough */ }
     const s = seed();
@@ -108,6 +108,30 @@ function demoTransport() {
       const s = load();
       const applied = [];
       const rejected = [];
+      // view-only links, like the real script: a token can only view
+      if (cfg.viewer) {
+        const vw = action === 'view' && (s.viewers || []).find((x) => x.token === cfg.token && !x.revoked);
+        if (!vw) throw new Error('Unauthorized');
+        vw.lastOpened = new Date().toISOString();
+        localStorage.setItem(DEMO_KEY, JSON.stringify(s));
+        return { ...payload(s), viewer: { name: vw.name, note: vw.note } };
+      }
+      if (action === 'view') throw new Error('Unauthorized');
+      if (action === 'shareCreate') {
+        const name = String(body.name || '').replace(/\s+/g, ' ').trim().slice(0, 40);
+        if (!name) throw new Error('Name cannot be empty.');
+        const vw = { token: uid() + uid(), name, note: String(body.note || '').replace(/\s+/g, ' ').trim().slice(0, 140), created: new Date().toISOString(), lastOpened: '', revoked: false };
+        (s.viewers = s.viewers || []).push(vw);
+        localStorage.setItem(DEMO_KEY, JSON.stringify(s));
+        return { ok: true, token: vw.token, name: vw.name, note: vw.note };
+      }
+      if (action === 'shareList') return { ok: true, viewers: (s.viewers || []).filter((x) => !x.revoked).map(({ revoked, ...x }) => x) };
+      if (action === 'shareRevoke') {
+        const hit = (s.viewers || []).filter((x) => x.token === body.token && !x.revoked);
+        hit.forEach((x) => { x.revoked = true; });
+        localStorage.setItem(DEMO_KEY, JSON.stringify(s));
+        return { ok: true, revoked: hit.length };
+      }
       if (action === 'selfUpdate') return { ok: true, updated: false, version: 1e9 };
       if (action === 'push') {
         if (!s.cats) s.cats = JSON.parse(JSON.stringify(CATS));
