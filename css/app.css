@@ -776,6 +776,14 @@ html { overscroll-behavior: none; }
 /* ---- view-only links ---- */
 .viewer-hi .vh-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .viewer-hi .vh-top b { font-size: 19px; font-weight: 750; letter-spacing: -.01em; }
+.install .vh-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.install .vh-top b { font-size: 17px; font-weight: 750; }
+.install .vh-top .close { width: 36px; height: 36px; margin: -6px -6px 0 0; }
+.install .ins-steps { margin: 10px 0 8px; padding-left: 22px; font-size: 14.5px; line-height: 1.5; }
+.install .ins-steps li { margin: 3px 0; }
+.ins-ico { vertical-align: -3px; color: var(--accent); }
+.vpaste { margin-top: 14px; text-align: left; }
+.vpaste summary { cursor: pointer; text-align: center; color: var(--accent); font-weight: 600; font-size: 15px; padding: 8px 0; }
 .viewer-hi .vh-note { margin-top: 6px; color: var(--muted); font-size: 14px; }
 .badge.vo { display: inline-flex; align-items: center; gap: 5px; text-transform: none; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); white-space: nowrap; }
 body.viewer #tabbar { grid-template-columns: repeat(4, 1fr); }

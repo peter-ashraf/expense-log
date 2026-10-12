@@ -27,7 +27,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.17.0';
+const APP_VERSION = '3.17.1';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
 const SCRIPT_LATEST = 10;
 
@@ -286,6 +286,49 @@ function viewerHi() {
     </section>`;
 }
 
+// ---- viewer: add to home screen
+// An installed web app opens at start_url with no #v=&t=, and iOS may give it its own storage, so it can land on setup.
+// The link is kept here as a best effort; the sure way back is pasting it on the setup screen.
+const VLINK = 'el_vlink';
+const installed = () => (window.matchMedia && matchMedia('(display-mode: standalone)').matches) || navigator.standalone === true;
+let bip = null;   // Android's deferred install prompt
+window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); bip = e; if (store.isViewer() && ui.tab === 'home') render(); });
+window.addEventListener('appinstalled', () => { bip = null; if (store.getState().cfg) render(); });
+function viewLink(cfg, token) {
+  return location.origin + location.pathname + '#v=' + encodeURIComponent(cfg.demo ? 'demo' : cfg.url) + '&t=' + encodeURIComponent(token);
+}
+// Accepts the whole link, its #v=&t= part, or just v=…&t=….
+function parseViewLink(text) {
+  const t = String(text || '').trim();
+  const p = new URLSearchParams(t.includes('#') ? t.slice(t.indexOf('#') + 1) : t.replace(/^[^?]*\?/, ''));
+  const v = p.get('v'), tok = p.get('t');
+  return v && tok ? (v === 'demo' ? { demo: true, token: tok } : { url: v, token: tok }) : null;
+}
+function platform() {
+  const ua = navigator.userAgent || '';
+  const ios = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  if (ios) return /CriOS|FxiOS|EdgiOS|OPiOS|GSA\/|FBAN|FBAV|Instagram|WhatsApp|Line\/|Snapchat|Twitter/i.test(ua) ? 'ios-other' : 'ios';
+  return /Android/i.test(ua) ? 'android' : 'other';
+}
+const SHARE_ICO = '<svg class="ins-ico" viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-label="Share"><path d="M12 3v12M8 7l4-4 4 4M6 11H5v10h14V11h-1"/></svg>';
+function installCard() {
+  let off = false;
+  try { off = localStorage.getItem('el_install_off') === '1'; } catch (e) { /* ignore */ }
+  if (off || installed()) return '';
+  const pf = platform();
+  const steps = pf === 'ios' ? [`Tap the Share button ${SHARE_ICO} at the bottom of Safari.`, 'Scroll down and tap <b>Add to Home Screen</b>.', 'Tap <b>Add</b>.']
+    : pf === 'ios-other' ? ['Open this link in <b>Safari</b> first (tap <b>Copy my link</b> below, then paste it into Safari).', `In Safari, tap the Share button ${SHARE_ICO}.`, 'Tap <b>Add to Home Screen</b>, then <b>Add</b>.']
+    : pf === 'android' ? (bip ? ['Tap <b>Install</b> below.'] : ['Open the <b>⋮</b> menu in Chrome.', 'Choose <b>Add to Home screen</b> or <b>Install app</b>.'])
+    : ['Open your browser’s menu.', 'Choose <b>Add to Home screen</b> or <b>Install app</b>.'];
+  return `<section class="card install">
+      <div class="vh-top"><b>Install this app</b><button class="close" data-act="install-off" aria-label="Dismiss">${icon('close', 18)}</button></div>
+      <p class="muted sm">Open it from your home screen like any other app.</p>
+      <ol class="ins-steps">${steps.map((x) => `<li>${x}</li>`).join('')}</ol>
+      <p class="muted sm">If the installed app asks for setup, open it, tap <b>Have a view-only link?</b>, and paste this link.</p>
+      <div class="row-btns">${pf === 'android' && bip ? '<button class="btn primary" data-act="install-go">Install</button>' : ''}<button class="btn" data-act="vlink-copy">Copy my link</button></div>
+    </section>`;
+}
+
 function catTotals(m) {
   const t = {};
   m.entries.forEach((e) => { if (e.type === 'Expense') t[e.category] = (t[e.category] || 0) + e.amount; });
@@ -337,7 +380,7 @@ function renderHome(view, m) {
       }).join('')}
     </section>` : '';
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
-    ${store.isViewer() ? viewerHi() : ''}
+    ${store.isViewer() ? viewerHi() + installCard() : ''}
     ${accChips()}
     <section class="hero">
       <div class="hero-label">${esc(heroLabel)}</div>
@@ -803,8 +846,7 @@ function viewerSettingsHome(st) {
 // ---- owner: view-only links (the link holds a token that can only read; see view_ in Api.gs)
 const shr = { list: null, busy: false, error: '', made: null };
 function shareLink(token) {
-  const cfg = store.getState().cfg;
-  return location.origin + location.pathname + '#v=' + encodeURIComponent(cfg.demo ? 'demo' : cfg.url) + '&t=' + encodeURIComponent(token);
+  return viewLink(store.getState().cfg, token);
 }
 function loadShares() {
   if (shr.busy) return;
@@ -991,8 +1033,15 @@ function renderOnboarding(prefill = {}) {
       <button class="btn primary" type="submit" id="cBtn">Connect</button>
     </form>
     <button class="btn ghost" data-act="demo">Try the demo</button>
+    <details class="vpaste"${prefill.vlink ? ' open' : ''}><summary>Have a view-only link? Paste it here</summary>
+      <form id="vlinkForm" autocomplete="off">
+        <label class="field"><span>View-only link</span><input id="vLink" inputmode="url" placeholder="https://…#v=…&t=…" value="${esc(prefill.vlink || '')}"></label>
+        <div class="row-btns">${navigator.clipboard && navigator.clipboard.readText ? '<button class="btn" type="button" data-act="vlink-paste">Paste</button>' : ''}<button class="btn primary" type="submit" id="vBtn">Open</button></div>
+      </form>
+    </details>
     <p class="muted sm center" style="margin-top:14px">New here? <a href="setup.html" target="_blank" rel="noopener">Set up your own Google Sheet</a></p>
   </div>`;
+  $('#vlinkForm').addEventListener('submit', (e) => { e.preventDefault(); openViewLink($('#vLink').value); });
   $('#connectForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const btn = $('#cBtn');
@@ -1007,6 +1056,23 @@ function renderOnboarding(prefill = {}) {
       btn.textContent = 'Connect';
     }
   });
+}
+
+// Same flow as opening a #v=&t= link.
+async function openViewLink(text) {
+  const cfg = parseViewLink(text);
+  if (!cfg) { toast('That doesn’t look like a view-only link', 'err'); return; }
+  const btn = $('#vBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Opening…'; }
+  ui.tab = 'home';
+  try {
+    await store.connectViewer(cfg);
+    try { localStorage.setItem(VLINK, viewLink(cfg, cfg.token)); } catch (e) { /* ignore */ }
+    toast('Opened view-only', 'ok');
+  } catch (e) {
+    toast(e.message || 'Could not open the link', 'err');
+    if (btn) { btn.disabled = false; btn.textContent = 'Open'; }
+  }
 }
 
 // ---------------------------------------------------------------- add / edit sheet
@@ -2468,6 +2534,7 @@ document.addEventListener('click', async (ev) => {
     case 'viewer-leave':
       if (!confirm('Leave view-only mode?\n\nThis forgets the link and the copy on this phone. You’d need the link again to come back.')) break;
       await store.leaveViewer();
+      try { localStorage.removeItem(VLINK); } catch (e) { /* ignore */ }
       ui.tab = 'home'; ui.settingsPage = null; ui.animate = true; $('#view').innerHTML = '';
       render(); store.sync();
       break;
@@ -2483,6 +2550,23 @@ document.addEventListener('click', async (ev) => {
       break;
     case 'disconnect':
       if (confirm('Remove the local copy and disconnect this device? Unsynced changes will be lost.')) { try { localStorage.removeItem('el_lock'); } catch (e) { /* ignore */ } await store.disconnect(); render(); }
+      break;
+    case 'install-off':
+      try { localStorage.setItem('el_install_off', '1'); } catch (e) { /* ignore */ }
+      render();
+      break;
+    case 'install-go':
+      if (bip) { const p = bip; bip = null; try { await p.prompt(); await p.userChoice; } catch (e) { /* ignore */ } render(); }
+      break;
+    case 'vlink-copy': {
+      const c = store.getState().cfg;
+      if (!c || !c.viewer) break;
+      const url = viewLink(c, c.token);
+      try { await navigator.clipboard.writeText(url); toast('Link copied', 'ok'); } catch (e) { toast(url); }
+      break;
+    }
+    case 'vlink-paste':
+      try { const t = await navigator.clipboard.readText(); if (t && t.trim()) { $('#vLink').value = t.trim(); openViewLink(t); } else toast('The clipboard is empty'); } catch (e) { toast('Paste it into the box instead', 'err'); }
       break;
     case 'demo':
       try { await store.connect({ demo: true }); toast('Demo loaded', 'ok'); } catch (e) { toast(e.message, 'err'); }
@@ -2725,13 +2809,24 @@ async function bootSteps() {
     if (vUrl && tok && !(cur && cur.viewer && cur.token === tok)
       && (!cur || cur.viewer || confirm('Open this view-only link?\n\nThis phone is set up with your own sheet. That stays saved (nothing uploads while you view) and comes back when you leave view-only mode in Settings.'))) {
       ui.tab = 'home';
-      try { await store.connectViewer(vUrl === 'demo' ? { demo: true, token: tok } : { url: vUrl, token: tok }); toast('Opened view-only', 'ok'); } catch (e) { toast(e.message || 'Could not open the link', 'err'); }
+      try {
+        const vc = vUrl === 'demo' ? { demo: true, token: tok } : { url: vUrl, token: tok };
+        await store.connectViewer(vc);
+        try { localStorage.setItem(VLINK, viewLink(vc, tok)); } catch (e) { /* ignore */ }
+        toast('Opened view-only', 'ok');
+      } catch (e) { toast(e.message || 'Could not open the link', 'err'); }
     }
     if (url && key && !store.getState().cfg) {
       renderOnboarding({ url, key });
       try { await store.connect({ url, key }); toast('Connected', 'ok'); } catch (e) { toast(e.message || 'Could not connect', 'err'); }
       return;
     }
+  }
+  // Installed app with nothing set up: offer the kept view-only link (only if this storage still has it).
+  if (!store.getState().cfg) {
+    let kept = '';
+    try { kept = localStorage.getItem(VLINK) || ''; } catch (e) { /* ignore */ }
+    if (kept && parseViewLink(kept)) { renderOnboarding({ vlink: kept }); await openViewLink(kept); }
   }
   render();
   store.sync();
