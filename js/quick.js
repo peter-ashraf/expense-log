@@ -263,7 +263,7 @@ function currencyOf(full, after) {
 }
 
 function parseSms(chunk, ctx, h) {
-  const flat = chunk.replace(/\s+/g, ' ').trim();
+  const flat = chunk.replace(/[\u200e\u200f\u061c\u202a-\u202e]/g, '').replace(/\s+/g, ' ').trim();
   let m = SMS_SPEND.exec(flat);
   let type = 'Expense';
   let refundRequest = false;
