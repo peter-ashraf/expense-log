@@ -31,7 +31,7 @@ const APP_VERSION = '3.17.1';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
 const SCRIPT_LATEST = 10;
 
-const ui = { sel: new Set(), selOn: false, actList: [], settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
+const ui = { sel: new Set(), selOn: false, selOnly: false, actList: [], settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
 // ---------------------------------------------------------------- helpers
 const cur = () => store.getState().settings.currency || '';
@@ -417,14 +417,15 @@ function renderActivity(view, m) {
   if (!$('#actList')) {
     view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
       <div id="accChips"></div>
-      <div class="search">${icon('search', 18)}<input id="q" type="search" placeholder="Search transactions" value="${esc(ui.q)}" autocomplete="off" enterkeyhint="search"></div>
+      <div class="search">${icon('search', 18)}<input id="q" type="search" placeholder="Search transactions" value="${esc(ui.q)}" autocomplete="off" enterkeyhint="search"><button class="q-clear" data-act="q-clear" aria-label="Clear search" ${ui.q ? '' : 'hidden'}>${icon('close', 16, 2.4)}</button></div>
       <div class="chips" id="filters"></div>
       <div id="actList"></div></div>`;
-    $('#q').addEventListener('input', (e) => { ui.q = e.target.value; fillActivity(); });
+    $('#q').addEventListener('input', (e) => { ui.q = e.target.value; $('.q-clear').hidden = !ui.q; fillActivity(); });
   }
   $('#accChips').innerHTML = accChips();
   $('#filters').innerHTML = [['all', 'All'], ['Expense', 'Expenses'], ['Income', 'Income']]
-    .map(([k, l]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="filter" data-f="${k}">${l}</button>`).join('');
+    .map(([k, l]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="filter" data-f="${k}">${l}</button>`).join('')
+    + `<button class="chip sel-chip ${ui.selOn ? 'on' : ''}" data-act="${ui.selOn ? 'sel-done' : 'sel-start'}">${icon('check', 15, 2.6)}${ui.selOn ? 'Done' : 'Select'}</button>`;
   fillActivity();
 }
 
@@ -435,16 +436,15 @@ function fillActivity() {
   const q = ui.q.trim().toLowerCase();
   const list = m.entries.filter((e) =>
     (ui.filter === 'all' || e.type === ui.filter) &&
+    (!ui.selOnly || ui.sel.has(e.id)) &&
     (!q || `${e.description} ${e.seller || ''} ${e.category} ${e.sub} ${e.amount}`.toLowerCase().includes(q)));
   if (!list.length) {
     $('#actList').innerHTML = `<div class="empty-big small">${icon('search', 32, 1.5)}<p>${q || ui.filter !== 'all' ? 'No matches.' : 'No transactions this month.'}</p></div>`;
-    ui.actList = []; ui.sel.clear(); ui.selOn = false;
+    ui.actList = [];
     renderTotbar();
     return;
   }
   ui.actList = list;
-  const shown = new Set(list.map((e) => e.id));
-  [...ui.sel].forEach((id) => { if (!shown.has(id)) ui.sel.delete(id); });   // a selection only covers what's on screen
   const sel = { on: ui.selOn, ids: ui.sel };
   const groups = [];
   list.forEach((e) => {
@@ -465,30 +465,37 @@ function netOf(list) { return list.reduce((s, e) => s + (e.type === 'Income' ? e
 function renderTotbar() {
   const bar = $('#totbar');
   if (!bar) return;
-  const show = ui.tab === 'activity' && ui.actList.length && (ui.selOn || ui.q.trim() || ui.filter !== 'all');
+  if (ui.tab !== 'activity' && ui.selOn) { ui.selOn = false; ui.selOnly = false; ui.sel.clear(); }
+  const show = ui.tab === 'activity' && (ui.selOn || ((ui.q.trim() || ui.filter !== 'all') && ui.actList.length));
   document.body.classList.toggle('has-totbar', !!show);
-  if (ui.tab !== 'activity' && ui.selOn) { ui.selOn = false; ui.sel.clear(); }
   if (!show) { bar.innerHTML = ''; bar.classList.remove('on'); return; }
   const list = ui.actList;
-  const picked = list.filter((e) => ui.sel.has(e.id));
+  const m = activeMonth();
+  // the selection outlives the search, so it is totalled over the whole month, not just what's on screen
+  const picked = m ? m.entries.filter((e) => ui.sel.has(e.id)) : [];
   const n = picked.length;
+  const shown = new Set(list.map((e) => e.id));
+  const hidden = picked.filter((e) => !shown.has(e.id)).length;
   const net = netOf(n ? picked : list);
-  const all = n === list.length;
-  const label = n ? `${n} of ${list.length} selected` : `${list.length} ${list.length === 1 ? 'result' : 'results'}`;
+  const allVis = list.length > 0 && list.every((e) => ui.sel.has(e.id));
+  const someVis = list.some((e) => ui.sel.has(e.id));
+  const label = n ? `${n} selected${hidden ? ` · ${hidden} not shown` : ''}` : ui.selOn ? 'Tap rows to select' : `${list.length} ${list.length === 1 ? 'result' : 'results'}`;
   bar.classList.add('on');
-  bar.innerHTML = `
-    ${ui.selOn ? `<button class="tb-all ${all ? 'picked' : n ? 'some' : ''}" data-act="sel-all" aria-label="${all ? 'Clear selection' : 'Select all'}"><span class="check">${icon('check', 14, 3)}</span></button>` : ''}
+  bar.innerHTML = `<div class="tb-top">
+    ${ui.selOn && list.length ? `<button class="tb-all ${allVis ? 'picked' : someVis ? 'some' : ''}" data-act="sel-all" aria-label="${allVis ? 'Unselect shown' : 'Select all shown'}"><span class="check">${icon('check', 14, 3)}</span></button>` : ''}
     <div class="tb-main"><span class="tb-l">${n ? 'Selected total' : 'Total'} · ${esc(label)}</span>
       <span class="tb-amt ${net < 0 ? 'neg' : 'pos'}">${net < 0 ? '−' : '+'}${esc(num(Math.abs(net)))}</span></div>
-    ${ui.selOn
-      ? `<button class="chip" data-act="sel-all">${all ? 'Clear' : 'All'}</button><button class="chip on" data-act="sel-done">Done</button>`
-      : '<button class="chip" data-act="sel-start">Select</button>'}`;
+    ${ui.selOn ? '<button class="chip on" data-act="sel-done">Done</button>' : '<button class="chip" data-act="sel-start">Select</button>'}</div>
+    ${ui.selOn ? `<div class="tb-btns">
+      ${list.length ? `<button class="chip" data-act="sel-all">${allVis ? 'Unselect shown' : 'Select all'}</button>` : ''}
+      ${n || ui.selOnly ? `<button class="chip ${ui.selOnly ? 'on' : ''}" data-act="sel-only">Show selected</button>` : ''}
+      ${n ? '<button class="chip" data-act="sel-clear">Clear</button>' : ''}</div>` : ''}`;
 }
 
 function setSelecting(on) {
   ui.selOn = on;
-  if (!on) ui.sel.clear();
-  fillActivity();
+  if (!on) { ui.sel.clear(); ui.selOnly = false; }
+  renderActivity($('#view'), activeMonth());
 }
 
 // press and hold an Activity row to start selecting, with that row picked
@@ -2334,9 +2341,17 @@ document.addEventListener('click', async (ev) => {
     case 'sel-done': haptic(6); setSelecting(false); break;
     case 'sel-all':
       haptic(6);
-      if (ui.actList.every((e) => ui.sel.has(e.id))) ui.sel.clear(); else ui.actList.forEach((e) => ui.sel.add(e.id));
+      if (ui.actList.every((e) => ui.sel.has(e.id))) ui.actList.forEach((e) => ui.sel.delete(e.id)); else ui.actList.forEach((e) => ui.sel.add(e.id));
       fillActivity();
       break;
+    case 'sel-clear': haptic(6); ui.sel.clear(); ui.selOnly = false; fillActivity(); break;
+    case 'sel-only': haptic(6); ui.selOnly = !ui.selOnly; fillActivity(); break;
+    case 'q-clear': {
+      haptic(6); ui.q = '';
+      const q = $('#q'); if (q) q.value = '';
+      el.hidden = true; fillActivity();
+      break;
+    }
     case 'close': closeSheet(); break;
     case 'months':
       if (performance.now() < ui.noClickUntil) break;
