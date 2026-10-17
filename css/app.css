@@ -796,3 +796,26 @@ body.viewer [data-sa]:not([data-sa="day"]) { display: none !important; }   /* su
 .share-t small { color: var(--muted); font-size: 12.5px; }
 .share-row .chip { padding: 7px 12px; font-size: 13px; }
 .share-row .acc-acts { padding-left: 0; }
+
+/* ---------- Activity: total bar + multi-select ---------- */
+#totbar { position: absolute; left: calc(var(--nav-gap) + 4px); right: calc(var(--nav-gap) + 4px); bottom: calc(var(--nav-gap) + 68px + 10px); z-index: 5;
+  display: none; align-items: center; gap: 8px; padding: 10px 10px 10px 16px; border-radius: 20px;
+  background: var(--glass); backdrop-filter: blur(22px) saturate(1.6); -webkit-backdrop-filter: blur(22px) saturate(1.6);
+  border: 1px solid var(--line); box-shadow: 0 14px 32px -12px rgba(0, 0, 0, .4); }
+#totbar.on { display: flex; animation: rise .3s cubic-bezier(.2, .8, .2, 1) both; }
+body.onboard #totbar { display: none; }
+body.has-totbar #view { padding-bottom: calc(68px + var(--nav-gap) + 96px); }
+.tb-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.tb-l { font-size: 12px; font-weight: 600; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tb-amt { font-size: 19px; font-weight: 800; letter-spacing: -.02em; white-space: nowrap; }
+.tb-amt.neg { color: var(--neg); }
+.tb-amt.pos { color: var(--pos); }
+#totbar .chip { flex: none; }
+.tb-all { flex: none; padding: 4px; margin-left: -6px; }
+.check { flex: none; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; color: transparent;
+  border: 2px solid var(--muted); transition: background .15s, border-color .15s, color .15s; }
+.check .ic { width: 14px; height: 14px; }
+.row.picked .check, .tb-all.picked .check { background: var(--accent); border-color: var(--accent); color: #fff; }
+.tb-all.some .check { border-color: var(--accent); }
+.row.picked { background: color-mix(in srgb, var(--accent) 12%, transparent); }
+#actList .row { -webkit-touch-callout: none; -webkit-user-select: none; user-select: none; }
