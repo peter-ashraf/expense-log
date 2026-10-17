@@ -31,7 +31,7 @@ const APP_VERSION = '3.17.1';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
 const SCRIPT_LATEST = 10;
 
-const ui = { settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
+const ui = { sel: new Set(), selOn: false, selOnly: false, actList: [], settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
 // ---------------------------------------------------------------- helpers
 const cur = () => store.getState().settings.currency || '';
@@ -198,14 +198,16 @@ function hueStyle(name) {
   return `--h:${catHue(name, order)}`;
 }
 
-function entryRow(e, pending) {
+function entryRow(e, pending, sel) {
   const isInc = e.type === 'Income';
   const title = e.description || (isInc ? 'Income' : e.sub);
   // a note of its own: the shop it was bought from sits beside it, small and grey
   const seller = e.seller && e.description && e.seller.trim().toLowerCase() !== e.description.trim().toLowerCase() ? e.seller : '';
   const subtitle = (isInc ? 'Income' : `${e.category} · ${e.sub}`) + (ui.account === 'all' && multiAcc() && e.account ? ` · ${e.account}` : '');
-  const tag = store.isViewer() ? 'div' : 'button';   // view only: rows don't open the editor
-  return `<${tag} class="row ${isInc ? 'inc' : 'exp'}" ${tag === 'button' ? `data-act="edit" data-id="${esc(e.id)}"` : ''}>
+  const tag = store.isViewer() && !sel ? 'div' : 'button';   // view only: rows don't open the editor
+  const act = sel ? 'sel-row' : 'edit';                      // Activity rows: a tap edits, or toggles while selecting
+  return `<${tag} class="row ${isInc ? 'inc' : 'exp'}${sel && sel.on ? ' selecting' : ''}${sel && sel.ids.has(e.id) ? ' picked' : ''}" ${tag === 'button' ? `data-act="${act}" data-id="${esc(e.id)}"` : ''}>
+    ${sel && sel.on ? `<span class="check" aria-hidden="true">${icon('check', 14, 3)}</span>` : ''}
     <span class="bubble" style="${hueStyle(isInc ? 'Income' : e.category)}">${icon(isInc ? 'income' : e.category, 20)}</span>
     <span class="row-main"><span class="row-t">${seller ? `<span class="row-note">${esc(title)}</span><span class="row-seller">${esc(seller)}</span>` : esc(title)}</span><span class="row-s">${esc(subtitle)}${pending.has(e.id) ? '<i class="pend" title="Waiting to sync"></i>' : ''}</span></span>
     <span class="row-amt">${isInc ? '+' : '−'}${esc(num(e.amount))}</span>
@@ -415,14 +417,15 @@ function renderActivity(view, m) {
   if (!$('#actList')) {
     view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
       <div id="accChips"></div>
-      <div class="search">${icon('search', 18)}<input id="q" type="search" placeholder="Search transactions" value="${esc(ui.q)}" autocomplete="off" enterkeyhint="search"></div>
+      <div class="search">${icon('search', 18)}<input id="q" type="search" placeholder="Search transactions" value="${esc(ui.q)}" autocomplete="off" enterkeyhint="search"><button class="q-clear" data-act="q-clear" aria-label="Clear search" ${ui.q ? '' : 'hidden'}>${icon('close', 16, 2.4)}</button></div>
       <div class="chips" id="filters"></div>
       <div id="actList"></div></div>`;
-    $('#q').addEventListener('input', (e) => { ui.q = e.target.value; fillActivity(); });
+    $('#q').addEventListener('input', (e) => { ui.q = e.target.value; $('.q-clear').hidden = !ui.q; fillActivity(); });
   }
   $('#accChips').innerHTML = accChips();
   $('#filters').innerHTML = [['all', 'All'], ['Expense', 'Expenses'], ['Income', 'Income']]
-    .map(([k, l]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="filter" data-f="${k}">${l}</button>`).join('');
+    .map(([k, l]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="filter" data-f="${k}">${l}</button>`).join('')
+    + `<button class="chip sel-chip ${ui.selOn ? 'on' : ''}" data-act="${ui.selOn ? 'sel-done' : 'sel-start'}">${icon('check', 15, 2.6)}${ui.selOn ? 'Done' : 'Select'}</button>`;
   fillActivity();
 }
 
@@ -433,11 +436,16 @@ function fillActivity() {
   const q = ui.q.trim().toLowerCase();
   const list = m.entries.filter((e) =>
     (ui.filter === 'all' || e.type === ui.filter) &&
+    (!ui.selOnly || ui.sel.has(e.id)) &&
     (!q || `${e.description} ${e.seller || ''} ${e.category} ${e.sub} ${e.amount}`.toLowerCase().includes(q)));
   if (!list.length) {
     $('#actList').innerHTML = `<div class="empty-big small">${icon('search', 32, 1.5)}<p>${q || ui.filter !== 'all' ? 'No matches.' : 'No transactions this month.'}</p></div>`;
+    ui.actList = [];
+    renderTotbar();
     return;
   }
+  ui.actList = list;
+  const sel = { on: ui.selOn, ids: ui.sel };
   const groups = [];
   list.forEach((e) => {
     const g = groups[groups.length - 1];
@@ -446,9 +454,71 @@ function fillActivity() {
   $('#actList').innerHTML = groups.map((g) => {
     const net = g.items.reduce((s, e) => s + (e.type === 'Income' ? e.amount : -e.amount), 0);
     return `<div class="day"><span>${esc(dayLabel(g.date))}</span><span class="${net < 0 ? 'neg' : 'pos'}">${net < 0 ? '−' : '+'}${esc(num(Math.abs(net)))}</span></div>
-      <div class="card flush">${g.items.map((e) => entryRow(e, v.pending)).join('')}</div>`;
+      <div class="card flush">${g.items.map((e) => entryRow(e, v.pending, sel)).join('')}</div>`;
   }).join('');
+  renderTotbar();
 }
+
+// ---- Activity total bar: sits above the tab bar while searching, filtering or selecting --------
+function netOf(list) { return list.reduce((s, e) => s + (e.type === 'Income' ? e.amount : -e.amount), 0); }
+
+function renderTotbar() {
+  const bar = $('#totbar');
+  if (!bar) return;
+  if (ui.tab !== 'activity' && ui.selOn) { ui.selOn = false; ui.selOnly = false; ui.sel.clear(); }
+  const show = ui.tab === 'activity' && (ui.selOn || ((ui.q.trim() || ui.filter !== 'all') && ui.actList.length));
+  document.body.classList.toggle('has-totbar', !!show);
+  if (!show) { bar.innerHTML = ''; bar.classList.remove('on'); return; }
+  const list = ui.actList;
+  const m = activeMonth();
+  // the selection outlives the search, so it is totalled over the whole month, not just what's on screen
+  const picked = m ? m.entries.filter((e) => ui.sel.has(e.id)) : [];
+  const n = picked.length;
+  const shown = new Set(list.map((e) => e.id));
+  const hidden = picked.filter((e) => !shown.has(e.id)).length;
+  const net = netOf(n ? picked : list);
+  const allVis = list.length > 0 && list.every((e) => ui.sel.has(e.id));
+  const someVis = list.some((e) => ui.sel.has(e.id));
+  const label = n ? `${n} selected${hidden ? ` · ${hidden} not shown` : ''}` : ui.selOn ? 'Tap rows to select' : `${list.length} ${list.length === 1 ? 'result' : 'results'}`;
+  bar.classList.add('on');
+  bar.innerHTML = `<div class="tb-top">
+    ${ui.selOn && list.length ? `<button class="tb-all ${allVis ? 'picked' : someVis ? 'some' : ''}" data-act="sel-all" aria-label="${allVis ? 'Unselect shown' : 'Select all shown'}"><span class="check">${icon('check', 14, 3)}</span></button>` : ''}
+    <div class="tb-main"><span class="tb-l">${n ? 'Selected total' : 'Total'} · ${esc(label)}</span>
+      <span class="tb-amt ${net < 0 ? 'neg' : 'pos'}">${net < 0 ? '−' : '+'}${esc(num(Math.abs(net)))}</span></div>
+    ${ui.selOn ? '<button class="chip on" data-act="sel-done">Done</button>' : '<button class="chip" data-act="sel-start">Select</button>'}</div>
+    ${ui.selOn ? `<div class="tb-btns">
+      ${list.length ? `<button class="chip" data-act="sel-all">${allVis ? 'Unselect shown' : 'Select all'}</button>` : ''}
+      ${n || ui.selOnly ? `<button class="chip ${ui.selOnly ? 'on' : ''}" data-act="sel-only">Show selected</button>` : ''}
+      ${n ? '<button class="chip" data-act="sel-clear">Clear</button>' : ''}</div>` : ''}`;
+}
+
+function setSelecting(on) {
+  ui.selOn = on;
+  if (!on) { ui.sel.clear(); ui.selOnly = false; }
+  renderActivity($('#view'), activeMonth());
+}
+
+// press and hold an Activity row to start selecting, with that row picked
+(() => {
+  let t = null; let x0 = 0; let y0 = 0;
+  const cancel = () => { clearTimeout(t); t = null; };
+  document.addEventListener('pointerdown', (e) => {
+    const row = e.target.closest && e.target.closest('#actList .row[data-id]');
+    if (!row || ui.selOn) return;
+    x0 = e.clientX; y0 = e.clientY;
+    t = setTimeout(() => {
+      t = null;
+      ui.sel.add(row.dataset.id);
+      ui.noClickUntil = performance.now() + 600;
+      haptic(12);
+      setSelecting(true);
+    }, 480);
+  }, true);
+  document.addEventListener('pointermove', (e) => { if (t && Math.hypot(e.clientX - x0, e.clientY - y0) > 10) cancel(); }, true);
+  document.addEventListener('pointerup', cancel, true);
+  document.addEventListener('pointercancel', cancel, true);
+  document.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('#actList .row')) e.preventDefault(); });
+})();
 
 function donut(parts, total, hueOf) {
   const r = 62;
@@ -2261,6 +2331,27 @@ document.addEventListener('click', async (ev) => {
       break;
     }
     case 'edit': openSheet(el.dataset.id); break;
+    case 'sel-row':
+      if (performance.now() < ui.noClickUntil) break;
+      if (!ui.selOn) { if (!store.isViewer()) openSheet(el.dataset.id); break; }
+      if (ui.sel.has(el.dataset.id)) ui.sel.delete(el.dataset.id); else ui.sel.add(el.dataset.id);
+      haptic(6); fillActivity();
+      break;
+    case 'sel-start': haptic(6); setSelecting(true); break;
+    case 'sel-done': haptic(6); setSelecting(false); break;
+    case 'sel-all':
+      haptic(6);
+      if (ui.actList.every((e) => ui.sel.has(e.id))) ui.actList.forEach((e) => ui.sel.delete(e.id)); else ui.actList.forEach((e) => ui.sel.add(e.id));
+      fillActivity();
+      break;
+    case 'sel-clear': haptic(6); ui.sel.clear(); ui.selOnly = false; fillActivity(); break;
+    case 'sel-only': haptic(6); ui.selOnly = !ui.selOnly; fillActivity(); break;
+    case 'q-clear': {
+      haptic(6); ui.q = '';
+      const q = $('#q'); if (q) q.value = '';
+      el.hidden = true; fillActivity();
+      break;
+    }
     case 'close': closeSheet(); break;
     case 'months':
       if (performance.now() < ui.noClickUntil) break;
@@ -2668,6 +2759,7 @@ function render() {
   renderTop();
   renderTabbar();
   renderTab();
+  renderTotbar();
 }
 
 initSlide(() => ui.tab + '|' + (ui.settingsPage || ''));
