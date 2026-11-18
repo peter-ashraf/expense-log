@@ -64,6 +64,7 @@ const HEADERS = {
   category: ['category'],
   sub: ['sub category', 'subcategory', 'sub', 'sub cat'],
   account: ['account', 'wallet', 'card', 'payment method'],
+  location: ['location', 'place', 'where'],
 };
 
 function mapColumns(header) {
@@ -210,7 +211,7 @@ export function readCsvEntries(text, categories) {
       }
     }
     amount = Math.round(amount * 100) / 100;
-    const base = { date, description: get('description'), amount, type, sheet: 'CSV', row: line, ...(get('account') ? { account: get('account') } : {}) };
+    const base = { date, description: get('description'), amount, type, sheet: 'CSV', row: line, ...(get('account') ? { account: get('account') } : {}), ...(get('location') ? { location: get('location') } : {}) };
 
     if (type === 'Income') { entries.push({ ...base, category: 'Income', sub: 'Income' }); return; }
 

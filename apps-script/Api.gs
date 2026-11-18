@@ -10,7 +10,7 @@
  * Sheet layout is unchanged (Summary / Categories / one tab per month). Each month tab gets a hidden
  * column G "ID" so edits, deletes and retried uploads can never duplicate or misplace a row, and a hidden
  * column H "Account" (blank = the default account), and a column I "Seller" (the shop from a bank SMS, kept apart
- * from the note in B). Spending accounts and their monthly limits live on a
+ * from the note in B), and a hidden column J "Location" (where it was bought: "place|lat,lon"). Spending accounts and their monthly limits live on a
  * separate "Accounts" tab, recurring subscriptions on a "Subscriptions" tab. Nothing that existed before is
  * moved, renamed or removed.
  */
@@ -18,11 +18,11 @@
 var API_KEY = 'PASTE-YOUR-SECRET-KEY-HERE';   // only needed the first time: it is then kept in Script Properties
 
 // Bumped with every change to this file. The app compares it and asks the script to update itself (selfUpdate_).
-var SCRIPT_VERSION = 10;
+var SCRIPT_VERSION = 11;
 var UPDATE_URL = 'https://cc-expenses.pages.dev/apps-script/Api.gs';
 
 var MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sept', 'Oct', 'Nov', 'Dec'];
-var HEADERS = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category', 'ID', 'Account', 'Seller'];
+var HEADERS = ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category', 'ID', 'Account', 'Seller', 'Location'];
 var ACCOUNTS_SHEET = 'Accounts';
 var DEFAULT_ACCOUNT = 'Credit Card';
 var SUBS_SHEET = 'Subscriptions';
@@ -30,10 +30,11 @@ var SUBS_HEADERS = ['ID', 'Name', 'Amount', 'Day', 'Category', 'Sub-Category', '
 var BALANCE_LABELS = ['Starting Balance', 'Total Spent', 'Available Balance'];
 var HEADER_ROW = 4;
 var FIRST_ROW = 5;
-var NCOLS = 9;          // A:F data + G id + H account + I seller
+var NCOLS = 10;         // A:F data + G id + H account + I seller + J location
 var ID_COL = 7;
 var ACC_COL = 8;
 var SELLER_COL = 9;
+var LOC_COL = 10;
 
 // ------------------------------------------------------------------ HTTP entry points
 
@@ -57,7 +58,7 @@ function doPost(e) {
       if (req.action === 'push') return push_(req.ops || []);
       if (req.action === 'pull') return snapshot_();
       if (req.action === 'selfUpdate') return selfUpdate_(req.url);
-      if (req.action === 'smsAdd') return smsAdd_(req.sms);
+      if (req.action === 'smsAdd') return smsAdd_(req.sms, req);
       if (req.action === 'smsList') return smsList_();
       if (req.action === 'smsDone') return smsDone_(req.ids || []);
       if (req.action === 'shareCreate') return shareCreate_(req.name, req.note);
@@ -138,7 +139,7 @@ function view_(token) {
 // ------------------------------------------------------------------ bank SMS inbox
 // The iPhone Shortcut posts each bank SMS here as it arrives; the app reads the new ones, logs them and marks them done.
 var SMS_SHEET = 'SMS Inbox';
-var SMS_HEADERS = ['ID', 'Received', 'Text', 'Status'];
+var SMS_HEADERS = ['ID', 'Received', 'Text', 'Status', 'Location'];
 
 function smsSheet_() {
   var ss = SpreadsheetApp.getActive();
@@ -152,21 +153,88 @@ function smsSheet_() {
   return sh;
 }
 
-function smsAdd_(text) {
+function smsAdd_(text, req) {
   text = String(text || '').trim();
   if (!text) throw new Error('No SMS text');
   if (text.length > 2000) text = text.slice(0, 2000);
   var id = Utilities.getUuid();
-  smsSheet_().appendRow([id, new Date(), text, 'new']);
-  return { ok: true, id: id };
+  var loc = locationFromRequest_(req || {});
+  var sh = smsSheet_();
+  if (loc && !sh.getRange(1, 5).getValue()) sh.getRange(1, 5).setValue(SMS_HEADERS[4]).setFontWeight('bold');   // inboxes made before locations
+  sh.appendRow(loc ? [id, new Date(), text, 'new', loc] : [id, new Date(), text, 'new']);
+  return { ok: true, id: id, location: loc };
+}
+
+// ------------------------------------------------------------------ locations ("place|lat,lon", either half may be missing)
+
+function locNum_(v) {
+  if (typeof v === 'number') return isFinite(v) ? v : NaN;
+  var s = String(v === undefined || v === null ? '' : v).trim();
+  if (!s) return NaN;
+  if (s.indexOf('.') < 0 && (s.match(/,/g) || []).length === 1) s = s.replace(',', '.');   // "30,0444" from a comma-decimal phone
+  return /^[-+]?\d+(\.\d+)?$/.test(s) ? Number(s) : NaN;
+}
+
+function makeLoc_(place, lat, lon) {
+  place = String(place === undefined || place === null ? '' : place).replace(/[|\r\n\t]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+  lat = locNum_(lat); lon = locNum_(lon);
+  var coords = isFinite(lat) && isFinite(lon) && Math.abs(lat) <= 90 && Math.abs(lon) <= 180 && !(lat === 0 && lon === 0)
+    ? (Math.round(lat * 1e6) / 1e6) + ',' + (Math.round(lon * 1e6) / 1e6) : '';
+  if (!place && !coords) return '';
+  return coords ? place + '|' + coords : place;
+}
+
+/** A stored or sent location string: "place|lat,lon", "lat,lon", "lat lon" or just a place name. */
+function cleanLocation_(v) {
+  if (v === undefined || v === null || v === '') return '';
+  if (typeof v === 'object') return locationFromRequest_(v);
+  var s = String(v).trim();
+  if (!s) return '';
+  var bar = s.lastIndexOf('|');
+  if (bar >= 0) {
+    var c = s.slice(bar + 1).split(',');
+    return makeLoc_(s.slice(0, bar), c[0], c[1]);
+  }
+  var m = /^\s*([-+]?\d+(?:\.\d+)?)\s*[,; ]\s*([-+]?\d+(?:\.\d+)?)\s*$/.exec(s);
+  if (m) return makeLoc_('', m[1], m[2]);
+  return makeLoc_(s, '', '');
+}
+
+/** Location fields from the iPhone Shortcut: lat/lon (or latitude/longitude/lng), place (or address/name/street), or one "location". */
+function locationFromRequest_(req) {
+  var pick = function (keys) {
+    for (var i = 0; i < keys.length; i++) { var v = req[keys[i]]; if (v !== undefined && v !== null && String(v).trim() !== '') return v; }
+    return '';
+  };
+  var lat = pick(['lat', 'latitude']), lon = pick(['lon', 'lng', 'long', 'longitude']);
+  var place = pick(['place', 'address', 'name', 'street']);
+  if (typeof place === 'object') place = '';
+  var loc = makeLoc_(place, lat, lon);
+  var whole = req.location;
+  if (whole !== undefined && whole !== null && whole !== '' && whole !== req) {
+    var w = cleanLocation_(whole);
+    if (!loc) return w;
+    if (loc.indexOf('|') < 0 && w.indexOf('|') >= 0) return makeLoc_(loc, w.split('|')[1].split(',')[0], w.split('|')[1].split(',')[1]);   // place + "lat,lon"
+  }
+  return loc;
 }
 
 function smsList_() {
   var sh = smsSheet_();
   var n = sh.getLastRow() - 1;
   var out = [];
-  if (n > 0) sh.getRange(2, 1, n, 4).getValues().forEach(function (r) {
-    if (r[0] && r[3] === 'new') out.push({ id: String(r[0]), received: r[1] instanceof Date ? r[1].toISOString() : String(r[1]), text: String(r[2]) });
+  if (n > 0) sh.getRange(2, 1, n, 5).getValues().forEach(function (r) {
+    if (!r[0] || r[3] !== 'new') return;
+    var m = { id: String(r[0]), received: r[1] instanceof Date ? r[1].toISOString() : String(r[1]), text: String(r[2]) };
+    var loc = cleanLocation_(r[4]);
+    if (loc) {
+      var bar = loc.lastIndexOf('|'), place = bar >= 0 ? loc.slice(0, bar) : (/^[-\d.]+,[-\d.]+$/.test(loc) ? '' : loc);
+      var c = bar >= 0 ? loc.slice(bar + 1).split(',') : (place ? [] : loc.split(','));
+      m.location = loc;
+      m.place = place;
+      if (c.length === 2) { m.lat = Number(c[0]); m.lon = Number(c[1]); }
+    }
+    out.push(m);
   });
   return { ok: true, sms: out.slice(-50) };
 }
@@ -406,7 +474,7 @@ function prepareHeaders_(ws) {
 }
 
 function hideHelperColumns_(ws) {
-  [ID_COL, ACC_COL].forEach(function (c) {
+  [ID_COL, ACC_COL, LOC_COL].forEach(function (c) {
     try { if (!ws.isColumnHiddenByUser(c)) ws.hideColumns(c); } catch (e) { /* ignore */ }
   });
 }
@@ -623,7 +691,7 @@ function readEntries_(ws) {
     if (!isDataRow_(v)) return;
     out.push({ id: String(v[6]), date: fmtDate_(v[0]), description: String(v[1]), amount: Number(v[2]) || 0,
                type: String(v[3]), category: String(v[4]), sub: String(v[5]), account: String(v[7] || '') || defaultAccount_(),
-               seller: String(v[8] || '') });
+               seller: String(v[8] || ''), location: String(v[9] || '') });
   });
   return out;
 }
@@ -653,13 +721,14 @@ function sortSheet_(ws) {
 var _accHeaderDone = {};   // sheets whose "Account" header was checked during this request
 
 function writeRow_(ws, row, v, id) {
-  ws.getRange(row, 1, 1, NCOLS).setValues([[v.date, v.description, v.amount, v.type, v.category, v.sub, id, v.account, v.seller]]);
+  ws.getRange(row, 1, 1, NCOLS).setValues([[v.date, v.description, v.amount, v.type, v.category, v.sub, id, v.account, v.seller, v.location]]);
   ws.getRange(row, 1).setNumberFormat('dd-mmm-yy');
   var name = ws.getName();
   if (!_accHeaderDone[name]) {                     // sheets created before accounts existed get their header once
     _accHeaderDone[name] = true;
     if (!ws.getRange(HEADER_ROW, ACC_COL).getValue()) ws.getRange(HEADER_ROW, ACC_COL).setValue(HEADERS[ACC_COL - 1]);
     if (!ws.getRange(HEADER_ROW, SELLER_COL).getValue()) ws.getRange(HEADER_ROW, SELLER_COL).setValue(HEADERS[SELLER_COL - 1]);
+    if (!ws.getRange(HEADER_ROW, LOC_COL).getValue()) ws.getRange(HEADER_ROW, LOC_COL).setValue(HEADERS[LOC_COL - 1]);
     hideHelperColumns_(ws);
   }
 }
@@ -686,7 +755,7 @@ function validate_(t) {
   var account = resolveAccount_(t.account);
   return { year: y, month0: mo - 1, date: dt, description: String(t.description || '').trim().slice(0, 200),
            amount: amount, type: t.type, category: category, sub: sub, account: account,
-           seller: String(t.seller || '').trim().slice(0, 120) };
+           seller: String(t.seller || '').trim().slice(0, 120), location: cleanLocation_(t.location) };
 }
 
 // ------------------------------------------------------------------ accounts (credit card, cash, ...)

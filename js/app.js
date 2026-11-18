@@ -2,7 +2,7 @@ import * as store from './store.js';
 import { icon, catHue } from './icons.js';
 import { computeInsights, computeAllTime, computeStreak, weeklySeries, topMerchants } from './insights.js';
 import { suggestNote, FUEL_BIG_FILL, parseMessages } from './quick.js';
-import { esc, num as rawNum, num0 as rawNum0, money as rawMoney, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile } from './util.js';
+import { esc, num as rawNum, num0 as rawNum0, money as rawMoney, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile, parseLoc, fmtLoc, mapUrl, currentLoc } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 import { readCsvEntries, decodeText } from './csv.js';
 import * as lk from './lockui.js';
@@ -27,9 +27,9 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.17.1';
+const APP_VERSION = '3.18.0';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
-const SCRIPT_LATEST = 10;
+const SCRIPT_LATEST = 11;
 
 const ui = { sel: new Set(), selOn: false, selOnly: false, actList: [], settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
 
@@ -198,6 +198,13 @@ function hueStyle(name) {
   return `--h:${catHue(name, order)}`;
 }
 
+// Where it was bought: a small pin + the place (or "Location"); a tap opens the map, never the editor.
+function locTag(loc) {
+  const l = parseLoc(loc);
+  if (!l) return '';
+  return `<span class="row-loc" data-act="map" data-loc="${esc(loc)}" role="link" aria-label="Open the location in Maps">${icon('pin', 12, 2.2)}${esc(l.place || 'Location')}</span>`;
+}
+
 function entryRow(e, pending, sel) {
   const isInc = e.type === 'Income';
   const title = e.description || (isInc ? 'Income' : e.sub);
@@ -209,7 +216,7 @@ function entryRow(e, pending, sel) {
   return `<${tag} class="row ${isInc ? 'inc' : 'exp'}${sel && sel.on ? ' selecting' : ''}${sel && sel.ids.has(e.id) ? ' picked' : ''}" ${tag === 'button' ? `data-act="${act}" data-id="${esc(e.id)}"` : ''}>
     ${sel && sel.on ? `<span class="check" aria-hidden="true">${icon('check', 14, 3)}</span>` : ''}
     <span class="bubble" style="${hueStyle(isInc ? 'Income' : e.category)}">${icon(isInc ? 'income' : e.category, 20)}</span>
-    <span class="row-main"><span class="row-t">${seller ? `<span class="row-note">${esc(title)}</span><span class="row-seller">${esc(seller)}</span>` : esc(title)}</span><span class="row-s">${esc(subtitle)}${pending.has(e.id) ? '<i class="pend" title="Waiting to sync"></i>' : ''}</span></span>
+    <span class="row-main"><span class="row-t">${seller ? `<span class="row-note">${esc(title)}</span><span class="row-seller">${esc(seller)}</span>` : esc(title)}</span><span class="row-s">${esc(subtitle)}${locTag(e.location)}${pending.has(e.id) ? '<i class="pend" title="Waiting to sync"></i>' : ''}</span></span>
     <span class="row-amt">${isInc ? '+' : '−'}${esc(num(e.amount))}</span>
   </${tag}>`;
 }
@@ -1034,6 +1041,10 @@ function renderSettings(view) {
       <div class="card-h"><h3>Bars</h3></div>
       <label class="switch block"><input type="checkbox" id="glassSwitch" ${st.settings.glass === false ? '' : 'checked'}><span>Glass bars <small class="muted">(blurred top bar and tab bar)</small></span></label>
       <button class="btn ghost" data-act="refresh-view">Status bar not matching? Refresh</button>
+    </section>
+    <section class="card">
+      <div class="card-h"><h3>Location</h3></div>
+      <label class="switch block"><input type="checkbox" id="locSwitch" ${st.settings.locCapture === false ? '' : 'checked'}><span>Save where I add an entry <small class="muted">(asks the phone once when you add one by hand; bank SMS use the Shortcut's location)</small></span></label>
     </section>`;
   } else if (p === 'security') {
     body = `${securityCard(st)}
@@ -1167,8 +1178,9 @@ function openSheet(id) {
     return m && t.slice(0, 7) !== m.key ? m.key + '-01' : t;
   })();
   ui.form = e
-    ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description, account: e.account, seller: e.seller || '', step: 'details' }
-    : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '', account: defaultFormAccount(), seller: '', step: 'amt' };
+    ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description, account: e.account, seller: e.seller || '', location: e.location || '', step: 'details' }
+    : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '', account: defaultFormAccount(), seller: '', location: '', locAuto: locCaptureOn(), step: 'amt' };
+  if (!e) startGeo();
   ui.armedDelete = false;
   const body = `<div id="formMain"><div class="seg" id="fType"></div>
       <button class="amt" id="fAmt" data-act="amt-edit" aria-label="Amount"></button>
@@ -1214,8 +1226,37 @@ function quickCtx() {
 const quickData = (r) => ({
   date: r.date, description: r.description || r.seller || '', seller: r.seller || '', amount: r.amount, type: r.type,
   category: r.type === 'Income' ? 'Income' : r.category, sub: r.type === 'Income' ? 'Income' : r.sub,
-  account: r.account || defaultFormAccount(),
+  account: r.account || defaultFormAccount(), location: rowLoc(r),
 });
+
+// ---- location of a purchase -------------------------------------------------------------------------------------
+// A bank SMS brings the place from the iPhone Shortcut; a manual entry asks the phone once when the form opens
+// (never blocking the save: a late answer is added to the entry afterwards, a refusal is simply no location).
+const locCaptureOn = () => store.getState().settings.locCapture !== false && !store.isViewer();
+let geoP = null, geoFix = '';
+function startGeo() {
+  if (!locCaptureOn()) { geoP = null; return; }
+  const f = ui.form;
+  geoP = currentLoc(6000).then((l) => {
+    geoFix = l ? fmtLoc(l) : '';
+    if (geoFix && ui.form === f && f.locAuto && !f.location) { f.location = geoFix; if ($('#fMeta')) refreshForm(); }
+    return geoFix;
+  });
+}
+// the location an SMS row came with (from the inbox), else the phone's position for typed rows
+function rowLoc(r) {
+  if (r.location) return r.location;
+  if (r.source === 'sms') {
+    const hit = ((ui.quick && ui.quick.smsLocs) || []).find((m) => m.location && r.raw && String(m.text).includes(r.raw));
+    return hit ? hit.location : '';
+  }
+  return locCaptureOn() ? geoFix : '';
+}
+function findEntry(id) {
+  const v = store.view();
+  for (const k of v.months) { const f = v.by[k].entries.find((x) => x.id === id); if (f) return f; }
+  return null;
+}
 const quickCanAdd = (r) => !!r.amount && r.currency === 'EGP' && (r.type === 'Income' || (!!r.category && !!r.sub));
 
 // The toggle sits in the bottom bar beside the main button, where a thumb reaches it on a large phone.
@@ -1322,7 +1363,7 @@ function editQuickRow(i) {
   const r = ui.quick.rows[i];
   if (!r) return;
   ui.quick.current = r;
-  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount(), seller: r.seller || '', showSeller: !!r.seller, autoNote: r.suggested ? r.description : null, step: 'details' };
+  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount(), seller: r.seller || '', showSeller: !!r.seller, autoNote: r.suggested ? r.description : null, location: rowLoc(r), locAuto: r.source !== 'sms' && locCaptureOn(), step: 'details' };
   renderSellerField();
   const d = $('#fDesc');
   if (d) d.value = r.description;
@@ -1353,6 +1394,7 @@ async function checkSmsInbox(force = false) {
     const done = [], logged = [], review = [];
     for (const m of list) {
       const rows = parseMessages(m.text, ctx).filter((r) => r.source === 'sms');
+      if (m.location) rows.forEach((r) => { r.location = m.location; });
       // a suggested note is never logged silently: the message waits in the review sheet (next time the app is open, if it can't show now)
       if (rows.length && rows.some((r) => !r.dup && (!r.ready || r.suggested))) { review.push(m); continue; }
       const fresh = rows.filter((r) => !r.dup);
@@ -1371,7 +1413,7 @@ async function checkSmsInbox(force = false) {
     store.smsDone(done).catch(() => {});      // remembered on this phone too, so a failed mark never logs twice
     if (review.length && !busyForm) {
       openSheet(null);
-      ui.quick = { text: review.map((m) => m.text).join('\n\n'), rows: [], sel: new Set(), current: null };
+      ui.quick = { text: review.map((m) => m.text).join('\n\n'), rows: [], sel: new Set(), current: null, smsLocs: review.filter((m) => m.location).map((m) => ({ text: m.text, location: m.location })) };
       enterQuick();
       quickHint(ui.quick.rows.some((r) => r.suggested && r.ready) ? 'From your bank SMS: check the suggested notes (tap one to change it), then tap Add selected.' : 'From your bank SMS: pick a category, then tap Add selected.');
     }
@@ -1857,7 +1899,12 @@ function refreshForm() {
     `<button class="chip ${custom ? 'on' : ''}" data-act="date-pick">${icon('calendar', 15)}${custom ? esc(dateShort(f.date)) : 'Date'}</button>` +
     accChips + '<i class="meta-gap"></i>' +
     (f.showSeller ? `<button class="chip seller-on" data-act="seller-hide" aria-label="Remove seller">Seller${icon('close', 13, 2.6)}</button>`
-      : `<button class="chip add" data-act="seller-show">${icon('plus', 13, 2.4)}Seller</button>`));
+      : `<button class="chip add" data-act="seller-show">${icon('plus', 13, 2.4)}Seller</button>`) +
+    (() => {
+      const l = parseLoc(f.location);
+      return l ? `<button class="chip loc-on" data-act="map" data-loc="${esc(f.location)}">${icon('pin', 15)}${esc(l.place || 'Location')}</button><button class="chip loc-x" data-act="loc-clear" aria-label="Remove location">${icon('close', 13, 2.6)}</button>`
+        : `<button class="chip add" data-act="loc-use">${icon('pin', 14)}Use my location</button>`;
+    })());
   meta.scrollLeft = metaLeft;
 }
 
@@ -1898,9 +1945,18 @@ function saveForm() {
     category: f.type === 'Income' ? 'Income' : f.category,
     sub: f.type === 'Income' ? 'Income' : f.sub,
     account: f.account || undefined,
+    location: f.location || undefined,
   };
   if (f.account && multiAcc()) store.saveSettings({ lastAccount: f.account });
-  if (f.id) store.updateEntry(f.id, data); else store.addEntry(data);
+  if (f.id) store.updateEntry(f.id, data);
+  else {
+    const newId = store.addEntry(data);
+    // the phone had not answered yet: add the place to the entry when it does (the save itself never waits)
+    if (!f.location && f.locAuto && geoP) geoP.then((loc) => {
+      const e = loc && findEntry(newId);
+      if (e && !e.location) store.updateEntry(newId, { ...e, location: loc });
+    });
+  }
   ui.month = monthKeyOf(f.date);
   let again = null;
   if (!f.id && ui.quick && ui.quick.current) {
@@ -2275,7 +2331,7 @@ function openTrash(rerender = false) {
 
 // ---------------------------------------------------------------- events
 // Everything that changes data. A view-only link never runs these (the store refuses them too).
-const WRITE_ACTS = /^(new|quick-.*|edit|save|delete|key|type|cat|sub|seller-.*|amt-.*|new-.*|date-.*|cal-.*|facc|acc-(add|delete|archive|type)|da-.*|import-.*|do-import|trash|restore|clear-trash|su-now|share-(new|revoke)|disconnect)$/;
+const WRITE_ACTS = /^(new|quick-.*|edit|save|delete|key|type|cat|sub|seller-.*|loc-(use|clear)|amt-.*|new-.*|date-.*|cal-.*|facc|acc-(add|delete|archive|type)|da-.*|import-.*|do-import|trash|restore|clear-trash|su-now|share-(new|revoke)|disconnect)$/;
 
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-act]');
@@ -2331,6 +2387,25 @@ document.addEventListener('click', async (ev) => {
       break;
     }
     case 'edit': openSheet(el.dataset.id); break;
+    case 'map': {
+      const url = mapUrl(el.dataset.loc);
+      if (url) window.open(url, '_blank', 'noopener');
+      break;
+    }
+    case 'loc-use': {
+      const f = ui.form;
+      if (!f) break;
+      toast('Finding your location…');
+      const l = await currentLoc(10000);
+      if (ui.form !== f) break;
+      if (!l) { toast('Could not get your location. Check that location is allowed for this app.', 'err'); break; }
+      f.location = fmtLoc({ ...l, place: (parseLoc(f.location) || {}).place || '' });
+      geoFix = fmtLoc(l);
+      haptic(8);
+      refreshForm();
+      break;
+    }
+    case 'loc-clear': if (ui.form) { ui.form.location = ''; ui.form.locAuto = false; haptic(6); refreshForm(); } break;
     case 'sel-row':
       if (performance.now() < ui.noClickUntil) break;
       if (!ui.selOn) { if (!store.isViewer()) openSheet(el.dataset.id); break; }
@@ -2704,6 +2779,11 @@ document.addEventListener('change', (e) => {
     e.target.value = val || '';
     toast(val ? 'Budget saved' : 'Budget turned off', 'ok');
     renderSettings($('#view'));
+    return;
+  }
+  if (e.target && e.target.id === 'locSwitch') {
+    store.saveSettings({ locCapture: e.target.checked });
+    toast(e.target.checked ? 'Location on for new entries' : 'Location off for new entries', 'ok');
     return;
   }
   if (e.target && e.target.id === 'glassSwitch') {
