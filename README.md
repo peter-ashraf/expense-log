@@ -36,3 +36,27 @@ Settings > Share view-only makes a link for one person (name, optional note): `.
   account editing, no SMS inbox or script self-update, and the last loaded data stays readable offline. Its copy is
   kept apart from an owner setup on the same phone (the app asks before switching); "Leave view-only mode" brings it back.
 - Needs script v10. It updates itself like before; otherwise paste the new `Api.gs` and deploy a new version.
+
+
+## Purchase location (v3.18)
+
+Each entry can remember where it was bought, stored as `place|lat,lon` (either half may be empty).
+
+- Month tabs gain a hidden column J `Location`; the `SMS Inbox` tab gains a column E `Location`. Columns A-I, the
+  balance formulas, Summary and Categories are untouched. Needs script v11 (it updates itself like before).
+- Bank SMS: `smsAdd` accepts optional `lat` / `lon` (or `latitude` / `longitude`), `place` (or `address`, `name`,
+  `street`) and/or one combined `location` string (`"30.04,31.23"`, `"Some place"` or `"place|lat,lon"`). Numbers or
+  text both work. Requests without them work exactly as before. The location goes into the logged entry.
+- Manual entries: the app asks the phone for its position when the form opens and never waits for it when saving
+  (a refusal or timeout just means no location). Turn it off in Settings > Location. The entry editor has
+  "Use my location" and a button to remove it. Lists show a pin with the place (or "Location"); tap it for Google Maps.
+- CSV/Excel export adds a trailing `Location` column only when some entry has one; import reads it when present.
+
+iPhone Shortcut (the existing SMS automation), before the **Get contents of URL** step:
+
+1. Add **Get Current Location**.
+2. Add **Get Details of Locations** three times on that location: **Latitude**, **Longitude**, and **Street** (or **Name**).
+3. In **Get contents of URL** (Method POST, Request Body JSON) keep `key`, `action` = `smsAdd`, `sms`, and add Text
+   fields `lat` = Latitude, `lon` = Longitude, `place` = Street (or Name).
+4. The first run asks for location access: choose **Always Allow** (Settings > Privacy & Security > Location Services
+   > Shortcuts > While Using / Always) so the automation can run without asking.

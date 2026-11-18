@@ -148,7 +148,7 @@ export function deleteEntry(id) {
   let trashId = null;
   if (e) {
     trashId = uid();
-    S.trash.unshift({ trashId, deletedAt: Date.now(), data: { date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: e.account, seller: e.seller } });
+    S.trash.unshift({ trashId, deletedAt: Date.now(), data: { date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: e.account, seller: e.seller, location: e.location } });
     S.trash = S.trash.slice(0, 100);
     db.set('trash', S.trash);
   }
@@ -192,6 +192,7 @@ const clean = (d) => ({
   sub: d.sub,
   ...(d.account ? { account: d.account } : {}),
   ...(d.seller ? { seller: String(d.seller).trim() } : {}),
+  ...(d.location ? { location: String(d.location).trim() } : {}),
 });
 
 function enqueue(op) {
@@ -317,7 +318,7 @@ export function deleteAccount(name, moveTo, dropIds = new Set()) {
   for (const k of v.months) for (const e of v.by[k].entries) if (String(e.account).toLowerCase() === key) own.push(e);
   for (const e of own) {
     if (dropIds.has(e.id)) { deleteEntry(e.id); continue; }    // goes to Recently deleted, can be restored
-    enqueue({ type: 'update', id: e.id, data: clean({ date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: moveTo, seller: e.seller }) });
+    enqueue({ type: 'update', id: e.id, data: clean({ date: e.date, description: e.description, amount: e.amount, type: e.type, category: e.category, sub: e.sub, account: moveTo, seller: e.seller, location: e.location }) });
     moved++;
   }
   for (const x of v.subs) if (String(x.account).toLowerCase() === key) saveSubscription({ ...x, account: moveTo });
@@ -522,7 +523,8 @@ export function takeRejected() {
 export function exportCsv() {
   const v = view();
   const withAcc = v.accounts.length > 1;   // one account: same columns as ever
-  const rows = [['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category'].concat(withAcc ? ['Account'] : [])];
-  v.months.slice().reverse().forEach((k) => v.by[k].entries.forEach((e) => rows.push([e.date, e.description, e.amount, e.type, e.category, e.sub].concat(withAcc ? [e.account] : []))));
+  const withLoc = v.months.some((k) => v.by[k].entries.some((e) => e.location));   // no locations: same columns as ever
+  const rows = [['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category'].concat(withAcc ? ['Account'] : [], withLoc ? ['Location'] : [])];
+  v.months.slice().reverse().forEach((k) => v.by[k].entries.forEach((e) => rows.push([e.date, e.description, e.amount, e.type, e.category, e.sub].concat(withAcc ? [e.account] : [], withLoc ? [e.location || ''] : []))));
   return rows;
 }

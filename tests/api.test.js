@@ -372,5 +372,43 @@ ok(r.applied.join() === 'l1', 'legacy "category = sub-category" rows are still a
   ok(call('push', { ops: [] }).ok && call('smsList').ok, 'the owner key still does everything');
 }
 
+// ---- locations: SMS inbox from the Shortcut, and the hidden Location column on month tabs
+{
+  const plain = call('smsAdd', { sms: 'Old shortcut, no location' });
+  ok(plain.ok && plain.location === '', 'smsAdd without a location still works');
+  const a = call('smsAdd', { sms: 'Purchase 100 EGP at Cafe', lat: 30.0444, lon: '31.2357', place: 'Tahrir Sq | Cairo' });
+  ok(a.ok && a.location === 'Tahrir Sq Cairo|30.0444,31.2357', 'smsAdd keeps lat/lon (number or string) and place');
+  const b = call('smsAdd', { sms: 'Purchase 5 EGP', latitude: '30,5', longitude: '31,25' });
+  ok(b.location === '|30.5,31.25', 'comma-decimal coordinates are accepted, place optional');
+  const c = call('smsAdd', { sms: 'Purchase 6 EGP', location: '29.9792, 31.1342' });
+  const d = call('smsAdd', { sms: 'Purchase 7 EGP', location: 'Mall of Egypt' });
+  const e = call('smsAdd', { sms: 'Purchase 8 EGP', lat: 'nope', lon: 999, place: '' });
+  ok(c.location === '|29.9792,31.1342' && d.location === 'Mall of Egypt' && e.ok && e.location === '', 'a combined location string works; junk coordinates are dropped');
+  const inbox = ss.getSheetByName('SMS Inbox');
+  ok(inbox.get(1, 5) === 'Location', 'SMS Inbox gets a Location column');
+  const list = call('smsList').sms;
+  const la = list.find((m) => m.id === a.id), lp = list.find((m) => m.id === plain.id), lc = list.find((m) => m.id === c.id), ld = list.find((m) => m.id === d.id);
+  ok(la && la.location === a.location && la.place === 'Tahrir Sq Cairo' && la.lat === 30.0444 && la.lon === 31.2357, 'smsList returns the location');
+  ok(lp && lp.location === undefined && lc.place === '' && lc.lat === 29.9792 && ld.place === 'Mall of Egypt' && ld.lat === undefined, 'smsList: no location, coords only, place only');
+  call('smsDone', { ids: list.map((m) => m.id) });
+
+  const sept = ss.getSheetByName('Sept-26');
+  const top = JSON.stringify([1, 2, 3].map((c) => [sept.get(1, c), sept.get(2, c)]));
+  let r = call('push', { ops: [{ opId: 'loc1', type: 'add', id: 'loc-1', data: { date: '2026-09-21', description: 'Snack', amount: 12, type: 'Expense', category: 'Food', sub: 'Coffee', location: 'Kiosk|30.1,31.2' } }] });
+  let en = r.entries.find((x) => x.id === 'loc-1');
+  ok(r.applied.join() === 'loc1' && en && en.location === 'Kiosk|30.1,31.2', 'an entry keeps its location');
+  const ws = ss.getSheetByName('Sept-26');
+  ok(ws.get(4, 10) === 'Location' && ws.hidden.has(10), 'month tab gets a hidden Location column J');
+  const row = [...Array(40).keys()].map((i) => i + 5).find((i) => ws.get(i, 7) === 'loc-1');
+  ok(ws.get(row, 10) === 'Kiosk|30.1,31.2' && ws.get(row, 2) === 'Snack' && ws.get(row, 3) === 12 && ws.get(row, 6) === 'Coffee', 'columns A-I untouched, location in J');
+  ok(JSON.stringify([1, 2, 3].map((c) => [ws.get(1, c), ws.get(2, c)])) === top, 'balance rows untouched');
+  r = call('push', { ops: [{ opId: 'loc2', type: 'update', id: 'loc-1', data: { date: '2026-09-21', description: 'Snack', amount: 12, type: 'Expense', category: 'Food', sub: 'Coffee', location: '' } }] });
+  en = r.entries.find((x) => x.id === 'loc-1');
+  ok(en && en.location === '' && ws.get(row, 10) === '', 'clearing the location on edit empties J');
+  r = call('push', { ops: [{ opId: 'loc3', type: 'update', id: 'loc-1', data: { date: '2026-09-21', description: 'Snack', amount: 12, type: 'Expense', category: 'Food', sub: 'Coffee', location: '30.2,31.3' } }] });
+  ok(r.entries.find((x) => x.id === 'loc-1').location === '|30.2,31.3', 'coordinates without a place are normalised');
+  ok(call('pull').entries.filter((x) => x.id !== 'loc-1').every((x) => x.location === ''), 'other entries have no location');
+}
+
 console.log(fails ? `\n${fails} FAILED` : '\nall passed');
 process.exit(fails ? 1 : 0);

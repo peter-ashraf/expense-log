@@ -213,7 +213,10 @@ export function buildWorkbook(view) {
   const accounts = view.accounts || [];
   const withAcc = accounts.length > 1;   // one account: the file stays exactly like the original
   const txCols = withAcc ? ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category', 'Account'] : ['Date', 'Description', 'Amount', 'Type', 'Category', 'Sub-Category'];
-  const lastCol = withAcc ? 'G' : 'F';
+  const withLoc = view.months.some((k) => ((view.by[k] || {}).entries || []).some((e) => e.location));   // only when something has one
+  if (withLoc) txCols.push('Location');
+  const lastCol = colName(txCols.length - 1);
+  const locCol = colName(txCols.length - 1);
   const keys = view.months.slice();
   const monthSheetNames = keys.map(sheetNameFor);
 
@@ -288,8 +291,8 @@ export function buildWorkbook(view) {
       const r = 5 + j;
       const e = entries[j];
       rows.push(e
-        ? `<row r="${r}">${nCell('A' + r, serial(e.date), 1)}${sCell(sst, 'B' + r, e.description || '')}${nCell('C' + r, e.amount, 2)}${sCell(sst, 'D' + r, e.type)}${sCell(sst, 'E' + r, e.category)}${sCell(sst, 'F' + r, e.sub)}${withAcc ? sCell(sst, 'G' + r, e.account || accounts[0].name) : ''}</row>`
-        : `<row r="${r}">${eCell('A' + r, 1)}${eCell('B' + r)}${eCell('C' + r, 2)}${eCell('D' + r)}${eCell('E' + r)}${eCell('F' + r)}${withAcc ? eCell('G' + r) : ''}</row>`);
+        ? `<row r="${r}">${nCell('A' + r, serial(e.date), 1)}${sCell(sst, 'B' + r, e.description || '')}${nCell('C' + r, e.amount, 2)}${sCell(sst, 'D' + r, e.type)}${sCell(sst, 'E' + r, e.category)}${sCell(sst, 'F' + r, e.sub)}${withAcc ? sCell(sst, 'G' + r, e.account || accounts[0].name) : ''}${withLoc ? sCell(sst, locCol + r, e.location || '') : ''}</row>`
+        : `<row r="${r}">${eCell('A' + r, 1)}${eCell('B' + r)}${eCell('C' + r, 2)}${eCell('D' + r)}${eCell('E' + r)}${eCell('F' + r)}${withAcc ? eCell('G' + r) : ''}${withLoc ? eCell(locCol + r) : ''}</row>`);
     }
     const sheetIdx = sheets.length;
     tableId++;
@@ -301,7 +304,7 @@ export function buildWorkbook(view) {
       name: sname,
       xml: sheetXml({
         views: '<sheetView workbookViewId="0"><pane ySplit="4" topLeftCell="A5" activePane="bottomLeft" state="frozen"/><selection pane="bottomLeft" activeCell="A5" sqref="A5"/></sheetView>',
-        cols: [[1, 1, 22], [2, 2, 32], [3, 3, 22], [4, 4, 14], [5, 5, 18], [6, 6, 18]].concat(withAcc ? [[7, 7, 18]] : []),
+        cols: [[1, 1, 22], [2, 2, 32], [3, 3, 22], [4, 4, 14], [5, 5, 18], [6, 6, 18]].concat(withAcc ? [[7, 7, 18]] : [], withLoc ? [[txCols.length, txCols.length, 28]] : []),
         rows, extra: cf, tables: 2,
       }),
     });
@@ -450,10 +453,11 @@ export async function parseWorkbook(buffer, categories) {
     // data starts under the header row ("Date" in A, "Amount" in C); default row 4
     let headerRow = 4;
     let accCol = null;
+    let locCol = null;
     for (const [r, cells] of rows) {
       if (String(cells.A || '').toLowerCase() === 'date' && String(cells.C || '').toLowerCase() === 'amount') {
         headerRow = r;
-        for (const [col, v] of Object.entries(cells)) if (/^(account|wallet)$/i.test(String(v).trim())) accCol = col;
+        for (const [col, v] of Object.entries(cells)) { if (/^(account|wallet)$/i.test(String(v).trim())) accCol = col; if (/^location$/i.test(String(v).trim())) locCol = col; }
         break;
       }
     }
@@ -471,13 +475,14 @@ export async function parseWorkbook(buffer, categories) {
       const t = String(c.D || '').trim().toLowerCase();
       const type = t === 'income' ? 'Income' : t === 'expense' ? 'Expense' : null;
       if (!type) { bad('type must be Expense or Income'); continue; }
+      const loc = locCol && c[locCol] ? String(c[locCol]).trim() : '';
       let category = 'Income';
       let sub = 'Income';
       if (type === 'Expense') {
         const typedCat = String(c.E || '').trim();
         const typedSub = String(c.F || '').trim();
         const acct = accCol && c[accCol] ? String(c[accCol]).trim() : '';
-        const base = { date, description: String(c.B || '').trim(), amount, type, sheet: sh.name, row: r, ...(acct ? { account: acct } : {}) };
+        const base = { date, description: String(c.B || '').trim(), amount, type, sheet: sh.name, row: r, ...(acct ? { account: acct } : {}), ...(loc ? { location: loc } : {}) };
         const canon = matchCategory(categories, typedCat);
         if (!canon) { bad(`unknown category "${typedCat}"`, { ...base, category: typedCat, sub: typedSub }); continue; }
         const canonSub = matchSub(categories.map[canon], typedSub) || (typedSub.toLowerCase() === canon.toLowerCase() ? canon : null);
@@ -487,7 +492,7 @@ export async function parseWorkbook(buffer, categories) {
         sub = canonSub;
       }
       const acct2 = accCol && c[accCol] ? String(c[accCol]).trim() : '';
-      entries.push({ date, description: String(c.B || '').trim(), amount, type, category, sub, sheet: sh.name, row: r, ...(acct2 ? { account: acct2 } : {}) });
+      entries.push({ date, description: String(c.B || '').trim(), amount, type, category, sub, sheet: sh.name, row: r, ...(acct2 ? { account: acct2 } : {}), ...(loc ? { location: loc } : {}) });
     }
   }
   return { entries, skipped, sheets: used };
