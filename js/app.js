@@ -2,7 +2,7 @@ import * as store from './store.js';
 import { icon, catHue } from './icons.js';
 import { computeInsights, computeAllTime, computeStreak, weeklySeries, topMerchants } from './insights.js';
 import { suggestNote, FUEL_BIG_FILL, parseMessages } from './quick.js';
-import { esc, num as rawNum, num0 as rawNum0, money as rawMoney, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile, parseLoc, fmtLoc, mapUrl, currentLoc } from './util.js';
+import { esc, num as rawNum, num0 as rawNum0, money as rawMoney, keyLabel, keyShort, todayStr, dayLabel, dateLong, dateShort, shiftDate, weekStart, monthKeyOf, haptic, csvEscape, saveFile, parseLoc, fmtLoc, mapUrl, currentLoc, resetGeoDenied } from './util.js';
 import { buildWorkbook, parseWorkbook } from './xlsx.js';
 import { readCsvEntries, decodeText } from './csv.js';
 import * as lk from './lockui.js';
@@ -27,7 +27,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.18.0';
+const APP_VERSION = '3.18.1';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
 const SCRIPT_LATEST = 11;
 
@@ -202,7 +202,7 @@ function hueStyle(name) {
 function locTag(loc) {
   const l = parseLoc(loc);
   if (!l) return '';
-  return `<span class="row-loc" data-act="map" data-loc="${esc(loc)}" role="link" aria-label="Open the location in Maps">${icon('pin', 12, 2.2)}${esc(l.place || 'Location')}</span>`;
+  return `<span class="row-l"><span class="row-loc" data-act="map" data-loc="${esc(loc)}" role="link" aria-label="Open the location in Maps">${icon('pin', 12, 2.2)}<span class="row-loc-t">${esc(l.place || 'Location')}</span></span></span>`;
 }
 
 function entryRow(e, pending, sel) {
@@ -216,7 +216,7 @@ function entryRow(e, pending, sel) {
   return `<${tag} class="row ${isInc ? 'inc' : 'exp'}${sel && sel.on ? ' selecting' : ''}${sel && sel.ids.has(e.id) ? ' picked' : ''}" ${tag === 'button' ? `data-act="${act}" data-id="${esc(e.id)}"` : ''}>
     ${sel && sel.on ? `<span class="check" aria-hidden="true">${icon('check', 14, 3)}</span>` : ''}
     <span class="bubble" style="${hueStyle(isInc ? 'Income' : e.category)}">${icon(isInc ? 'income' : e.category, 20)}</span>
-    <span class="row-main"><span class="row-t">${seller ? `<span class="row-note">${esc(title)}</span><span class="row-seller">${esc(seller)}</span>` : esc(title)}</span><span class="row-s">${esc(subtitle)}${locTag(e.location)}${pending.has(e.id) ? '<i class="pend" title="Waiting to sync"></i>' : ''}</span></span>
+    <span class="row-main"><span class="row-t">${seller ? `<span class="row-note">${esc(title)}</span><span class="row-seller">${esc(seller)}</span>` : esc(title)}</span><span class="row-s">${esc(subtitle)}${pending.has(e.id) ? '<i class="pend" title="Waiting to sync"></i>' : ''}</span>${locTag(e.location)}</span>
     <span class="row-amt">${isInc ? '+' : '−'}${esc(num(e.amount))}</span>
   </${tag}>`;
 }
@@ -1180,7 +1180,6 @@ function openSheet(id) {
   ui.form = e
     ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description, account: e.account, seller: e.seller || '', location: e.location || '', step: 'details' }
     : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '', account: defaultFormAccount(), seller: '', location: '', locAuto: locCaptureOn(), step: 'amt' };
-  if (!e) startGeo();
   ui.armedDelete = false;
   const body = `<div id="formMain"><div class="seg" id="fType"></div>
       <button class="amt" id="fAmt" data-act="amt-edit" aria-label="Amount"></button>
@@ -1230,27 +1229,18 @@ const quickData = (r) => ({
 });
 
 // ---- location of a purchase -------------------------------------------------------------------------------------
-// A bank SMS brings the place from the iPhone Shortcut; a manual entry asks the phone once when the form opens
-// (never blocking the save: a late answer is added to the entry afterwards, a refusal is simply no location).
+// A bank SMS brings the place from the iPhone Shortcut; a brand-new typed entry asks the phone only when Save is
+// tapped (or "Use my location"), never on opening a form, Quick add or the editor. Saving never waits for the answer.
 const locCaptureOn = () => store.getState().settings.locCapture !== false && !store.isViewer();
-let geoP = null, geoFix = '';
-function startGeo() {
-  if (!locCaptureOn()) { geoP = null; return; }
-  const f = ui.form;
-  geoP = currentLoc(6000).then((l) => {
-    geoFix = l ? fmtLoc(l) : '';
-    if (geoFix && ui.form === f && f.locAuto && !f.location) { f.location = geoFix; if ($('#fMeta')) refreshForm(); }
-    return geoFix;
-  });
-}
-// the location an SMS row came with (from the inbox), else the phone's position for typed rows
+
+// the location an SMS row came with (from the inbox); the phone is never asked for these
 function rowLoc(r) {
   if (r.location) return r.location;
   if (r.source === 'sms') {
     const hit = ((ui.quick && ui.quick.smsLocs) || []).find((m) => m.location && r.raw && String(m.text).includes(r.raw));
     return hit ? hit.location : '';
   }
-  return locCaptureOn() ? geoFix : '';
+  return '';
 }
 function findEntry(id) {
   const v = store.view();
@@ -1363,7 +1353,7 @@ function editQuickRow(i) {
   const r = ui.quick.rows[i];
   if (!r) return;
   ui.quick.current = r;
-  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount(), seller: r.seller || '', showSeller: !!r.seller, autoNote: r.suggested ? r.description : null, location: rowLoc(r), locAuto: r.source !== 'sms' && locCaptureOn(), step: 'details' };
+  ui.form = { id: null, type: r.type, amt: String(r.amount), category: r.type === 'Income' ? '' : r.category, sub: r.type === 'Income' ? '' : r.sub, date: r.date, desc: r.description, account: r.account || defaultFormAccount(), seller: r.seller || '', showSeller: !!r.seller, autoNote: r.suggested ? r.description : null, location: rowLoc(r), locAuto: false, step: 'details' };
   renderSellerField();
   const d = $('#fDesc');
   if (d) d.value = r.description;
@@ -1952,7 +1942,8 @@ function saveForm() {
   else {
     const newId = store.addEntry(data);
     // the phone had not answered yet: add the place to the entry when it does (the save itself never waits)
-    if (!f.location && f.locAuto && geoP) geoP.then((loc) => {
+    if (!f.location && f.locAuto && locCaptureOn()) currentLoc(6000).then((l) => {
+      const loc = l ? fmtLoc(l) : '';
       const e = loc && findEntry(newId);
       if (e && !e.location) store.updateEntry(newId, { ...e, location: loc });
     });
@@ -2395,12 +2386,12 @@ document.addEventListener('click', async (ev) => {
     case 'loc-use': {
       const f = ui.form;
       if (!f) break;
+      resetGeoDenied();
       toast('Finding your location…');
       const l = await currentLoc(10000);
       if (ui.form !== f) break;
       if (!l) { toast('Could not get your location. Check that location is allowed for this app.', 'err'); break; }
       f.location = fmtLoc({ ...l, place: (parseLoc(f.location) || {}).place || '' });
-      geoFix = fmtLoc(l);
       haptic(8);
       refreshForm();
       break;

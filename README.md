@@ -47,9 +47,11 @@ Each entry can remember where it was bought, stored as `place|lat,lon` (either h
 - Bank SMS: `smsAdd` accepts optional `lat` / `lon` (or `latitude` / `longitude`), `place` (or `address`, `name`,
   `street`) and/or one combined `location` string (`"30.04,31.23"`, `"Some place"` or `"place|lat,lon"`). Numbers or
   text both work. Requests without them work exactly as before. The location goes into the logged entry.
-- Manual entries: the app asks the phone for its position when the form opens and never waits for it when saving
-  (a refusal or timeout just means no location). Turn it off in Settings > Location. The entry editor has
-  "Use my location" and a button to remove it. Lists show a pin with the place (or "Location"); tap it for Google Maps.
+- Manual entries: the app asks the phone for its position only when you tap Save on a brand-new typed entry (or
+  "Use my location"), never when a form, Quick add or the editor opens, and never waits for it when saving
+  (a refusal or timeout just means no location). A fix under 3 minutes old is reused, and a refusal stops further asks
+  for that session. Turn it off in Settings > Location. The entry editor has
+  "Use my location" and a button to remove it. Lists show a pin with the place (or "Location") on its own line under the entry; tap it for Google Maps.
 - CSV/Excel export adds a trailing `Location` column only when some entry has one; import reads it when present.
 
 iPhone Shortcut (the existing SMS automation), before the **Get contents of URL** step:
