@@ -178,8 +178,10 @@ body.onboard #topbar { display: none; }
 .row-t:has(.row-seller) { display: flex; align-items: baseline; gap: 7px; }
 .row-note { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .row-seller { flex: 0 10000 auto; min-width: 0; font-size: 12.5px; font-weight: 400; color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row-loc { display: inline-flex; align-items: center; gap: 3px; margin-left: 6px; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; color: var(--muted); text-decoration: underline dotted; cursor: pointer; }
+.row-l { display: flex; min-width: 0; font-size: 12.5px; color: var(--muted); }
+.row-loc { display: inline-flex; align-items: center; gap: 3px; min-width: 0; max-width: 100%; color: var(--muted); cursor: pointer; }
 .row-loc svg { flex: none; }
+.row-loc-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-decoration: underline dotted; }
 .chip.loc-x { padding-left: 8px; padding-right: 8px; margin-left: -4px; }
 .row-s { font-size: 12.5px; color: var(--muted); display: flex; align-items: center; gap: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .row-amt { font-weight: 700; font-size: 15.5px; white-space: nowrap; letter-spacing: -.01em; }

@@ -131,17 +131,39 @@ export function mapUrl(s) {
   return 'https://maps.google.com/?q=' + encodeURIComponent(Number.isFinite(l.lat) ? `${l.lat},${l.lon}` : l.place);
 }
 
-// The phone's position, or null: never throws, never waits longer than `ms`.
-export function currentLoc(ms = 6000) {
+// The phone's position, or null: never throws, never waits longer than `ms`. iPhone home-screen apps ask for
+// permission again on every launch, so ask as rarely as possible: reuse a fix under 3 minutes old (memory +
+// localStorage), never call when the permission is known to be denied, and stop asking for the session after a refusal.
+const GEO_KEY = 'el_geo_fix', GEO_FRESH = 3 * 60 * 1000;
+let geoMem = null, geoDenied = false;
+export function resetGeoDenied() { geoDenied = false; }
+function cachedFix() {
+  const now = Date.now();
+  if (!geoMem) {
+    try { const c = JSON.parse(localStorage.getItem(GEO_KEY) || 'null'); if (c && Number.isFinite(c.lat) && Number.isFinite(c.lon) && Number.isFinite(c.t)) geoMem = c; } catch (e) { /* no storage */ }
+  }
+  return geoMem && now - geoMem.t >= 0 && now - geoMem.t < GEO_FRESH ? { place: '', lat: geoMem.lat, lon: geoMem.lon } : null;
+}
+export async function currentLoc(ms = 6000) {
+  const hit = cachedFix();
+  if (hit) return hit;
+  if (geoDenied || !('geolocation' in navigator)) return null;
+  try {
+    const q = navigator.permissions && navigator.permissions.query ? await navigator.permissions.query({ name: 'geolocation' }) : null;
+    if (q && q.state === 'denied') { geoDenied = true; return null; }
+  } catch (e) { /* not supported: just try */ }
   return new Promise((resolve) => {
-    if (!('geolocation' in navigator)) { resolve(null); return; }
     let done = false;
     const end = (v) => { if (!done) { done = true; clearTimeout(t); resolve(v); } };
     const t = setTimeout(() => end(null), ms + 500);
     try {
       navigator.geolocation.getCurrentPosition(
-        (p) => end({ place: '', lat: p.coords.latitude, lon: p.coords.longitude }),
-        () => end(null),
+        (p) => {
+          geoMem = { lat: p.coords.latitude, lon: p.coords.longitude, t: Date.now() };
+          try { localStorage.setItem(GEO_KEY, JSON.stringify(geoMem)); } catch (e) { /* no storage */ }
+          end({ place: '', lat: geoMem.lat, lon: geoMem.lon });
+        },
+        (err) => { if (err && err.code === 1) geoDenied = true; end(null); },
         { enableHighAccuracy: false, timeout: ms, maximumAge: 120000 });
     } catch (e) { end(null); }
   });
