@@ -193,6 +193,19 @@ input, textarea { font: inherit; color: inherit; font-size: 16px; }
 h1, h2, h3, p { margin: 0; }
 .ic { display: block; flex: none; }
 
+#app {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  overflow: clip;
+  background: var(--bg);
+  --p: 0;
+  transition: background-color .35s ease;
+}
 @media (min-width: 501px) {
   body {
     display: grid;
@@ -200,23 +213,17 @@ h1, h2, h3, p { margin: 0; }
     background: radial-gradient(circle at 50% 15%, color-mix(in srgb, var(--accent) 16%, var(--bg)), var(--bg) 70%);
   }
   #app {
+    position: relative;
+    top: auto;
+    right: auto;
+    bottom: auto;
+    left: auto;
     width: min(430px, 100vw);
     height: min(880px, 95vh);
     border-radius: 42px;
     border: 1px solid var(--line);
     box-shadow: 0 36px 90px -20px rgba(0, 0, 0, .65);
   }
-}
-@media (max-width: 500px) {
-  #app { position: fixed; inset: 0; }
-}
-
-#app {
-  position: relative;
-  overflow: clip;
-  background: var(--bg);
-  --p: 0;
-  transition: background-color .35s ease;
 }
 #app::after {
   content: "";
@@ -402,7 +409,7 @@ h1, h2, h3, p { margin: 0; }
   inset: 0;
   border-radius: inherit;
   opacity: var(--spec-op);
-  background: conic-gradient(from var(--spec-angle),
+  background: conic-gradient(from var(--spec-angle, 45deg),
     rgba(255,255,255,.08) 0deg,
     rgba(34,211,238,.55) 70deg,
     rgba(255,255,255,.35) 120deg,
@@ -1044,7 +1051,7 @@ html[data-concept="obsidian"][data-theme="dark"] .tx-row { background: #121521; 
   <div id="stage">
     <header id="topbar">
       <div class="top-meta">
-        <span class="proto-badge"><i></i>Prototype v1</span>
+        <span class="proto-badge"><i></i>Prototype v2</span>
         <div class="top-actions">
           <button class="theme-btn" id="themeBtn" aria-label="Toggle light or dark mode">🌙 Dark</button>
         </div>
@@ -1519,6 +1526,10 @@ html[data-concept="obsidian"][data-theme="dark"] .tx-row { background: #121521; 
     else if (state.tab === 'activity') renderActivity(view);
     else renderPick(view);
     renderTotbar();
+    requestAnimationFrame(() => {
+      syncSlide($('#conceptBar'), '.ind');
+      syncSlide($('#accBar'), '.chip-ind');
+    });
   }
 
   /* ==================== INTERACTIVE GESTURES & MOTION ==================== */
