@@ -1,0 +1,2029 @@
+<!DOCTYPE html>
+<html lang="en" data-concept="obsidian" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#07080D">
+<title>Expense Log — UI Overhaul Prototype</title>
+<style>
+@property --spec-angle {
+  syntax: "<angle>";
+  initial-value: 0deg;
+  inherits: false;
+}
+@keyframes specSpin {
+  to { --spec-angle: 360deg; }
+}
+@keyframes riseIn {
+  from { opacity: 0; transform: translateY(12px) scale(.985); }
+  to { opacity: 1; transform: none; }
+}
+@keyframes flamePop {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.38) rotate(-8deg); }
+  65% { transform: scale(.92) rotate(5deg); }
+  100% { transform: scale(1) rotate(0deg); }
+}
+@keyframes sparkOut {
+  0% { opacity: 1; transform: translate(-50%, -50%) scale(.4); }
+  100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1.1); }
+}
+@keyframes ringDrain {
+  from { stroke-dashoffset: 0; }
+  to { stroke-dashoffset: 56.55; }
+}
+
+/* ==================== THEME & CONCEPT TOKENS ==================== */
+:root {
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --r-card: 22px;
+  --r-pill: 999px;
+  --spring: cubic-bezier(.34, 1.56, .64, 1);
+  --ease-out: cubic-bezier(.22, 1, .36, 1);
+  --pos: #34D399;
+  --neg: #FB7185;
+  --warn: #FBBF24;
+  --bg: #07080D;
+  --bg-2: #0F111A;
+  --surface: rgba(20, 23, 35, .72);
+  --surface-solid: #141723;
+  --surface-2: rgba(255, 255, 255, .055);
+  --line: rgba(255, 255, 255, .09);
+  --text: #F4F6FB;
+  --muted: #8E95AD;
+  --accent: #6366F1;
+  --accent-2: #22D3EE;
+  --hero-bg: radial-gradient(120% 90% at 100% 0%, rgba(34,211,238,.26), transparent 55%),
+             radial-gradient(100% 80% at 0% 100%, rgba(99,102,241,.42), transparent 60%),
+             linear-gradient(145deg, #13172B 0%, #0D101D 100%);
+  --shadow: 0 18px 44px -18px rgba(0, 0, 0, .65);
+  --glass: rgba(15, 17, 26, .74);
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Inter, system-ui, sans-serif;
+  --grain-op: 0;
+  --spec-op: 1;
+}
+
+/* --- Concept 1: Obsidian Light --- */
+html[data-concept="obsidian"][data-theme="light"] {
+  --bg: #F3F5FA;
+  --bg-2: #FFFFFF;
+  --surface: rgba(255, 255, 255, .82);
+  --surface-solid: #FFFFFF;
+  --surface-2: rgba(15, 23, 42, .045);
+  --line: rgba(15, 23, 42, .08);
+  --text: #0D111F;
+  --muted: #646C84;
+  --accent: #4F46E5;
+  --accent-2: #0891B2;
+  --pos: #10B981;
+  --neg: #E11D48;
+  --hero-bg: radial-gradient(120% 90% at 100% 0%, rgba(34,211,238,.36), transparent 55%),
+             radial-gradient(100% 90% at 0% 100%, rgba(99,102,241,.38), transparent 60%),
+             linear-gradient(145deg, #272B57 0%, #171A38 100%);
+  --shadow: 0 10px 30px -14px rgba(15, 23, 42, .12);
+  --glass: rgba(247, 248, 252, .82);
+}
+
+/* --- Concept 2: Kinetic Neo-Fintech --- */
+html[data-concept="kinetic"] {
+  --r-card: 26px;
+  --spec-op: 0;
+  --accent: #6366F1;
+  --accent-2: #A855F7;
+  --hero-bg: linear-gradient(135deg, #4F46E5 0%, #7C3AED 55%, #9333EA 100%);
+}
+html[data-concept="kinetic"][data-theme="dark"] {
+  --bg: #08090F;
+  --bg-2: #121420;
+  --surface: #131624;
+  --surface-solid: #131624;
+  --surface-2: #1C2033;
+  --line: rgba(255, 255, 255, .08);
+  --text: #F9FAFB;
+  --muted: #939BB4;
+  --glass: rgba(17, 19, 30, .86);
+}
+html[data-concept="kinetic"][data-theme="light"] {
+  --bg: #F4F5F9;
+  --bg-2: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-solid: #FFFFFF;
+  --surface-2: #EEF0F7;
+  --line: rgba(15, 23, 42, .07);
+  --text: #0C0E18;
+  --muted: #656D82;
+  --pos: #059669;
+  --neg: #E11D48;
+  --shadow: 0 12px 32px -16px rgba(15, 23, 42, .14);
+  --glass: rgba(255, 255, 255, .88);
+}
+/* Kinetic Account Adaptive Hero Colors */
+html[data-concept="kinetic"][data-acc="cib"] {
+  --accent: #2563EB; --accent-2: #38BDF8;
+  --hero-bg: linear-gradient(135deg, #1E40AF 0%, #2563EB 55%, #0EA5E9 100%);
+}
+html[data-concept="kinetic"][data-acc="cash"] {
+  --accent: #059669; --accent-2: #34D399;
+  --hero-bg: linear-gradient(135deg, #065F46 0%, #059669 55%, #10B981 100%);
+}
+html[data-concept="kinetic"][data-acc="vf"] {
+  --accent: #E11D48; --accent-2: #F97316;
+  --hero-bg: linear-gradient(135deg, #BE123C 0%, #E11D48 55%, #F97316 100%);
+}
+
+/* --- Concept 3: Precision Editorial Bento --- */
+html[data-concept="editorial"] {
+  --r-card: 18px;
+  --spec-op: 0;
+  --grain-op: .045;
+  --font: "Iowan Old Style", "New York", ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+html[data-concept="editorial"][data-theme="dark"] {
+  --bg: #111215;
+  --bg-2: #191B1F;
+  --surface: #17191D;
+  --surface-solid: #17191D;
+  --surface-2: #21242A;
+  --line: rgba(255, 255, 255, .10);
+  --text: #F2EFE9;
+  --muted: #98948B;
+  --accent: #D97706;
+  --accent-2: #F59E0B;
+  --pos: #4ADE80;
+  --neg: #F87171;
+  --hero-bg: linear-gradient(160deg, #1E2026 0%, #15171B 100%);
+  --shadow: 0 2px 10px rgba(0,0,0,.35);
+  --glass: rgba(23, 25, 29, .9);
+}
+html[data-concept="editorial"][data-theme="light"] {
+  --bg: #FAF8F4;
+  --bg-2: #FFFFFF;
+  --surface: #FFFFFF;
+  --surface-solid: #FFFFFF;
+  --surface-2: #F2EFE8;
+  --line: rgba(24, 24, 27, .10);
+  --text: #18181B;
+  --muted: #6E6A61;
+  --accent: #B45309;
+  --accent-2: #D97706;
+  --pos: #15803D;
+  --neg: #BE123C;
+  --hero-bg: linear-gradient(160deg, #272522 0%, #181715 100%);
+  --shadow: 0 4px 16px -6px rgba(24, 24, 27, .08);
+  --glass: rgba(250, 248, 244, .92);
+}
+
+/* ==================== RESET & PHONE SHELL ==================== */
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: var(--font); }
+body {
+  position: relative;
+  font-size: 15.5px;
+  line-height: 1.38;
+  font-variant-numeric: tabular-nums;
+  overscroll-behavior: none;
+  -webkit-font-smoothing: antialiased;
+  transition: background-color .35s ease, color .25s ease;
+}
+button { font: inherit; color: inherit; border: 0; background: none; padding: 0; cursor: pointer; touch-action: manipulation; }
+input, textarea { font: inherit; color: inherit; font-size: 16px; }
+h1, h2, h3, p { margin: 0; }
+.ic { display: block; flex: none; }
+
+@media (min-width: 501px) {
+  body {
+    display: grid;
+    place-items: center;
+    background: radial-gradient(circle at 50% 15%, color-mix(in srgb, var(--accent) 16%, var(--bg)), var(--bg) 70%);
+  }
+  #app {
+    width: min(430px, 100vw);
+    height: min(880px, 95vh);
+    border-radius: 42px;
+    border: 1px solid var(--line);
+    box-shadow: 0 36px 90px -20px rgba(0, 0, 0, .65);
+  }
+}
+@media (max-width: 500px) {
+  #app { position: fixed; inset: 0; }
+}
+
+#app {
+  position: relative;
+  overflow: clip;
+  background: var(--bg);
+  --p: 0;
+  transition: background-color .35s ease;
+}
+#app::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: var(--grain-op);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+#stage {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg);
+  overflow: hidden;
+  transform-origin: 50% 0;
+  transition: transform .48s cubic-bezier(.32, .72, 0, 1), border-radius .48s cubic-bezier(.32, .72, 0, 1), background-color .35s ease;
+}
+#app.dim #stage {
+  transform: translateY(calc(var(--p) * 12px)) scale(calc(1 - var(--p) * .07));
+  border-radius: calc(var(--p) * 32px);
+}
+#app.dragging #stage, #app.dragging .scrim { transition: none !important; }
+
+/* ==================== TOP CONCEPT PICKER BAR ==================== */
+#topbar {
+  position: relative;
+  z-index: 10;
+  flex: none;
+  padding: calc(var(--safe-t) + 8px) 14px 10px;
+  background: var(--glass);
+  backdrop-filter: blur(20px) saturate(1.6);
+  -webkit-backdrop-filter: blur(20px) saturate(1.6);
+  border-bottom: 1px solid var(--line);
+}
+.top-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.proto-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .02em;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+  color: var(--accent);
+}
+.proto-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pos);
+}
+.top-actions { display: flex; align-items: center; gap: 6px; }
+.theme-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 650;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  transition: transform .15s var(--spring);
+}
+.theme-btn:active { transform: scale(.93); }
+
+/* Sliding pill segment */
+.seg-slide {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  padding: 3px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  isolation: isolate;
+}
+.seg-slide .ind {
+  position: absolute;
+  top: 3px;
+  left: 0;
+  height: calc(100% - 6px);
+  border-radius: 11px;
+  background: var(--surface-solid);
+  border: 1px solid var(--line);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, .14);
+  z-index: 0;
+  transition: transform .42s var(--spring), width .42s var(--spring);
+}
+.seg-slide button {
+  position: relative;
+  z-index: 1;
+  height: 32px;
+  font-size: 12.5px;
+  font-weight: 680;
+  color: var(--muted);
+  border-radius: 11px;
+  transition: color .2s;
+  white-space: nowrap;
+}
+.seg-slide button.on { color: var(--text); }
+
+/* ==================== MAIN SCROLLABLE VIEW ==================== */
+#view {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-y: contain;
+  padding: 12px 14px calc(92px + var(--safe-b));
+  scrollbar-width: none;
+}
+#view::-webkit-scrollbar { display: none; }
+.tab-panel { animation: riseIn .34s var(--ease-out) both; }
+
+/* ==================== ACCOUNT CHIPS ==================== */
+.chips {
+  display: flex;
+  gap: 7px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 2px 0 10px;
+  position: relative;
+  isolation: isolate;
+}
+.chips::-webkit-scrollbar { display: none; }
+.chip-ind {
+  position: absolute;
+  top: 2px;
+  left: 0;
+  border-radius: 999px;
+  background: var(--text);
+  z-index: 0;
+  transition: transform .4s var(--spring), width .4s var(--spring);
+  pointer-events: none;
+}
+.chip {
+  position: relative;
+  z-index: 1;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 13px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--muted);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  transition: color .2s, transform .15s var(--spring), background .2s;
+}
+.chip:active { transform: scale(.94); }
+.chip.on { color: var(--bg); background: var(--text); border-color: transparent; }
+.chips.has-ind .chip.on { background: transparent; border-color: transparent; }
+
+/* ==================== HERO CARD + SPECULAR RIM + ODOMETER ==================== */
+.hero-wrap {
+  position: relative;
+  border-radius: calc(var(--r-card) + 4px);
+  padding: 1px;
+  margin-bottom: 12px;
+}
+.hero-wrap::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: var(--spec-op);
+  background: conic-gradient(from var(--spec-angle),
+    rgba(255,255,255,.08) 0deg,
+    rgba(34,211,238,.55) 70deg,
+    rgba(255,255,255,.35) 120deg,
+    rgba(99,102,241,.45) 210deg,
+    rgba(255,255,255,.08) 360deg);
+  animation: specSpin 9s linear infinite;
+  pointer-events: none;
+}
+.hero {
+  position: relative;
+  overflow: hidden;
+  border-radius: calc(var(--r-card) + 3px);
+  padding: 20px 18px 16px;
+  color: #fff;
+  background: var(--hero-bg);
+  box-shadow: var(--shadow), inset 0 1px 0 rgba(255, 255, 255, .2);
+  transition: background .45s ease;
+}
+.hero-glare {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(240px circle at var(--gx, 50%) var(--gy, 20%), rgba(255,255,255,.22), transparent 65%);
+  transition: opacity .35s ease;
+}
+.hero.glare-on .hero-glare { opacity: 1; }
+.hero > *:not(.hero-glare) { position: relative; z-index: 1; }
+.hero-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.hero-label {
+  font-size: 11.5px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  opacity: .76;
+}
+.hero-priv-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 650;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .14);
+  border: 1px solid rgba(255, 255, 255, .16);
+}
+.hero-amt {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  margin: 8px 0 3px;
+  font-size: 40px;
+  font-weight: 780;
+  letter-spacing: -.035em;
+  line-height: 1.08;
+  cursor: pointer;
+  user-select: none;
+}
+html[data-concept="kinetic"] .hero-amt { font-size: 44px; font-weight: 840; }
+html[data-concept="editorial"] .hero-amt { font-size: 38px; font-weight: 700; letter-spacing: -.025em; }
+.hero-amt .cur { font-size: 17px; font-weight: 650; opacity: .78; }
+.hero-sub { font-size: 12.5px; opacity: .76; }
+.hero-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+  margin-top: 15px;
+}
+.mini {
+  position: relative;
+  text-align: left;
+  padding: 11px 13px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, .12);
+  border: 1px solid rgba(255, 255, 255, .16);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition: transform .18s var(--spring), background .2s;
+}
+.mini:active { transform: scale(.96); }
+.mini span { display: flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 650; opacity: .84; }
+.mini b { display: block; font-size: 17px; font-weight: 740; margin-top: 3px; }
+.mini::after {
+  content: "";
+  position: absolute;
+  right: 12px;
+  top: 14px;
+  width: 6px;
+  height: 6px;
+  border-right: 1.8px solid rgba(255,255,255,.7);
+  border-top: 1.8px solid rgba(255,255,255,.7);
+  transform: rotate(45deg);
+}
+.meter { height: 5px; border-radius: 99px; background: rgba(255, 255, 255, .18); margin-top: 13px; overflow: hidden; }
+.meter i { display: block; height: 100%; border-radius: 99px; background: linear-gradient(90deg, #fff, rgba(255, 255, 255, .72)); transition: width .65s var(--ease-out); }
+.meter-cap { font-size: 11.5px; opacity: .74; margin-top: 6px; }
+
+/* Rolling Odometer Digits */
+.odo { display: inline-flex; align-items: baseline; }
+.odo-slot {
+  display: inline-block;
+  height: 1.12em;
+  overflow: hidden;
+  vertical-align: bottom;
+}
+.odo-col {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.12em;
+  transition: transform .62s cubic-bezier(.22, 1.2, .36, 1);
+  will-change: transform;
+}
+.odo-col span { height: 1.12em; display: block; text-align: center; }
+.odo-sep { display: inline-block; }
+.odo-dec { font-size: .56em; opacity: .78; font-weight: 650; }
+.priv-blur { filter: blur(9px); opacity: .75; transition: filter .25s ease; }
+
+/* ==================== CARDS & BENTO GRID ==================== */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 14px 15px;
+  margin-bottom: 12px;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.card.flush { padding: 4px 8px; }
+.card-h { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.card-h h3 { font-size: 15.5px; font-weight: 720; letter-spacing: -.01em; }
+.muted { color: var(--muted); }
+.sm { font-size: 12.5px; }
+.link { color: var(--accent); font-size: 13px; font-weight: 680; }
+
+/* ==================== TOUCH-SCRUBBABLE SPLINE CHART ==================== */
+.chart-box {
+  position: relative;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  margin-top: 4px;
+}
+.chart-svg { width: 100%; height: 128px; display: block; overflow: visible; }
+.chart-readout {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12.5px;
+  margin-bottom: 6px;
+}
+.chart-readout b { font-weight: 740; color: var(--text); }
+.chart-pill {
+  font-size: 11.5px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--pos) 16%, transparent);
+  color: var(--pos);
+}
+.chart-pill.over {
+  background: color-mix(in srgb, var(--neg) 16%, transparent);
+  color: var(--neg);
+}
+.chart-legend {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+/* ==================== BENTO ROW (STREAK + SUBSCRIPTION) ==================== */
+.bento {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.bento-tile {
+  position: relative;
+  text-align: left;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-card);
+  padding: 13px 14px;
+  box-shadow: var(--shadow);
+  overflow: hidden;
+  transition: transform .18s var(--spring);
+}
+.bento-tile:active { transform: scale(.96); }
+.bento-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.flame-box {
+  position: relative;
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  color: #F97316;
+  background: rgba(249, 115, 22, .16);
+}
+.flame-box.pop svg { animation: flamePop .55s var(--spring); }
+.spark-dot {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #FBBF24;
+  animation: sparkOut .55s ease-out forwards;
+  pointer-events: none;
+}
+.sub-badge {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 14px;
+  color: #fff;
+  background: linear-gradient(135deg, #D97757, #B45309);
+}
+.bento-tile b { display: block; font-size: 15px; font-weight: 740; }
+.bento-tile small { display: block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+
+/* ==================== SWIPEABLE TRANSACTION ROWS ==================== */
+.tx-wrap {
+  position: relative;
+  overflow: hidden;
+  border-radius: 14px;
+  transition: max-height .32s ease, opacity .26s ease, margin .32s ease;
+  max-height: 110px;
+}
+.tx-wrap + .tx-wrap { border-top: 1px solid var(--line); border-radius: 0; }
+.tx-wrap.collapsing { max-height: 0 !important; opacity: 0; border-top-color: transparent; }
+.tx-wrap.entering { animation: riseIn .35s var(--spring) both; }
+.tx-actions {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  right: 2px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding-right: 4px;
+}
+.tx-act-btn {
+  height: 100%;
+  min-width: 64px;
+  padding: 0 10px;
+  border-radius: 12px;
+  font-size: 11.5px;
+  font-weight: 720;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+}
+.tx-act-btn.dup { background: var(--accent); }
+.tx-act-btn.del { background: var(--neg); }
+
+.tx-row {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 10px 6px;
+  background: var(--surface-solid);
+  touch-action: pan-y;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: transform .36s var(--spring), background .18s;
+  will-change: transform;
+}
+html[data-concept="obsidian"][data-theme="dark"] .tx-row { background: #121521; }
+.tx-row.dragging { transition: none !important; }
+.tx-row.picked { background: color-mix(in srgb, var(--accent) 14%, var(--surface-solid)); }
+.tx-check {
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: transparent;
+  transition: all .18s var(--spring);
+}
+.tx-row.picked .tx-check {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  transform: scale(1.06);
+}
+.bubble {
+  width: 40px;
+  height: 40px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  flex: none;
+  color: hsl(var(--h, 240) 80% 66%);
+  background: hsl(var(--h, 240) 80% 58% / .16);
+}
+.tx-main { flex: 1; min-width: 0; }
+.tx-title { font-size: 14.5px; font-weight: 660; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tx-seller { font-size: 12px; font-weight: 450; color: var(--muted); margin-left: 5px; }
+.tx-sub { font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 1px; }
+.tx-amt { font-size: 15px; font-weight: 740; white-space: nowrap; }
+.tx-amt.inc { color: var(--pos); }
+
+/* ==================== ACTIVITY SEARCH & BULK BAR ==================== */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 44px;
+  padding: 0 12px;
+  border-radius: 15px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  margin-bottom: 9px;
+}
+.search-bar input { flex: 1; min-width: 0; border: 0; outline: 0; background: none; font-size: 16px; }
+.scope-pills { display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.scope-pills .sel-btn { margin-left: auto; }
+.section-lbl {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  color: var(--muted);
+  padding: 8px 4px 6px;
+}
+
+#totbar {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(74px + var(--safe-b) + 8px);
+  z-index: 25;
+  padding: 10px 12px;
+  border-radius: 20px;
+  background: var(--glass);
+  backdrop-filter: blur(22px) saturate(1.7);
+  -webkit-backdrop-filter: blur(22px) saturate(1.7);
+  border: 1px solid var(--line);
+  box-shadow: 0 16px 38px -12px rgba(0, 0, 0, .5);
+  display: none;
+  flex-direction: column;
+  gap: 8px;
+}
+#totbar.on { display: flex; animation: riseIn .26s var(--spring) both; }
+.tb-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tb-sum { font-size: 18px; font-weight: 800; }
+.tb-actions { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tb-actions .chip { height: 30px; padding: 0 11px; font-size: 12px; }
+.chip.danger-soft { color: var(--neg); border-color: color-mix(in srgb, var(--neg) 32%, transparent); background: color-mix(in srgb, var(--neg) 12%, transparent); }
+
+/* ==================== FLOATING CAPSULE TAB BAR ==================== */
+#tabbar {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: calc(10px + var(--safe-b));
+  z-index: 15;
+  height: 62px;
+  display: grid;
+  grid-template-columns: 1fr 1fr 64px 1fr;
+  align-items: center;
+  padding: 0 8px;
+  border-radius: 24px;
+  background: var(--glass);
+  backdrop-filter: blur(24px) saturate(1.7);
+  -webkit-backdrop-filter: blur(24px) saturate(1.7);
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, .45);
+}
+.tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  font-size: 11px;
+  font-weight: 660;
+  color: var(--muted);
+  padding: 6px 0;
+  transition: color .2s, transform .2s var(--spring);
+}
+.tab.on { color: var(--accent); transform: translateY(-1px); }
+.fab {
+  width: 54px;
+  height: 54px;
+  border-radius: 19px;
+  margin: -18px auto 0;
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 14px 28px -8px color-mix(in srgb, var(--accent) 75%, transparent), inset 0 1px 0 rgba(255,255,255,.32);
+  transition: transform .22s var(--spring);
+}
+.fab:active { transform: scale(.9) rotate(90deg); }
+
+/* ==================== SPRING BOTTOM SHEET + KEYPAD MATH ==================== */
+#layer { position: absolute; inset: 0; z-index: 40; pointer-events: none; }
+#layer.open { pointer-events: auto; }
+.scrim { position: absolute; inset: 0; background: rgba(0, 0, 0, .5); opacity: 0; transition: opacity .38s ease; }
+.sheet {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: max(8px, var(--safe-b));
+  max-height: calc(100% - var(--safe-t) - 18px - max(8px, var(--safe-b)));
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-2);
+  border-radius: 32px;
+  border: 1px solid var(--line);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .5);
+  overflow: hidden;
+  will-change: transform;
+  transform: translateY(115%);
+}
+.sheet-top { flex: none; touch-action: none; cursor: grab; padding: 8px 16px 6px; }
+.grab { width: 38px; height: 5px; border-radius: 99px; background: color-mix(in srgb, var(--muted) 45%, transparent); margin: 0 auto 8px; }
+.sheet-h { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; }
+.sheet-h h2 { text-align: center; font-size: 16.5px; font-weight: 740; }
+.circle-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+}
+.sheet-body { flex: 1; min-height: 0; overflow-y: auto; padding: 4px 16px 16px; scrollbar-width: none; }
+.sheet-body::-webkit-scrollbar { display: none; }
+
+.amt-stage {
+  text-align: center;
+  padding: 8px 12px;
+  border-radius: 20px;
+  transition: all .36s var(--spring);
+}
+.amt-expr { font-size: 13px; font-weight: 650; color: var(--accent); min-height: 18px; }
+.amt-display {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 6px;
+  font-size: 50px;
+  font-weight: 800;
+  letter-spacing: -.035em;
+  view-transition-name: entry-amount;
+}
+.amt-display.compact {
+  font-size: 30px;
+  padding: 8px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 16px;
+  width: 100%;
+  justify-content: space-between;
+}
+.keypad-math {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 7px;
+  margin-top: 10px;
+}
+.kbtn {
+  height: 50px;
+  border-radius: 15px;
+  font-size: 20px;
+  font-weight: 640;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  transition: transform .12s var(--spring), background .15s;
+}
+.kbtn:active { transform: scale(.92); background: var(--surface-2); }
+.kbtn.op { color: var(--accent); font-weight: 760; background: color-mix(in srgb, var(--accent) 12%, var(--surface)); }
+.kbtn.go { color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: 0; }
+.primary-btn {
+  width: 100%;
+  height: 50px;
+  margin-top: 12px;
+  border-radius: 16px;
+  font-size: 16px;
+  font-weight: 740;
+  color: #fff;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 10px 26px -8px color-mix(in srgb, var(--accent) 65%, transparent);
+  transition: transform .15s var(--spring);
+}
+.primary-btn:active { transform: scale(.97); }
+.field-in {
+  width: 100%;
+  height: 46px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  outline: 0;
+  margin-top: 10px;
+}
+.field-in:focus { border-color: var(--accent); }
+
+/* ==================== 3D FLIP BREAKDOWN MODAL ==================== */
+#flip {
+  position: absolute;
+  inset: 0;
+  z-index: 45;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  perspective: 1400px;
+}
+#flip.open { pointer-events: auto; }
+.flip-scrim { position: absolute; inset: 0; background: rgba(0,0,0,.5); opacity: 0; transition: opacity .35s ease; }
+#flip.shown .flip-scrim { opacity: 1; }
+.flip-card {
+  position: relative;
+  width: min(356px, calc(100% - 28px));
+  max-height: 78%;
+  transform-style: preserve-3d;
+}
+.flip-front, .flip-back {
+  border-radius: 26px;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.flip-front {
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  padding: 18px;
+  box-shadow: 0 28px 70px -18px rgba(0,0,0,.65);
+  overflow-y: auto;
+}
+.flip-back {
+  position: absolute;
+  inset: 0;
+  transform: rotateY(180deg);
+  background: var(--hero-bg);
+  border: 1px solid rgba(255,255,255,.22);
+}
+
+/* ==================== SONNER STACKED TOASTS ==================== */
+#toasts {
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: calc(82px + var(--safe-b));
+  z-index: 60;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 8px;
+  pointer-events: none;
+}
+.toast-item {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px 10px 14px;
+  border-radius: 16px;
+  background: var(--text);
+  color: var(--bg);
+  font-size: 13.5px;
+  font-weight: 650;
+  box-shadow: 0 14px 32px rgba(0,0,0,.35);
+  animation: riseIn .28s var(--spring) both;
+}
+.toast-item span { flex: 1; }
+.toast-undo {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 16%, transparent);
+  font-weight: 760;
+  font-size: 12.5px;
+}
+
+/* ==================== PICK TAB (DIRECTION SELECTOR) ==================== */
+.pick-group { display: grid; gap: 7px; margin-bottom: 12px; }
+.pick-opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 13px;
+  border-radius: 15px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  text-align: left;
+  transition: border-color .2s, background .2s;
+}
+.pick-opt.on {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 14%, var(--surface-2));
+}
+.pick-radio {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid var(--muted);
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.pick-opt.on .pick-radio { border-color: var(--accent); }
+.pick-opt.on .pick-radio::after { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+.pick-opt b { display: block; font-size: 14px; }
+.pick-opt small { display: block; font-size: 12px; color: var(--muted); }
+.feat-grid { display: flex; flex-wrap: wrap; gap: 7px; }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="stage">
+    <header id="topbar">
+      <div class="top-meta">
+        <span class="proto-badge"><i></i>Prototype v1</span>
+        <div class="top-actions">
+          <button class="theme-btn" id="themeBtn" aria-label="Toggle light or dark mode">🌙 Dark</button>
+        </div>
+      </div>
+      <div class="seg-slide" id="conceptBar" role="tablist" aria-label="Design concepts">
+        <i class="ind" aria-hidden="true"></i>
+        <button class="on" data-concept="obsidian">1 · Obsidian</button>
+        <button data-concept="kinetic">2 · Kinetic</button>
+        <button data-concept="editorial">3 · Editorial</button>
+      </div>
+    </header>
+
+    <main id="view"></main>
+
+    <div id="totbar" role="region" aria-label="Bulk actions"></div>
+
+    <nav id="tabbar" aria-label="Primary navigation">
+      <button class="tab on" data-tab="home"></button>
+      <button class="tab" data-tab="activity"></button>
+      <button class="fab" id="fabBtn" aria-label="Add transaction"></button>
+      <button class="tab" data-tab="pick"></button>
+    </nav>
+  </div>
+
+  <div id="layer"></div>
+  <div id="flip"></div>
+  <div id="toasts" aria-live="polite"></div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ==================== ICONS ==================== */
+  const ICONS = {
+    home: 'M4 11l8-7 8 7v9a1 1 0 0 1-1 1h-4v-6H9v6H5a1 1 0 0 1-1-1z',
+    activity: 'M8 6h12M8 12h12M8 18h12M4 6h.01M4 12h.01M4 18h.01',
+    pick: 'M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z',
+    plus: 'M12 5v14M5 12h14',
+    close: 'M6 6l12 12M18 6L6 18',
+    check: 'M5 12.5l4.5 4.5L19 7.5',
+    trash: 'M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3',
+    copy: 'M9 9h10v11H9zM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1',
+    search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM20 20l-4-4',
+    flame: 'M12 21c3.9 0 6.5-2.6 6.5-6.2 0-2.5-1.3-4.4-2.7-6C14.6 7.4 13.5 5.8 13 3c-3 1.8-5.5 4.7-5.5 8.2 0 .9.2 1.6.5 2.3.4-.9 1-1.5 1.8-1.9-.1 1.8.4 2.8 1.2 3.7.5.6.7 1.2.5 2-.6-.2-1.1-.6-1.4-1.1C8 17 8 19 12 21z',
+    eye: 'M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z',
+    back: 'M15 6l-6 6 6 6',
+    del: 'M9 5h11v14H9l-6-7zM12.5 9.5l5 5M17.5 9.5l-5 5',
+    food: 'M7 3v7a2 2 0 0 0 4 0V3M9 3v18M17 3c-2.2 1.2-3 3.6-3 6.5V13h3v8',
+    transport: 'M5 17l1.4-5.2A2 2 0 0 1 8.3 10.3h7.4a2 2 0 0 1 1.9 1.5L19 17M3.5 17h17v3h-17z',
+    subscriptions: 'M17 2.5l3 3-3 3M20 5.5H8a4 4 0 0 0-4 4V11M7 21.5l-3-3 3-3M4 18.5h12a4 4 0 0 0 4-4V13',
+    shopping: 'M5 8h14l-1 12H6zM9 8V6.5a3 3 0 0 1 6 0V8',
+    bills: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
+    health: 'M12 20s-7-4.4-7-10a4 4 0 0 1 7-2.6A4 4 0 0 1 19 10c0 5.6-7 10-7 10z',
+    income: 'M12 4v11M7.5 10.5L12 15l4.5-4.5M5 20h14'
+  };
+  const CAT_HUES = { Food: 32, Transport: 210, Subscriptions: 270, Shopping: 330, Bills: 190, Health: 152, Income: 152 };
+  const ic = (name, size = 19, sw = 1.9) =>
+    `<svg class="ic" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="${sw}" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${ICONS[name] || ICONS.pick}"/></svg>`;
+  const esc = (s) => String(s || '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  /* ==================== SAMPLE REALISTIC EGP DATA ==================== */
+  const ACCOUNTS = [
+    { id: 'all', label: 'All', limit: 25000 },
+    { id: 'cib', label: 'CIB Card', limit: 20000 },
+    { id: 'cash', label: 'Cash', limit: 4500 },
+    { id: 'vf', label: 'VF Cash', limit: 3500 }
+  ];
+
+  let nextId = 100;
+  let entries = [
+    { id: 'e1', month: '2026-11', date: '2026-11-24', desc: 'Fuel - Haval', seller: 'Mobil Chillout', cat: 'Transport', sub: 'Fuel', acc: 'cib', type: 'Expense', amount: 890 },
+    { id: 'e2', month: '2026-11', date: '2026-11-23', desc: 'Flat White & Croissant', seller: 'Starbucks', cat: 'Food', sub: 'Coffee', acc: 'cib', type: 'Expense', amount: 245 },
+    { id: 'e3', month: '2026-11', date: '2026-11-22', desc: 'Claude AI Pro', seller: 'Anthropic', cat: 'Subscriptions', sub: 'Claude AI', acc: 'cib', type: 'Expense', amount: 985 },
+    { id: 'e4', month: '2026-11', date: '2026-11-21', desc: 'Weekly Groceries', seller: 'Carrefour', cat: 'Food', sub: 'Groceries', acc: 'cash', type: 'Expense', amount: 1460 },
+    { id: 'e5', month: '2026-11', date: '2026-11-20', desc: 'November Salary', seller: 'Payroll', cat: 'Income', sub: 'Income', acc: 'cib', type: 'Income', amount: 34000 },
+    { id: 'e6', month: '2026-11', date: '2026-11-18', desc: 'Fiber Internet', seller: 'WE Telecom', cat: 'Bills', sub: 'Internet', acc: 'vf', type: 'Expense', amount: 520 },
+    { id: 'e7', month: '2026-11', date: '2026-11-15', desc: 'Fuel - Verna', seller: 'Wataniya', cat: 'Transport', sub: 'Fuel', acc: 'cash', type: 'Expense', amount: 420 },
+    { id: 'e8', month: '2026-11', date: '2026-11-12', desc: 'Pharmacy & Vitamins', seller: 'El Ezaby', cat: 'Health', sub: 'Pharmacy', acc: 'cib', type: 'Expense', amount: 615 },
+    { id: 'e9', month: '2026-11', date: '2026-11-08', desc: 'Desk Organizer', seller: 'IKEA Cairo', cat: 'Shopping', sub: 'Household', acc: 'cib', type: 'Expense', amount: 1850 },
+    // Earlier months for cross-month search demo
+    { id: 'e10', month: '2026-10', date: '2026-10-27', desc: 'Fuel - Haval', seller: 'Mobil New Cairo', cat: 'Transport', sub: 'Fuel', acc: 'cib', type: 'Expense', amount: 910 },
+    { id: 'e11', month: '2026-10', date: '2026-10-22', desc: 'Claude AI Pro', seller: 'Anthropic', cat: 'Subscriptions', sub: 'Claude AI', acc: 'cib', type: 'Expense', amount: 980 },
+    { id: 'e12', month: '2026-10', date: '2026-10-14', desc: 'Carrefour Hyper', seller: 'Carrefour', cat: 'Food', sub: 'Groceries', acc: 'cib', type: 'Expense', amount: 2180 },
+    { id: 'e13', month: '2026-09', date: '2026-09-19', desc: 'IKEA Storage Boxes', seller: 'IKEA Cairo', cat: 'Shopping', sub: 'Household', acc: 'cib', type: 'Expense', amount: 1340 }
+  ];
+
+  // Daily cumulative spend series (Nov 1..24) + Oct baseline
+  const NOV_CURVE = [620, 940, 1410, 1680, 2240, 2890, 3420, 5270, 5610, 6190, 6840, 7455, 8110, 8640, 9060, 9820, 10340, 10860, 11520, 12180, 13640, 14625, 14870, 15760];
+  const OCT_CURVE = [700, 1150, 1800, 2400, 3100, 3850, 4600, 5400, 6250, 7100, 7950, 8800, 9600, 10300, 11100, 11900, 12700, 13500, 14200, 15000, 15800, 16600, 17350, 18100];
+
+  /* ==================== APP STATE ==================== */
+  const state = {
+    concept: 'obsidian',
+    theme: 'dark',
+    tab: 'home',
+    acc: 'all',
+    privacy: false,
+    streak: 9,
+    subPaid: false,
+    search: '',
+    searchAllMonths: false,
+    selOn: false,
+    selIds: new Set(),
+    scrubDay: null,
+    sheetOpen: false,
+    sheetStep: 'amt',
+    form: { type: 'Expense', expr: '', amt: 0, cat: 'Food', acc: 'cib', note: '' },
+    pick: {
+      concept: '1 · Obsidian Specular',
+      arch: 'Path A · Zero-Build ESM',
+      features: new Set(['Rolling Odometer Digits', 'Touch-Scrub Spend Curve', 'Swipe-Left Row Actions', 'Sonner Countdown Toasts', 'Keypad Math + Step Morph', 'Cross-Month Search'])
+    }
+  };
+
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => [...r.querySelectorAll(s)];
+  const fmtNum = (n) => Math.round(n).toLocaleString('en-US');
+
+  /* ==================== THEME & STATUS BAR SYNC ==================== */
+  const THEME_HEX = {
+    'obsidian-dark': '#07080D', 'obsidian-light': '#F3F5FA',
+    'kinetic-dark': '#08090F', 'kinetic-light': '#F4F5F9',
+    'editorial-dark': '#111215', 'editorial-light': '#FAF8F4'
+  };
+  function paintTheme(dimP = 0) {
+    const html = document.documentElement;
+    html.setAttribute('data-concept', state.concept);
+    html.setAttribute('data-theme', state.theme);
+    html.setAttribute('data-acc', state.acc);
+    const hex = (THEME_HEX[`${state.concept}-${state.theme}`] || '#07080D').replace('#', '');
+    const k = 1 - 0.5 * Math.max(0, Math.min(1, dimP));
+    const c = '#' + [0, 2, 4].map((i) => Math.round(parseInt(hex.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
+    $('meta[name="theme-color"]').setAttribute('content', c);
+  }
+
+  /* ==================== ROLLING ODOMETER DIGITS ==================== */
+  function renderOdo(el, value, withDecimals = false) {
+    if (!el) return;
+    if (state.privacy) {
+      el.innerHTML = `<span class="priv-blur">••••••</span>`;
+      return;
+    }
+    const formatted = withDecimals
+      ? Number(value || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+      : fmtNum(Math.abs(value || 0));
+    const sign = value < 0 ? '−' : '';
+    const [intPart, decPart] = formatted.split('.');
+    let html = `<span class="odo">`;
+    if (sign) html += `<span class="odo-sep">${sign}</span>`;
+    let slotIdx = 0;
+    const renderChars = (str, cls = '') => {
+      for (const ch of str) {
+        if (/\d/.test(ch)) {
+          const d = Number(ch);
+          const delay = slotIdx * 18;
+          slotIdx++;
+          html += `<span class="odo-slot ${cls}"><span class="odo-col" data-target="${d}" style="transform:translateY(0%);transition-delay:${delay}ms">${[0,1,2,3,4,5,6,7,8,9].map((n) => `<span>${n}</span>`).join('')}</span></span>`;
+        } else {
+          html += `<span class="odo-sep ${cls}">${ch}</span>`;
+        }
+      }
+    };
+    renderChars(intPart);
+    if (decPart !== undefined) {
+      html += `<span class="odo-sep odo-dec">.</span>`;
+      renderChars(decPart, 'odo-dec');
+    }
+    html += `</span>`;
+    el.innerHTML = html;
+    requestAnimationFrame(() => {
+      $$('.odo-col', el).forEach((col) => {
+        col.style.transform = `translateY(-${Number(col.dataset.target) * 10}%)`;
+      });
+    });
+  }
+
+  /* ==================== SLIDING INDICATOR HELPER ==================== */
+  function syncSlide(container, indSel = '.ind') {
+    if (!container) return;
+    const on = container.querySelector('.on');
+    const ind = container.querySelector(indSel);
+    if (!on || !ind) return;
+    ind.style.width = on.offsetWidth + 'px';
+    ind.style.height = on.offsetHeight + 'px';
+    ind.style.transform = `translateX(${on.offsetLeft}px)`;
+  }
+
+  /* ==================== ACCOUNT TOTALS ==================== */
+  function accountStats() {
+    const nov = entries.filter((e) => e.month === '2026-11' && (state.acc === 'all' || e.acc === state.acc));
+    const spent = nov.filter((e) => e.type === 'Expense').reduce((s, e) => s + e.amount, 0);
+    const income = nov.filter((e) => e.type === 'Income').reduce((s, e) => s + e.amount, 0);
+    const accObj = ACCOUNTS.find((a) => a.id === state.acc) || ACCOUNTS[0];
+    const limit = accObj.limit;
+    const avail = state.acc === 'cash' ? Math.max(0, limit - spent) : (income - spent);
+    return { nov, spent, income, limit, avail, accObj };
+  }
+
+  /* ==================== BUILD SPLINE PATH ==================== */
+  function buildSpline(vals, w, h, maxV) {
+    const pts = vals.map((v, i) => [
+      (i / (vals.length - 1)) * w,
+      h - Math.max(4, Math.min(h - 6, (v / maxV) * (h - 14)))
+    ]);
+    let d = `M ${pts[0][0].toFixed(1)} ${pts[0][1].toFixed(1)}`;
+    for (let i = 1; i < pts.length; i++) {
+      const [x0, y0] = pts[i - 1];
+      const [x1, y1] = pts[i];
+      const cx = ((x0 + x1) / 2).toFixed(1);
+      d += ` C ${cx} ${y0.toFixed(1)}, ${cx} ${y1.toFixed(1)}, ${x1.toFixed(1)} ${y1.toFixed(1)}`;
+    }
+    const area = `${d} L ${w} ${h} L 0 ${h} Z`;
+    return { d, area, pts };
+  }
+
+  /* ==================== RENDER ROW WITH SWIPE ACTIONS ==================== */
+  function rowHTML(e) {
+    const isInc = e.type === 'Income';
+    const picked = state.selIds.has(e.id);
+    const hue = CAT_HUES[e.cat] || 240;
+    const iconName = isInc ? 'income' : e.cat.toLowerCase();
+    return `<div class="tx-wrap" data-id="${e.id}">
+      <div class="tx-actions">
+        <button class="tx-act-btn dup" data-act="dup" data-id="${e.id}">${ic('copy', 15)}<span>Copy</span></button>
+        <button class="tx-act-btn del" data-act="del" data-id="${e.id}">${ic('trash', 15)}<span>Delete</span></button>
+      </div>
+      <div class="tx-row ${picked ? 'picked' : ''}" data-row-id="${e.id}">
+        ${state.selOn ? `<span class="tx-check">${ic('check', 13, 2.8)}</span>` : ''}
+        <span class="bubble" style="--h:${hue}">${ic(iconName, 19)}</span>
+        <div class="tx-main">
+          <div class="tx-title">${esc(e.desc)}${e.seller ? `<span class="tx-seller">${esc(e.seller)}</span>` : ''}</div>
+          <div class="tx-sub">${esc(e.cat)} · ${esc(e.acc.toUpperCase())} · ${esc(e.date.slice(5))}</div>
+        </div>
+        <span class="tx-amt ${isInc ? 'inc' : ''}">${state.privacy ? '••••' : `${isInc ? '+' : '−'}${fmtNum(e.amount)}`}</span>
+      </div>
+    </div>`;
+  }
+
+  /* ==================== TAB RENDERERS ==================== */
+  function renderHome(view) {
+    const st = accountStats();
+    const scale = state.acc === 'all' ? 1 : state.acc === 'cib' ? 0.72 : state.acc === 'cash' ? 0.22 : 0.14;
+    const novScaled = NOV_CURVE.map((v, i) => i === NOV_CURVE.length - 1 ? st.spent : Math.round(v * scale));
+    const octScaled = OCT_CURVE.map((v) => Math.round(v * scale));
+    const maxV = Math.max(st.limit, ...novScaled, ...octScaled) * 1.05;
+    const W = 320, H = 112;
+    const spNov = buildSpline(novScaled, W, H, maxV);
+    const spOct = buildSpline(octScaled, W, H, maxV);
+    const budgetY = (H - Math.max(4, Math.min(H - 6, (st.limit / maxV) * (H - 14)))).toFixed(1);
+    const curIdx = state.scrubDay !== null ? state.scrubDay : novScaled.length - 1;
+    const curVal = novScaled[curIdx];
+    const octVal = octScaled[curIdx];
+    const diff = octVal - curVal;
+    const pct = Math.min(100, Math.round((st.spent / (st.limit || 1)) * 100));
+
+    view.innerHTML = `<div class="tab-panel">
+      <div class="chips has-ind" id="accBar" role="tablist">
+        <i class="chip-ind" aria-hidden="true"></i>
+        ${ACCOUNTS.map((a) => `<button class="chip ${state.acc === a.id ? 'on' : ''}" data-acc="${a.id}">${esc(a.label)}</button>`).join('')}
+      </div>
+
+      <div class="hero-wrap">
+        <section class="hero" id="heroCard">
+          <div class="hero-glare"></div>
+          <div class="hero-top">
+            <span class="hero-label">${esc(st.accObj.label)} · ${state.acc === 'cash' ? 'Cash on hand' : 'Available balance'}</span>
+            <button class="hero-priv-pill" data-act="toggle-priv">${ic('eye', 13)}<span>${state.privacy ? 'Show' : 'Hide'}</span></button>
+          </div>
+          <div class="hero-amt" data-act="toggle-priv" role="button" tabindex="0">
+            <span class="cur">EGP</span><span id="heroOdo"></span>
+          </div>
+          <div class="hero-sub">Nov 2026 · ${pct}% of ${fmtNum(st.limit)} EGP limit</div>
+          <div class="hero-row">
+            <button class="mini" data-act="flip" data-kind="income">
+              <span>Income</span>
+              <b>${state.privacy ? '••••' : 'EGP ' + fmtNum(st.income)}</b>
+            </button>
+            <button class="mini" data-act="flip" data-kind="spent">
+              <span>Spent</span>
+              <b>${state.privacy ? '••••' : 'EGP ' + fmtNum(st.spent)}</b>
+            </button>
+          </div>
+          <div class="meter"><i style="width:${pct}%"></i></div>
+          <div class="meter-cap">Tap Income / Spent to 3D flip · Tap balance to blur</div>
+        </section>
+      </div>
+
+      <section class="card">
+        <div class="card-h">
+          <h3>Spending Pace</h3>
+          <span class="muted sm">Drag chart to scrub</span>
+        </div>
+        <div class="chart-readout">
+          <span id="chartDate">Nov ${curIdx + 1} · <b id="chartAmt">${state.privacy ? '••••' : 'EGP ' + fmtNum(curVal)}</b></span>
+          <span id="chartPace" class="chart-pill ${diff < 0 ? 'over' : ''}">${diff >= 0 ? `${fmtNum(diff)} under Oct` : `${fmtNum(-diff)} over Oct`}</span>
+        </div>
+        <div class="chart-box" id="chartBox">
+          <svg class="chart-svg" viewBox="0 0 ${W} ${H}" preserveAspectRatio="none">
+            <defs>
+              <linearGradient id="spGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stop-color="var(--accent)" stop-opacity=".42"/>
+                <stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/>
+              </linearGradient>
+            </defs>
+            <line x1="0" y1="${budgetY}" x2="${W}" y2="${budgetY}" stroke="var(--warn)" stroke-width="1" stroke-dasharray="4 4" opacity=".65"/>
+            <path d="${spOct.d}" fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="4 4" opacity=".55"/>
+            <path d="${spNov.area}" fill="url(#spGrad)"/>
+            <path d="${spNov.d}" fill="none" stroke="var(--accent)" stroke-width="2.6" stroke-linecap="round"/>
+            <line id="scrubLine" x1="${spNov.pts[curIdx][0].toFixed(1)}" y1="0" x2="${spNov.pts[curIdx][0].toFixed(1)}" y2="${H}" stroke="var(--text)" stroke-width="1.2" opacity=".35"/>
+            <circle id="scrubDot" cx="${spNov.pts[curIdx][0].toFixed(1)}" cy="${spNov.pts[curIdx][1].toFixed(1)}" r="5" fill="var(--accent-2)" stroke="#fff" stroke-width="2"/>
+          </svg>
+        </div>
+        <div class="chart-legend"><span>Nov 1</span><span>Oct pace (dashed) · Budget (${fmtNum(st.limit)})</span><span>Nov 24</span></div>
+      </section>
+
+      <div class="bento">
+        <button class="bento-tile" id="streakTile" data-act="streak-pop">
+          <div class="bento-top"><span class="flame-box" id="flameBox">${ic('flame', 20)}</span><span class="sm muted">Tap to test</span></div>
+          <b>${state.streak}-day streak</b>
+          <small>Best: 14 days</small>
+        </button>
+        <button class="bento-tile" data-act="sub-log">
+          <div class="bento-top"><span class="sub-badge">C</span><span class="sm muted">${state.subPaid ? 'Logged ✓' : 'Due tomorrow'}</span></div>
+          <b>Claude AI Pro</b>
+          <small>${state.subPaid ? 'Paid for Nov' : 'Tap to 1-tap log · 985'}</small>
+        </button>
+      </div>
+
+      <section class="card flush">
+        <div class="card-h" style="padding:10px 8px 4px">
+          <h3>Latest · Swipe left on a row</h3>
+          <button class="link" data-go="activity">See all</button>
+        </div>
+        ${st.nov.slice(0, 4).map(rowHTML).join('')}
+      </section>
+    </div>`;
+
+    renderOdo($('#heroOdo'), st.avail);
+    syncSlide($('#accBar'), '.chip-ind');
+    bindHeroGlare();
+    bindChartScrub(spNov.pts, novScaled, octScaled, W);
+    bindRowSwipes();
+  }
+
+  function renderActivity(view) {
+    const q = state.search.trim().toLowerCase();
+    const match = (e) => (!q || `${e.desc} ${e.seller} ${e.cat} ${e.sub} ${e.acc} ${e.amount}`.toLowerCase().includes(q)) && (state.acc === 'all' || e.acc === state.acc);
+    const novHits = entries.filter((e) => e.month === '2026-11' && match(e));
+    const earlierHits = (q || state.searchAllMonths) ? entries.filter((e) => e.month !== '2026-11' && match(e)) : [];
+
+    if (!$('#actInput')) {
+      view.innerHTML = `<div class="tab-panel">
+        <div class="search-bar">${ic('search', 18)}<input id="actInput" type="search" placeholder="Search all months (try: fuel, ikea, claude)" value="${esc(state.search)}" autocomplete="off"></div>
+        <div class="scope-pills">
+          <button class="chip ${!state.searchAllMonths ? 'on' : ''}" data-act="scope-nov">Nov 2026</button>
+          <button class="chip ${state.searchAllMonths ? 'on' : ''}" data-act="scope-all">All Months</button>
+          <button class="chip sel-btn ${state.selOn ? 'on' : ''}" data-act="toggle-sel">${ic('check', 14, 2.5)}<span>${state.selOn ? 'Done' : 'Select'}</span></button>
+        </div>
+        <div id="actList"></div>
+      </div>`;
+      $('#actInput').addEventListener('input', (ev) => { state.search = ev.target.value; fillActivityList(); });
+    }
+    fillActivityList(novHits, earlierHits);
+  }
+
+  function fillActivityList(preNov, preEarlier) {
+    const box = $('#actList');
+    if (!box) return;
+    const q = state.search.trim().toLowerCase();
+    const match = (e) => (!q || `${e.desc} ${e.seller} ${e.cat} ${e.sub} ${e.acc} ${e.amount}`.toLowerCase().includes(q)) && (state.acc === 'all' || e.acc === state.acc);
+    const novHits = preNov || entries.filter((e) => e.month === '2026-11' && match(e));
+    const earlierHits = preEarlier || ((q || state.searchAllMonths) ? entries.filter((e) => e.month !== '2026-11' && match(e)) : []);
+
+    let html = '';
+    if (novHits.length) {
+      html += `<div class="section-lbl"><span>November 2026</span><span>${novHits.length}</span></div>
+        <div class="card flush">${novHits.map(rowHTML).join('')}</div>`;
+    }
+    if (earlierHits.length) {
+      html += `<div class="section-lbl"><span>Matches in Earlier Months</span><span>${earlierHits.length}</span></div>
+        <div class="card flush">${earlierHits.map(rowHTML).join('')}</div>`;
+    }
+    if (!novHits.length && !earlierHits.length) {
+      html = `<div class="card" style="text-align:center;padding:34px 16px"><p class="muted">No matching entries across any month.</p></div>`;
+    }
+    box.innerHTML = html;
+    renderTotbar();
+    bindRowSwipes();
+  }
+
+  function renderTotbar() {
+    const bar = $('#totbar');
+    if (state.tab !== 'activity' || !state.selOn) {
+      bar.classList.remove('on');
+      return;
+    }
+    const picked = entries.filter((e) => state.selIds.has(e.id));
+    const net = picked.reduce((s, e) => s + (e.type === 'Income' ? e.amount : -e.amount), 0);
+    bar.classList.add('on');
+    bar.innerHTML = `
+      <div class="tb-row">
+        <div>
+          <div class="sm muted">${picked.length ? `${picked.length} selected` : 'Tap rows to select'}</div>
+          <div class="tb-sum" id="tbOdo"></div>
+        </div>
+        <button class="chip" data-act="sel-all">${picked.length === entries.length ? 'Clear' : 'Select all'}</button>
+      </div>
+      <div class="tb-actions">
+        <button class="chip" data-act="bulk-move" ${picked.length ? '' : 'disabled'}>Move → Cash</button>
+        <button class="chip" data-act="bulk-cat" ${picked.length ? '' : 'disabled'}>Tag → Food</button>
+        <button class="chip danger-soft" data-act="bulk-del" ${picked.length ? '' : 'disabled'}>${ic('trash', 13)}Delete (${picked.length})</button>
+      </div>`;
+    renderOdo($('#tbOdo'), net);
+  }
+
+  function renderPick(view) {
+    const dirs = [
+      ['1 · Obsidian Specular', 'OLED glass, conic specular rim, pointer glare'],
+      ['2 · Kinetic Neo-Fintech', 'Wallet-adaptive hero colors & spring bounce'],
+      ['3 · Editorial Bento', 'Warm matte paper, hairline bento & duotone icons'],
+      ['Hybrid / Mix', 'Combine Obsidian shell + Kinetic wallet colors']
+    ];
+    const archs = [
+      ['Path A · Zero-Build ESM', 'Vendored <number-flow> & Motion One (~30 KB)'],
+      ['Path B · Vite + React + Tailwind', 'Full shadcn / Magic UI / Vaul / Sonner stack']
+    ];
+    const feats = ['Rolling Odometer Digits', 'Touch-Scrub Spend Curve', 'Swipe-Left Row Actions', 'Sonner Countdown Toasts', 'Keypad Math + Step Morph', 'Cross-Month Search', 'Bulk Multi-Select Actions'];
+
+    view.innerHTML = `<div class="tab-panel">
+      <section class="card">
+        <div class="card-h"><h3>1. Preferred Visual Direction</h3></div>
+        <div class="pick-group">
+          ${dirs.map(([k, sub]) => `<button class="pick-opt ${state.pick.concept === k ? 'on' : ''}" data-pick-dir="${esc(k)}">
+            <span class="pick-radio"></span><span><b>${esc(k)}</b><small>${esc(sub)}</small></span></button>`).join('')}
+        </div>
+        <div class="card-h" style="margin-top:12px"><h3>2. Architecture Path</h3></div>
+        <div class="pick-group">
+          ${archs.map(([k, sub]) => `<button class="pick-opt ${state.pick.arch === k ? 'on' : ''}" data-pick-arch="${esc(k)}">
+            <span class="pick-radio"></span><span><b>${esc(k)}</b><small>${esc(sub)}</small></span></button>`).join('')}
+        </div>
+        <div class="card-h" style="margin-top:12px"><h3>3. Favorite Upgrades</h3></div>
+        <div class="feat-grid">
+          ${feats.map((f) => `<button class="chip ${state.pick.features.has(f) ? 'on' : ''}" data-pick-feat="${esc(f)}">${esc(f)}</button>`).join('')}
+        </div>
+        <button class="primary-btn" data-act="copy-pick">Copy My Selection</button>
+      </section>
+    </div>`;
+  }
+
+  function render() {
+    paintTheme(state.sheetOpen ? 1 : 0);
+    $('#themeBtn').textContent = state.theme === 'dark' ? '🌙 Dark' : '☀️ Light';
+    $$('#conceptBar button').forEach((b) => b.classList.toggle('on', b.dataset.concept === state.concept));
+    syncSlide($('#conceptBar'), '.ind');
+
+    const tabs = [
+      ['home', 'Home', 'home'],
+      ['activity', 'Activity', 'activity'],
+      ['pick', 'Pick', 'pick']
+    ];
+    const barBtns = $$('#tabbar .tab');
+    tabs.forEach(([id, label, iconName], i) => {
+      const b = barBtns[i];
+      b.classList.toggle('on', state.tab === id);
+      b.innerHTML = `${ic(iconName, 20)}<span>${label}</span>`;
+    });
+    $('#fabBtn').innerHTML = ic('plus', 24, 2.5);
+
+    const view = $('#view');
+    if (state.tab === 'home') renderHome(view);
+    else if (state.tab === 'activity') renderActivity(view);
+    else renderPick(view);
+    renderTotbar();
+  }
+
+  /* ==================== INTERACTIVE GESTURES & MOTION ==================== */
+  function bindHeroGlare() {
+    const hero = $('#heroCard');
+    if (!hero) return;
+    const move = (e) => {
+      const r = hero.getBoundingClientRect();
+      hero.style.setProperty('--gx', `${((e.clientX - r.left) / r.width) * 100}%`);
+      hero.style.setProperty('--gy', `${((e.clientY - r.top) / r.height) * 100}%`);
+      hero.classList.add('glare-on');
+    };
+    hero.addEventListener('pointermove', move);
+    hero.addEventListener('pointerleave', () => hero.classList.remove('glare-on'));
+  }
+
+  function bindChartScrub(pts, novVals, octVals, W) {
+    const box = $('#chartBox');
+    if (!box) return;
+    const setDay = (idx) => {
+      if (idx === state.scrubDay) return;
+      state.scrubDay = idx;
+      const p = pts[idx];
+      $('#scrubLine').setAttribute('x1', p[0].toFixed(1));
+      $('#scrubLine').setAttribute('x2', p[0].toFixed(1));
+      $('#scrubDot').setAttribute('cx', p[0].toFixed(1));
+      $('#scrubDot').setAttribute('cy', p[1].toFixed(1));
+      const diff = octVals[idx] - novVals[idx];
+      $('#chartDate').innerHTML = `Nov ${idx + 1} · <b id="chartAmt">${state.privacy ? '••••' : 'EGP ' + fmtNum(novVals[idx])}</b>`;
+      const pill = $('#chartPace');
+      pill.textContent = diff >= 0 ? `${fmtNum(diff)} under Oct` : `${fmtNum(-diff)} over Oct`;
+      pill.classList.toggle('over', diff < 0);
+      if (navigator.vibrate) navigator.vibrate(4);
+    };
+    const pickFromEvent = (e) => {
+      const r = box.getBoundingClientRect();
+      const ratio = Math.max(0, Math.min(1, (e.clientX - r.left) / r.width));
+      setDay(Math.round(ratio * (pts.length - 1)));
+    };
+    box.addEventListener('pointerdown', (e) => {
+      try { box.setPointerCapture(e.pointerId); } catch (_) {}
+      pickFromEvent(e);
+    });
+    box.addEventListener('pointermove', (e) => { if (e.buttons || e.pointerType === 'touch') pickFromEvent(e); });
+    const reset = () => { state.scrubDay = null; setDay(pts.length - 1); state.scrubDay = null; };
+    box.addEventListener('pointerup', reset);
+    box.addEventListener('pointercancel', reset);
+  }
+
+  function bindRowSwipes() {
+    $$('.tx-row').forEach((row) => {
+      let x0 = 0, y0 = 0, dx = 0, lock = null;
+      row.addEventListener('pointerdown', (e) => {
+        if (state.selOn) return;
+        x0 = e.clientX; y0 = e.clientY; dx = 0; lock = null;
+      });
+      row.addEventListener('pointermove', (e) => {
+        if (state.selOn || (!e.buttons && e.pointerType === 'mouse')) return;
+        const mx = e.clientX - x0, my = e.clientY - y0;
+        if (!lock) {
+          if (Math.abs(mx) > 8 && Math.abs(mx) > Math.abs(my)) {
+            lock = 'x';
+            row.classList.add('dragging');
+            try { row.setPointerCapture(e.pointerId); } catch (_) {}
+          } else if (Math.abs(my) > 8) { lock = 'y'; return; }
+        }
+        if (lock === 'x') {
+          dx = Math.max(-150, Math.min(20, mx));
+          row.style.transform = `translateX(${dx < 0 ? dx : dx * 0.25}px)`;
+        }
+      });
+      const end = () => {
+        if (lock !== 'x') return;
+        row.classList.remove('dragging');
+        row.style.transform = dx < -56 ? 'translateX(-140px)' : '';
+        lock = null;
+      };
+      row.addEventListener('pointerup', end);
+      row.addEventListener('pointercancel', end);
+    });
+  }
+
+  /* ==================== SONNER STACKED TOAST WITH UNDO RING ==================== */
+  function showToast(msg, undoFn = null) {
+    const host = $('#toasts');
+    const el = document.createElement('div');
+    el.className = 'toast-item';
+    el.innerHTML = `<span>${esc(msg)}</span>${undoFn ? `<button class="toast-undo"><svg width="18" height="18" viewBox="0 0 22 22"><circle cx="11" cy="11" r="9" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="2.2"/><circle cx="11" cy="11" r="9" fill="none" stroke="currentColor" stroke-width="2.2" stroke-dasharray="56.55" style="animation:ringDrain 4.5s linear forwards" transform="rotate(-90 11 11)"/></svg>Undo</button>` : ''}`;
+    host.appendChild(el);
+    const kill = () => { el.style.opacity = '0'; el.style.transform = 'translateY(10px)'; setTimeout(() => el.remove(), 220); };
+    const timer = setTimeout(kill, undoFn ? 4500 : 2400);
+    if (undoFn) {
+      el.querySelector('.toast-undo').addEventListener('click', () => {
+        clearTimeout(timer);
+        undoFn();
+        kill();
+      });
+    }
+  }
+
+  /* ==================== 3D FLIP BREAKDOWN CARD ==================== */
+  function openFlip(kind, origin) {
+    const root = $('#flip');
+    const st = accountStats();
+    const isSpent = kind === 'spent';
+    const map = new Map();
+    st.nov.filter((e) => e.type === (isSpent ? 'Expense' : 'Income')).forEach((e) => {
+      const k = isSpent ? e.cat : e.desc;
+      map.set(k, (map.get(k) || 0) + e.amount);
+    });
+    const parts = [...map.entries()].sort((a, b) => b[1] - a[1]);
+    const total = parts.reduce((s, p) => s + p[1], 0) || 1;
+    const r = 52, c = 2 * Math.PI * r;
+    let off = 0;
+    const segs = parts.map(([k, v]) => {
+      const len = (v / total) * c;
+      const hue = CAT_HUES[k] || 220;
+      const s = `<circle r="${r}" cx="70" cy="70" fill="none" stroke="hsl(${hue} 78% 60%)" stroke-width="16" stroke-dasharray="${Math.max(1, len - 2).toFixed(1)} ${c}" stroke-dashoffset="${(-off).toFixed(1)}" transform="rotate(-90 70 70)"/>`;
+      off += len;
+      return s;
+    }).join('');
+
+    root.innerHTML = `<div class="flip-scrim" data-act="flip-close"></div>
+      <div class="flip-card">
+        <div class="flip-front">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+            <div><h3 style="font-size:20px;font-weight:780">${isSpent ? 'Spent' : 'Income'}</h3><small class="muted">${esc(st.accObj.label)} · Nov 2026</small></div>
+            <button class="circle-btn" data-act="flip-close">${ic('close', 17)}</button>
+          </div>
+          <svg viewBox="0 0 140 140" width="136" height="136" style="display:block;margin:8px auto 14px"><circle r="${r}" cx="70" cy="70" fill="none" stroke="var(--line)" stroke-width="16"/>${segs}</svg>
+          ${parts.map(([k, v]) => `<div style="display:flex;justify-content:space-between;padding:8px 2px;border-top:1px solid var(--line);font-size:14px"><span>${esc(k)}</span><b>${state.privacy ? '••••' : fmtNum(v)} (${Math.round((v/total)*100)}%)</b></div>`).join('')}
+        </div>
+        <div class="flip-back"></div>
+      </div>`;
+    root.className = 'open';
+    const card = $('.flip-card', root);
+    const fr = card.getBoundingClientRect();
+    const or = origin.getBoundingClientRect();
+    const start = `translate(${or.left + or.width/2 - (fr.left + fr.width/2)}px, ${or.top + or.height/2 - (fr.top + fr.height/2)}px) scale(${(or.width/fr.width).toFixed(3)}, ${(or.height/fr.height).toFixed(3)}) rotateY(-180deg)`;
+    requestAnimationFrame(() => {
+      root.classList.add('shown');
+      card.animate([{ transform: start }, { transform: 'none' }], { duration: 600, easing: 'cubic-bezier(.22, 1, .36, 1)', fill: 'both' });
+    });
+  }
+  function closeFlip() {
+    const root = $('#flip');
+    const card = $('.flip-card', root);
+    root.classList.remove('shown');
+    if (card) card.animate([{ transform: 'none' }, { transform: 'scale(.86) rotateY(-160deg)', opacity: 0 }], { duration: 320, fill: 'forwards' });
+    setTimeout(() => { root.className = ''; root.innerHTML = ''; }, 320);
+  }
+
+  /* ==================== SPRING BOTTOM SHEET + KEYPAD MATH ==================== */
+  function evalMath(expr) {
+    const clean = expr.replace(/×/g, '*').replace(/÷/g, '/').replace(/−/g, '-').replace(/[^0-9+\-*/.]/g, '');
+    if (!clean) return 0;
+    const tokens = clean.match(/(\d+(?:\.\d+)?|[+\-*/])/g);
+    if (!tokens) return 0;
+    let res = parseFloat(tokens[0]) || 0;
+    for (let i = 1; i < tokens.length; i += 2) {
+      const op = tokens[i], rhs = parseFloat(tokens[i + 1]);
+      if (!Number.isFinite(rhs)) break;
+      if (op === '+') res += rhs;
+      else if (op === '-') res -= rhs;
+      else if (op === '*') res *= rhs;
+      else if (op === '/' && rhs !== 0) res /= rhs;
+    }
+    return Math.round(res * 100) / 100;
+  }
+
+  function springTo(el, fromY, toY, onStep, onDone) {
+    let y = fromY, v = 0;
+    const stiffness = 380, damping = 32;
+    let last = performance.now();
+    const tick = (now) => {
+      const dt = Math.min(0.032, (now - last) / 1000);
+      last = now;
+      const force = -stiffness * (y - toY) - damping * v;
+      v += force * dt;
+      y += v * dt;
+      el.style.transform = `translateY(${y.toFixed(2)}px)`;
+      if (onStep) onStep(y);
+      if (Math.abs(y - toY) < 0.6 && Math.abs(v) < 8) {
+        el.style.transform = `translateY(${toY}px)`;
+        if (onStep) onStep(toY);
+        if (onDone) onDone();
+        return;
+      }
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+  }
+
+  function openAddSheet() {
+    state.sheetOpen = true;
+    state.sheetStep = 'amt';
+    state.form = { type: 'Expense', expr: '', amt: 0, cat: 'Food', acc: state.acc === 'all' ? 'cib' : state.acc, note: '' };
+    const layer = $('#layer');
+    layer.className = 'open';
+    layer.innerHTML = `<div class="scrim" data-act="sheet-close"></div>
+      <div class="sheet" role="dialog" aria-modal="true" aria-label="New transaction">
+        <div class="sheet-top" id="sheetHandle">
+          <div class="grab"></div>
+          <div class="sheet-h">
+            <button class="circle-btn" data-act="sheet-close" aria-label="Close">${ic('close', 18)}</button>
+            <h2 id="sheetTitle">New transaction</h2>
+            <span></span>
+          </div>
+        </div>
+        <div class="sheet-body" id="sheetBody"></div>
+      </div>`;
+    renderSheetBody();
+    const sheet = $('.sheet', layer);
+    const scrim = $('.scrim', layer);
+    const h = sheet.offsetHeight || 560;
+    $('#app').classList.add('dim');
+    const setP = (y) => {
+      const p = Math.max(0, Math.min(1, 1 - y / h));
+      $('#app').style.setProperty('--p', p.toFixed(3));
+      scrim.style.opacity = p.toFixed(3);
+      paintTheme(p);
+    };
+    springTo(sheet, h + 30, 0, setP);
+
+    // Drag to dismiss
+    const handle = $('#sheetHandle');
+    let y0 = 0, dy = 0, drag = false;
+    handle.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('button')) return;
+      drag = true; y0 = e.clientY; dy = 0;
+      $('#app').classList.add('dragging');
+      try { handle.setPointerCapture(e.pointerId); } catch (_) {}
+    });
+    handle.addEventListener('pointermove', (e) => {
+      if (!drag) return;
+      dy = Math.max(-24, e.clientY - y0);
+      const ty = dy < 0 ? -Math.sqrt(-dy) * 3 : dy;
+      sheet.style.transform = `translateY(${ty}px)`;
+      setP(Math.max(0, dy));
+    });
+    const end = () => {
+      if (!drag) return;
+      drag = false;
+      $('#app').classList.remove('dragging');
+      if (dy > h * 0.25) closeSheet(dy);
+      else springTo(sheet, dy, 0, setP);
+    };
+    handle.addEventListener('pointerup', end);
+    handle.addEventListener('pointercancel', end);
+  }
+
+  function closeSheet(fromY = 0) {
+    const layer = $('#layer');
+    const sheet = $('.sheet', layer);
+    const scrim = $('.scrim', layer);
+    if (!sheet) return;
+    state.sheetOpen = false;
+    const h = sheet.offsetHeight || 560;
+    springTo(sheet, fromY, h + 40, (y) => {
+      const p = Math.max(0, Math.min(1, 1 - y / h));
+      $('#app').style.setProperty('--p', p.toFixed(3));
+      if (scrim) scrim.style.opacity = p.toFixed(3);
+      paintTheme(p);
+    }, () => {
+      $('#app').classList.remove('dim');
+      $('#app').style.setProperty('--p', '0');
+      layer.className = '';
+      layer.innerHTML = '';
+      paintTheme(0);
+    });
+  }
+
+  function renderSheetBody() {
+    const body = $('#sheetBody');
+    if (!body) return;
+    const f = state.form;
+    const hasOp = /[+\-÷]/.test(f.expr);
+    const val = evalMath(f.expr);
+    f.amt = val;
+    if (state.sheetStep === 'amt') {
+      const keys = ['7','8','9','÷','4','5','6','−','1','2','3','+','.','0','del','go'];
+      body.innerHTML = `
+        <div class="amt-stage">
+          <div class="amt-expr">${hasOp ? esc(f.expr) + ' =' : 'Try math: 900 ÷ 3'}</div>
+          <div class="amt-display"><span style="font-size:20px;opacity:.65">EGP</span><span>${fmtNum(val)}</span></div>
+        </div>
+        <div class="keypad-math">
+          ${keys.map((k) => {
+            const cls = ['÷','−','+'].includes(k) ? 'op' : k === 'go' ? 'go' : '';
+            const inner = k === 'del' ? ic('del', 20) : k === 'go' ? ic('check', 22, 2.6) : k;
+            return `<button class="kbtn ${cls}" data-key="${k}">${inner}</button>`;
+          }).join('')}
+        </div>`;
+    } else {
+      const cats = ['Food', 'Transport', 'Subscriptions', 'Shopping', 'Bills', 'Health'];
+      body.innerHTML = `
+        <button class="amt-display compact" data-act="step-amt">
+          <span style="font-size:14px;color:var(--muted);font-weight:600">Amount (tap to edit)</span>
+          <span>EGP ${fmtNum(f.amt)}</span>
+        </button>
+        <div class="section-lbl"><span>Category</span></div>
+        <div class="chips">${cats.map((c) => `<button class="chip ${f.cat === c ? 'on' : ''}" data-fcat="${c}">${ic(c.toLowerCase(), 15)}${c}</button>`).join('')}</div>
+        <div class="section-lbl"><span>Account</span></div>
+        <div class="chips">${ACCOUNTS.slice(1).map((a) => `<button class="chip ${f.acc === a.id ? 'on' : ''}" data-facc="${a.id}">${a.label}</button>`).join('')}</div>
+        <input class="field-in" id="fNoteIn" placeholder="Note (e.g. Dinner split)" value="${esc(f.note)}" autocomplete="off">
+        <button class="primary-btn" data-act="save-entry">Add EGP ${fmtNum(f.amt)} Transaction</button>`;
+      $('#fNoteIn').addEventListener('input', (ev) => { state.form.note = ev.target.value; });
+    }
+  }
+
+  /* ==================== GLOBAL DELEGATED EVENTS ==================== */
+  document.addEventListener('click', (e) => {
+    const conceptBtn = e.target.closest('#conceptBar button');
+    if (conceptBtn) {
+      state.concept = conceptBtn.dataset.concept;
+      render();
+      return;
+    }
+    if (e.target.closest('#themeBtn')) {
+      state.theme = state.theme === 'dark' ? 'light' : 'dark';
+      render();
+      return;
+    }
+    const accBtn = e.target.closest('[data-acc]');
+    if (accBtn) {
+      state.acc = accBtn.dataset.acc;
+      render();
+      return;
+    }
+    const tabBtn = e.target.closest('#tabbar .tab');
+    if (tabBtn) {
+      const idx = $$('#tabbar .tab').indexOf(tabBtn);
+      state.tab = ['home', 'activity', 'pick'][idx];
+      if (state.tab !== 'activity') state.selOn = false;
+      render();
+      return;
+    }
+    if (e.target.closest('#fabBtn')) { openAddSheet(); return; }
+    const goBtn = e.target.closest('[data-go]');
+    if (goBtn) { state.tab = goBtn.dataset.go; render(); return; }
+
+    // Keypad
+    const keyBtn = e.target.closest('[data-key]');
+    if (keyBtn) {
+      const k = keyBtn.dataset.key;
+      if (k === 'go') {
+        if (!(state.form.amt > 0)) { showToast('Enter an amount above 0'); return; }
+        const swap = () => { state.sheetStep = 'details'; renderSheetBody(); };
+        if (document.startViewTransition) document.startViewTransition(swap); else swap();
+        return;
+      }
+      if (k === 'del') state.form.expr = state.form.expr.slice(0, -1);
+      else state.form.expr += k;
+      if (navigator.vibrate) navigator.vibrate(5);
+      renderSheetBody();
+      return;
+    }
+
+    const fcat = e.target.closest('[data-fcat]');
+    if (fcat) { state.form.cat = fcat.dataset.fcat; renderSheetBody(); return; }
+    const facc = e.target.closest('[data-facc]');
+    if (facc) { state.form.acc = facc.dataset.facc; renderSheetBody(); return; }
+
+    // Pick tab
+    const pdir = e.target.closest('[data-pick-dir]');
+    if (pdir) { state.pick.concept = pdir.dataset.pickDir; render(); return; }
+    const parch = e.target.closest('[data-pick-arch]');
+    if (parch) { state.pick.arch = parch.dataset.pickArch; render(); return; }
+    const pfeat = e.target.closest('[data-pick-feat]');
+    if (pfeat) {
+      const f = pfeat.dataset.pickFeat;
+      if (state.pick.features.has(f)) state.pick.features.delete(f); else state.pick.features.add(f);
+      render();
+      return;
+    }
+
+    // Multi-select row tap
+    const rowEl = e.target.closest('.tx-row');
+    if (rowEl && state.selOn) {
+      const id = rowEl.dataset.rowId;
+      if (state.selIds.has(id)) state.selIds.delete(id); else state.selIds.add(id);
+      rowEl.classList.toggle('picked', state.selIds.has(id));
+      renderTotbar();
+      return;
+    }
+
+    const actEl = e.target.closest('[data-act]');
+    if (!actEl) return;
+    const act = actEl.dataset.act;
+    if (act === 'toggle-priv') { state.privacy = !state.privacy; render(); }
+    else if (act === 'flip') openFlip(actEl.dataset.kind, actEl);
+    else if (act === 'flip-close') closeFlip();
+    else if (act === 'sheet-close') closeSheet();
+    else if (act === 'step-amt') {
+      const swap = () => { state.sheetStep = 'amt'; renderSheetBody(); };
+      if (document.startViewTransition) document.startViewTransition(swap); else swap();
+    }
+    else if (act === 'save-entry') {
+      const f = state.form;
+      entries.unshift({
+        id: 'e' + (++nextId), month: '2026-11', date: '2026-11-24',
+        desc: f.note.trim() || f.cat, seller: 'Manual', cat: f.cat, sub: f.cat,
+        acc: f.acc, type: 'Expense', amount: f.amt
+      });
+      closeSheet();
+      render();
+      showToast(`Added EGP ${fmtNum(f.amt)}`);
+    }
+    else if (act === 'streak-pop') {
+      state.streak++;
+      render();
+      const box = $('#flameBox');
+      if (box) {
+        box.classList.add('pop');
+        [[-20,-18],[22,-16],[-14,20],[18,22],[0,-26]].forEach(([tx, ty]) => {
+          const sp = document.createElement('i');
+          sp.className = 'spark-dot';
+          sp.style.setProperty('--tx', tx + 'px');
+          sp.style.setProperty('--ty', ty + 'px');
+          box.appendChild(sp);
+        });
+      }
+      showToast(`Streak extended to ${state.streak} days!`);
+    }
+    else if (act === 'sub-log') {
+      if (state.subPaid) { showToast('Claude AI already logged for Nov'); return; }
+      state.subPaid = true;
+      entries.unshift({ id: 'e' + (++nextId), month: '2026-11', date: '2026-11-24', desc: 'Claude AI Pro', seller: 'Anthropic', cat: 'Subscriptions', sub: 'Claude AI', acc: 'cib', type: 'Expense', amount: 985 });
+      render();
+      showToast('Logged Claude AI Pro · EGP 985');
+    }
+    else if (act === 'dup') {
+      const orig = entries.find((x) => x.id === actEl.dataset.id);
+      if (!orig) return;
+      entries.unshift({ ...orig, id: 'e' + (++nextId), date: '2026-11-24', month: '2026-11' });
+      render();
+      showToast(`Duplicated "${orig.desc}"`);
+    }
+    else if (act === 'del') {
+      const id = actEl.dataset.id;
+      const idx = entries.findIndex((x) => x.id === id);
+      if (idx < 0) return;
+      const [removed] = entries.splice(idx, 1);
+      const wrap = actEl.closest('.tx-wrap');
+      if (wrap) wrap.classList.add('collapsing');
+      setTimeout(() => render(), 280);
+      showToast(`Deleted "${removed.desc}"`, () => {
+        entries.splice(idx, 0, removed);
+        render();
+      });
+    }
+    else if (act === 'scope-nov') { state.searchAllMonths = false; render(); }
+    else if (act === 'scope-all') { state.searchAllMonths = true; render(); }
+    else if (act === 'toggle-sel') { state.selOn = !state.selOn; if (!state.selOn) state.selIds.clear(); render(); }
+    else if (act === 'sel-all') {
+      if (state.selIds.size === entries.length) state.selIds.clear();
+      else entries.forEach((x) => state.selIds.add(x.id));
+      render();
+    }
+    else if (act === 'bulk-move') {
+      entries.forEach((x) => { if (state.selIds.has(x.id)) x.acc = 'cash'; });
+      const n = state.selIds.size;
+      state.selOn = false; state.selIds.clear(); render();
+      showToast(`Moved ${n} entries to Cash`);
+    }
+    else if (act === 'bulk-cat') {
+      entries.forEach((x) => { if (state.selIds.has(x.id)) x.cat = 'Food'; });
+      const n = state.selIds.size;
+      state.selOn = false; state.selIds.clear(); render();
+      showToast(`Tagged ${n} entries as Food`);
+    }
+    else if (act === 'bulk-del') {
+      const snapshot = entries.slice();
+      const n = state.selIds.size;
+      entries = entries.filter((x) => !state.selIds.has(x.id));
+      state.selOn = false; state.selIds.clear(); render();
+      showToast(`Deleted ${n} entries`, () => { entries = snapshot; render(); });
+    }
+    else if (act === 'copy-pick') {
+      const txt = [
+        `Direction: ${state.pick.concept}`,
+        `Architecture: ${state.pick.arch}`,
+        `Features: ${[...state.pick.features].join(', ') || 'None'}`,
+        `Theme viewed: ${state.theme}`
+      ].join('\n');
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(txt).then(() => showToast('Selection copied! Paste it in chat.')).catch(() => fallbackCopy(txt));
+      } else fallbackCopy(txt);
+    }
+  });
+
+  function fallbackCopy(txt) {
+    const ta = document.createElement('textarea');
+    ta.value = txt; document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast('Selection copied! Paste it in chat.'); } catch (_) { showToast('Copy failed — screenshot Pick tab'); }
+    ta.remove();
+  }
+
+  window.addEventListener('resize', () => {
+    syncSlide($('#conceptBar'), '.ind');
+    syncSlide($('#accBar'), '.chip-ind');
+  });
+
+  render();
+})();
+</script>
+</body>
+</html>
