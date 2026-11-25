@@ -411,7 +411,7 @@ export default function InsightsView({
             }}
             className="flex p-0.5 rounded-xl border"
             style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
-            pillClassName="rounded-lg"
+            pillClassName="rounded-[9px]"
             pillStyle={{ backgroundColor: 'var(--accent)' }}
           >
             {[
@@ -428,7 +428,7 @@ export default function InsightsView({
                     setTrendMode(t.id);
                     setSelectedBarIdx(null);
                   }}
-                  className="relative px-2.5 py-1 text-[11px] font-semibold rounded-lg z-10 transition-colors"
+                  className="relative px-2.5 py-1 text-[11px] font-semibold rounded-[9px] z-10 transition-colors"
                   style={{ color: active ? 'var(--accent-fg)' : 'var(--text-secondary)' }}
                 >
                   {t.label}
@@ -661,7 +661,7 @@ export default function InsightsView({
             onSelect={setInsightScope}
             className="flex p-0.5 rounded-xl border"
             style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
-            pillClassName="rounded-lg"
+            pillClassName="rounded-[9px]"
             pillStyle={{ backgroundColor: 'var(--accent)' }}
           >
             {[
@@ -675,7 +675,7 @@ export default function InsightsView({
                   type="button"
                   data-hl={s.id}
                   onClick={() => setInsightScope(s.id)}
-                  className="relative px-2 py-0.5 text-[10px] font-semibold rounded-lg z-10 transition-colors"
+                  className="relative px-2 py-0.5 text-[10px] font-semibold rounded-[9px] z-10 transition-colors"
                   style={{ color: active ? 'var(--accent-fg)' : 'var(--text-secondary)' }}
                 >
                   {s.label}

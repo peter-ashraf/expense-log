@@ -529,6 +529,12 @@ export default function SettingsView({
     }
   };
 
+  const switchToClassicUi = () => {
+    try { localStorage.setItem('el_ui', 'classic'); } catch { /* ignore */ }
+    try { vault.stashForReload(); } catch { /* ignore */ }
+    window.location.replace('classic.html' + window.location.hash);
+  };
+
   const isHome = settingsPage === 'home';
   const trash = state.trash || [];
   const scriptVersion = state.scriptVersion;
@@ -775,7 +781,7 @@ export default function SettingsView({
                 onSelect={setSubsStyle}
                 className="grid grid-cols-2 p-1 rounded-xl border"
                 style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
-                pillClassName="rounded-lg"
+                pillClassName="rounded-[7px]"
                 pillStyle={{ backgroundColor: 'var(--accent)' }}
               >
                 {[
@@ -789,7 +795,7 @@ export default function SettingsView({
                       type="button"
                       data-hl={mode.id}
                       onClick={() => setSubsStyle(mode.id)}
-                      className="relative py-1.5 text-[11px] font-semibold rounded-lg z-10 transition-colors"
+                      className="relative py-1.5 text-[11px] font-semibold rounded-[7px] z-10 transition-colors"
                       style={{ color: active ? 'var(--accent-fg)' : 'var(--text-secondary)' }}
                     >
                       {mode.label}
@@ -1106,7 +1112,7 @@ export default function SettingsView({
                     onSelect={setNewAccType}
                     className="grid grid-cols-2 p-1 rounded-xl border"
                     style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
-                    pillClassName="rounded-lg"
+                    pillClassName="rounded-[7px]"
                     pillStyle={{ backgroundColor: 'var(--accent)' }}
                   >
                     {[
@@ -1118,7 +1124,7 @@ export default function SettingsView({
                         type="button"
                         data-hl={t.id}
                         onClick={() => setNewAccType(t.id)}
-                        className="relative py-1.5 text-[11px] font-semibold rounded-lg z-10 transition-colors"
+                        className="relative py-1.5 text-[11px] font-semibold rounded-[7px] z-10 transition-colors"
                         style={{ color: newAccType === t.id ? 'var(--accent-fg)' : 'var(--text-secondary)' }}
                       >
                         {t.label}
@@ -1270,7 +1276,7 @@ export default function SettingsView({
                     onSelect={setThemeMode}
                     className="grid grid-cols-3 p-1 rounded-xl border"
                     style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
-                    pillClassName="rounded-lg"
+                    pillClassName="rounded-[7px]"
                     pillStyle={{ backgroundColor: 'var(--accent)' }}
                   >
                     {[
@@ -1285,7 +1291,7 @@ export default function SettingsView({
                           type="button"
                           data-hl={t.id}
                           onClick={() => setThemeMode(t.id)}
-                          className="relative py-1.5 text-[12px] font-semibold rounded-lg z-10 transition-colors"
+                          className="relative py-1.5 text-[12px] font-semibold rounded-[7px] z-10 transition-colors"
                           style={{ color: active ? 'var(--accent-fg)' : 'var(--text-secondary)' }}
                         >
                           {t.label}
@@ -1356,7 +1362,7 @@ export default function SettingsView({
                     onSelect={setNavStyle}
                     className="grid grid-cols-2 p-1 rounded-xl border"
                     style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
-                    pillClassName="rounded-lg"
+                    pillClassName="rounded-[7px]"
                     pillStyle={{ backgroundColor: 'var(--accent)' }}
                   >
                     {[
@@ -1370,7 +1376,7 @@ export default function SettingsView({
                           type="button"
                           data-hl={n.id}
                           onClick={() => setNavStyle(n.id)}
-                          className="relative py-1.5 text-[12px] font-semibold rounded-lg z-10 transition-colors"
+                          className="relative py-1.5 text-[12px] font-semibold rounded-[7px] z-10 transition-colors"
                           style={{ color: active ? 'var(--accent-fg)' : 'var(--text-secondary)' }}
                         >
                           {n.label}
@@ -1389,7 +1395,7 @@ export default function SettingsView({
                     onSelect={setSubsStyle}
                     className="grid grid-cols-2 p-1 rounded-xl border"
                     style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
-                    pillClassName="rounded-lg"
+                    pillClassName="rounded-[7px]"
                     pillStyle={{ backgroundColor: 'var(--accent)' }}
                   >
                     {[
@@ -1403,7 +1409,7 @@ export default function SettingsView({
                           type="button"
                           data-hl={w.id}
                           onClick={() => setSubsStyle(w.id)}
-                          className="relative py-1.5 text-[12px] font-semibold rounded-lg z-10 transition-colors"
+                          className="relative py-1.5 text-[12px] font-semibold rounded-[7px] z-10 transition-colors"
                           style={{ color: active ? 'var(--accent-fg)' : 'var(--text-secondary)' }}
                         >
                           {w.label}
@@ -1412,6 +1418,46 @@ export default function SettingsView({
                     })}
                   </SlidingHighlight>
                 </div>
+              </div>
+
+              <div className="surface-card p-4 space-y-2">
+                <div className="text-[12px] font-bold" style={{ color: 'var(--text-secondary)' }}>
+                  App Interface
+                </div>
+                <SlidingHighlight
+                  activeKey="modern"
+                  onSelect={(v) => {
+                    if (v === 'classic') switchToClassicUi();
+                  }}
+                  className="grid grid-cols-2 p-1 rounded-xl border"
+                  style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
+                  pillClassName="rounded-[7px]"
+                  pillStyle={{ backgroundColor: 'var(--accent)' }}
+                >
+                  {[
+                    { id: 'modern', label: 'Modern' },
+                    { id: 'classic', label: 'Classic (Original)' },
+                  ].map((u) => {
+                    const active = u.id === 'modern';
+                    return (
+                      <button
+                        key={u.id}
+                        type="button"
+                        data-hl={u.id}
+                        onClick={() => {
+                          if (u.id === 'classic') switchToClassicUi();
+                        }}
+                        className="relative py-1.5 text-[12px] font-semibold rounded-[7px] z-10 transition-colors"
+                        style={{ color: active ? 'var(--accent-fg)' : 'var(--text-secondary)' }}
+                      >
+                        {u.label}
+                      </button>
+                    );
+                  })}
+                </SlidingHighlight>
+                <p className="text-[11px] leading-relaxed" style={{ color: 'var(--text-muted)' }}>
+                  Classic preserves the previous app interface on the exact same data & Google Sheet sync. Switch back from Settings › Appearance anytime.
+                </p>
               </div>
             </div>
           )}
@@ -1430,7 +1476,7 @@ export default function SettingsView({
                   onSelect={handleLockMethod}
                   className="grid grid-cols-3 p-1 rounded-xl border"
                   style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
-                  pillClassName="rounded-lg"
+                  pillClassName="rounded-[7px]"
                   pillStyle={{ backgroundColor: 'var(--accent)' }}
                 >
                   {[
@@ -1443,7 +1489,7 @@ export default function SettingsView({
                       type="button"
                       data-hl={m.id}
                       onClick={() => handleLockMethod(m.id)}
-                      className="relative py-1.5 text-[12px] font-semibold rounded-lg z-10 transition-colors"
+                      className="relative py-1.5 text-[12px] font-semibold rounded-[7px] z-10 transition-colors"
                       style={{ color: lockMethod === m.id ? 'var(--accent-fg)' : 'var(--text-secondary)' }}
                     >
                       {m.label}
@@ -1461,7 +1507,7 @@ export default function SettingsView({
                       onSelect={(v) => store.saveSettings({ lock: { ...lockCfg, delay: Number(v) } })}
                       className="grid grid-cols-4 p-1 rounded-xl border"
                       style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
-                      pillClassName="rounded-lg"
+                      pillClassName="rounded-[7px]"
                       pillStyle={{ backgroundColor: 'var(--accent)' }}
                     >
                       {[
@@ -1475,7 +1521,7 @@ export default function SettingsView({
                           type="button"
                           data-hl={d.id}
                           onClick={() => store.saveSettings({ lock: { ...lockCfg, delay: Number(d.id) } })}
-                          className="relative py-1.5 text-[11px] font-semibold rounded-lg z-10 transition-colors"
+                          className="relative py-1.5 text-[11px] font-semibold rounded-[7px] z-10 transition-colors"
                           style={{ color: String(lockDelay) === d.id ? 'var(--accent-fg)' : 'var(--text-secondary)' }}
                         >
                           {d.label}
@@ -1983,8 +2029,9 @@ export default function SettingsView({
               )}
 
               <div className="surface-card p-4 space-y-2.5">
-                <a
-                  href="classic.html"
+                <button
+                  type="button"
+                  onClick={switchToClassicUi}
                   className="w-full py-2.5 px-3 rounded-xl border text-[12px] font-semibold inline-flex items-center justify-center gap-1.5"
                   style={{
                     backgroundColor: 'var(--bg-pill)',
@@ -1994,7 +2041,7 @@ export default function SettingsView({
                 >
                   <ExternalLink size={13} />
                   <span>Open classic app</span>
-                </a>
+                </button>
 
                 <button
                   type="button"

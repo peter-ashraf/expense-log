@@ -49,7 +49,7 @@ export default function BottomNav({
               backdropFilter: 'blur(24px)',
               WebkitBackdropFilter: 'blur(24px)',
             }}
-            pillClassName="rounded-[22px]"
+            pillClassName="rounded-[21px]"
             pillStyle={{ backgroundColor: 'var(--accent)' }}
           >
             {TABS.map(({ id, label, Icon }) => {
@@ -60,7 +60,7 @@ export default function BottomNav({
                   type="button"
                   data-hl={id}
                   onClick={() => onSelectTab(id)}
-                  className="relative py-2 flex flex-col items-center justify-center gap-0.5 rounded-[22px] z-10 transition-colors"
+                  className="relative py-2 flex flex-col items-center justify-center gap-0.5 rounded-[21px] z-10 transition-colors"
                   style={{
                     color: active ? 'var(--accent-fg)' : 'var(--text-secondary)',
                   }}
@@ -108,7 +108,7 @@ export default function BottomNav({
         type="button"
         data-hl={id}
         onClick={() => onSelectTab(id)}
-        className="relative py-1.5 flex flex-col items-center justify-center gap-0.5 rounded-2xl z-10 transition-colors"
+        className="relative py-1.5 flex flex-col items-center justify-center gap-0.5 rounded-[21px] z-10 transition-colors"
         style={{
           color: active ? 'var(--accent)' : 'var(--text-secondary)',
         }}
@@ -141,7 +141,7 @@ export default function BottomNav({
           backdropFilter: 'blur(24px)',
           WebkitBackdropFilter: 'blur(24px)',
         }}
-        pillClassName="rounded-2xl"
+        pillClassName="rounded-[21px]"
         pillStyle={{ backgroundColor: 'var(--accent-soft)' }}
       >
         {leftTabs.map(renderSlot)}

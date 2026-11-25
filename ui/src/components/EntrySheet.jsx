@@ -543,7 +543,7 @@ export default function EntrySheet({
                     activeTextColor="#FFFFFF"
                     className="grid grid-cols-2 p-1 rounded-2xl border max-w-[230px] mx-auto"
                     style={{ backgroundColor: 'var(--bg-pill)', borderColor: 'var(--border-subtle)' }}
-                    pillClassName="rounded-xl"
+                    pillClassName="rounded-[11px]"
                     pillStyle={{
                       backgroundColor: txType === 'income' ? 'var(--positive)' : 'var(--accent)',
                     }}
@@ -559,7 +559,7 @@ export default function EntrySheet({
                           type="button"
                           data-hl={t.id}
                           onClick={() => handleTypeSwitch(t.id)}
-                          className="relative py-1.5 text-[12px] font-bold rounded-xl z-10 transition-colors"
+                          className="relative py-1.5 text-[12px] font-bold rounded-[11px] z-10 transition-colors"
                           style={{ color: active ? '#FFFFFF' : 'var(--text-secondary)' }}
                         >
                           {t.label}

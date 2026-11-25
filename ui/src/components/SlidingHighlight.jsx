@@ -50,6 +50,18 @@ export default function SlidingHighlight({
     const w = el.offsetWidth;
     const h = el.offsetHeight;
 
+    // Concentric border-radius: R_inner = max(2, min(h/2, effectiveOuterR - (border + padding)))
+    const cs = window.getComputedStyle(container);
+    const rawR = parseFloat(cs.borderTopLeftRadius) || 0;
+    if (rawR > 0 && pillInnerRef.current) {
+      const effR = Math.min(rawR, container.offsetHeight / 2);
+      const insetX = (parseFloat(cs.borderLeftWidth) || 0) + (parseFloat(cs.paddingLeft) || 0);
+      const insetY = (parseFloat(cs.borderTopWidth) || 0) + (parseFloat(cs.paddingTop) || 0);
+      const inset = Math.min(insetX, insetY);
+      const innerR = Math.max(2, Math.min(h / 2, effR - inset));
+      pillInnerRef.current.style.borderRadius = `${innerR}px`;
+    }
+
     pill.style.transition = transitionCss;
     pill.style.width = `${w}px`;
     pill.style.height = `${h}px`;

@@ -1,8 +1,7 @@
-// Subscriptions: dual-mode Wallet ("3D Flip" stack + continuous "Pass Deck"), a strip of the coming days,
-// a quick "worth it?" rating, and suggestions from repeated purchases.
+// Subscriptions: a Wallet-style stack of cards (tap one and it flies to the centre and flips over a blurred
+// backdrop), a strip of the coming days, a quick "worth it?" rating, and suggestions from repeated purchases.
 // Nothing is ever charged automatically: "Log as paid" adds a normal entry, only when tapped.
 import * as store from './store.js';
-import { nfSpan, syncNumFlow } from './numflow.js';
 import { esc, todayStr, monthKeyOf, haptic } from './util.js';
 
 // ---- brands: official logos (Simple Icons, CC0, stored in icons/brands) and brand colours
@@ -33,9 +32,6 @@ export function brandOf(name) {
 // a full address: browsers disagree on what a relative url() inside a CSS variable is relative to
 const logoUrl = (slug) => new URL(`icons/brands/${slug}.svg`, document.baseURI).href;
 const glyph = (s) => (s.logo ? `<i class="bl" style="--m:url('${esc(logoUrl(s.logo))}')"></i>` : esc((s.name || '?').trim().charAt(0).toUpperCase()));
-
-const subsStyle = () => (store.getState().settings.subsStyle === 'pass' ? 'pass' : 'flip');
-const reduceMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ---- dates and state of each subscription this month
 const pad = (n) => String(n).padStart(2, '0');
@@ -101,336 +97,34 @@ function spotted() {
   }).slice(0, 4);
 }
 
-// ---- the page state
+// ---- the page
 const ui = { edit: null, armed: false };
 let ctx = null;
 let bound = false;
 
-// Mode A (3D Flip) state
-let focused = null, busy = false, focusSeq = 0, dirtyWhileFocused = false;
-
-// Mode B (Pass Deck) state
-let passOrder = [];
-let passOpenId = null;
-let forcePassRerender = false;
-let passResizeObs = null;
-let passDrag = null;
-let suppressPassClickUntil = 0;
-
-// ---- Mode A markup: 3D Flip card
-const PEEK_BTN_STYLE = 'flex:none;width:auto;height:26px;padding:0 9px;border-radius:999px;font-size:11.5px;font-weight:700;background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.24);line-height:1';
-const CLOSE_BTN_STYLE = 'flex:none;width:26px;height:26px;padding:0;border-radius:50%;font-size:12px;font-weight:700;display:grid;place-items:center;background:rgba(255,255,255,.18);color:#fff;border:1px solid rgba(255,255,255,.24)';
-
 function cardHTML(s, st, fmt) {
   const acc = s.account || store.view().accounts[0].name;
-  const ratingRow = `<div class="r7">${['🔥', '😐', '💤'].map((e) => `<button type="button" data-sa="rate" data-id="${esc(s.id)}" data-v="${e}" class="${s.rating === e ? 'on' : ''}" aria-label="Rate ${e}">${e}</button>`).join('')}</div>`;
+  const ratingRow = `<div class="r7">${['🔥', '😐', '💤'].map((e) => `<button data-sa="rate" data-id="${esc(s.id)}" data-v="${e}" class="${s.rating === e ? 'on' : ''}" aria-label="Rate ${e}">${e}</button>`).join('')}</div>`;
   const status = st.paid ? 'Paid' : st.skipped ? 'Skipped' : esc(whenTxt(st));
   return `<div class="wcard ${st.paid || st.skipped ? 'done' : ''} ${s.rating === '💤' ? 'sleepy' : ''}" data-id="${esc(s.id)}" style="--c:${esc(s.color || '#5B5BF0')}">
       <div class="face front">
-        <div class="top"><span class="mark">${glyph(s)}</span><span class="name">${esc(s.name)}</span><span class="fld"><i>Monthly</i><b>${esc(fmt(s.amount))}</b></span>
-          <span class="back-acts front-acts" hidden style="display:none;align-items:center;gap:6px;flex:none;margin-left:auto"><button type="button" data-sa="peek" data-id="${esc(s.id)}" style="${PEEK_BTN_STYLE}">Details</button><button type="button" data-sa="close-card" data-id="${esc(s.id)}" aria-label="Close" style="${CLOSE_BTN_STYLE}">✕</button></span></div>
+        <div class="top"><span class="mark">${glyph(s)}</span><span class="name">${esc(s.name)}</span><span class="fld"><i>Monthly</i><b>${esc(fmt(s.amount))}</b></span></div>
         ${ratingRow}
         <div class="grid"><div><i>Next</i><b>${status}</b></div><div><i>Account</i><b>${esc(acc)}</b></div><div><i>Per year</i><b>${esc(fmt(Math.round(s.amount * 12)))}</b></div></div>
       </div>
       <div class="face back">
-        <div class="top"><span class="mark">${glyph(s)}</span><span class="name">${esc(s.name)}</span><span class="fld"><i>Monthly</i><b>${esc(fmt(s.amount))}</b></span>
-          <span class="back-acts" style="display:flex;align-items:center;gap:6px;flex:none;margin-left:auto"><button type="button" data-sa="peek" data-id="${esc(s.id)}" style="${PEEK_BTN_STYLE}">Front</button><button type="button" data-sa="close-card" data-id="${esc(s.id)}" aria-label="Close" style="${CLOSE_BTN_STYLE}">✕</button></span></div>
+        <div class="top"><span class="mark">${glyph(s)}</span><span class="name">${esc(s.name)}</span><span class="fld"><i>Monthly</i><b>${esc(fmt(s.amount))}</b></span></div>
         <div class="grid g2"><div><i>Next</i><b>${status}</b></div><div><i>Account</i><b>${esc(acc)}</b></div><div><i>Per year</i><b>${esc(fmt(Math.round(s.amount * 12)))}</b></div></div>
         <div class="grid"><div><i>Renews</i><b>${ord(s.day)}</b></div><div><i>Per week</i><b>${esc(fmt(Math.round(s.amount * 12 / 52)))}</b></div><div><i>Per day</i><b>${esc(fmt(Math.round(s.amount / 30 * 10) / 10))}</b></div></div>
         <div class="btns">
-          ${st.paid ? '<button type="button" class="main" disabled>Paid this month ✓</button>' : `<button type="button" class="main" data-sa="paid" data-id="${esc(s.id)}">Log as paid</button>`}
-          ${st.paid ? '' : `<button type="button" data-sa="${st.skipped ? 'unskip' : 'skip'}" data-id="${esc(s.id)}">${st.skipped ? 'Undo skip' : 'Skip month'}</button>`}
-          <button type="button" class="more" data-sa="edit" data-id="${esc(s.id)}" aria-label="Edit ${esc(s.name)}">Edit</button>
+          ${st.paid ? '<button class="main" disabled>Paid this month ✓</button>' : `<button class="main" data-sa="paid" data-id="${esc(s.id)}">Log as paid</button>`}
+          ${st.paid ? '' : `<button data-sa="${st.skipped ? 'unskip' : 'skip'}" data-id="${esc(s.id)}">${st.skipped ? 'Undo skip' : 'Skip month'}</button>`}
+          <button class="more" data-sa="edit" data-id="${esc(s.id)}" aria-label="Edit ${esc(s.name)}">Edit</button>
         </div>
       </div>
     </div>`;
 }
 
-// ---- Mode B helpers & markup: Pass Deck
-const BRAND_GRADIENTS = {
-  claude: ['#EDA082', '#D97757', '#6E311B'],
-  spotify: ['#35DD73', '#1DB954', '#0A4B22'],
-  youtube: ['#FF4D4D', '#D91B1B', '#660808'],
-  youtubemusic: ['#FF4D4D', '#D91B1B', '#660808'],
-  netflix: ['#F52F38', '#C80812', '#520308'],
-  icloud: ['#68B5FF', '#3693F3', '#12417E'],
-};
-const RATING_LABELS = { '🔥': '🔥 Worth it', '😐': '😐 Okay', '💤': '💤 Sleepy' };
-
-function parseHex(hex) {
-  let h = String(hex || '').trim().replace(/^#/, '');
-  if (/^[0-9a-f]{3}$/i.test(h)) h = h.split('').map((ch) => ch + ch).join('');
-  if (!/^[0-9a-f]{6}$/i.test(h)) h = '5B5BF0';
-  return [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
-}
-function mixHex(rgb, target, t) {
-  const toHex = (n) => Math.max(0, Math.min(255, Math.round(n))).toString(16).padStart(2, '0');
-  return '#' + rgb.map((v, i) => toHex(v + (target[i] - v) * t)).join('');
-}
-function passGradient(s) {
-  const b = brandOf(s.name);
-  const key = s.logo || b.logo;
-  const baseColor = s.color || b.color || '#5B5BF0';
-  if (BRAND_GRADIENTS[key] && baseColor.toLowerCase() === b.color.toLowerCase()) {
-    const [a, m, z] = BRAND_GRADIENTS[key];
-    return `linear-gradient(142deg, ${a}, ${m}, ${z})`;
-  }
-  const rgb = parseHex(baseColor);
-  const brighter = mixHex(rgb, [255, 255, 255], 0.22);
-  const base = mixHex(rgb, rgb, 0);
-  const deepest = mixHex(rgb, [0, 0, 0], 0.54);
-  return `linear-gradient(142deg, ${brighter}, ${base}, ${deepest})`;
-}
-
-function syncPassOrder(live) {
-  const liveIds = live.map((x) => x.s.id);
-  const liveSet = new Set(liveIds);
-  passOrder = passOrder.filter((id) => liveSet.has(id));
-  for (const id of liveIds) if (!passOrder.includes(id)) passOrder.push(id);
-  if (passOpenId && !liveSet.has(passOpenId)) passOpenId = null;
-}
-
-function billingEntries(s) {
-  const v = store.view();
-  const target = s.name.trim().toLowerCase();
-  const hits = [];
-  for (let i = v.months.length - 1; i >= 0 && hits.length < 3; i--) {
-    const m = v.by[v.months[i]];
-    if (!m) continue;
-    for (const e of m.entries) {
-      if (e.type === 'Expense' && e.description.trim().toLowerCase() === target) {
-        hits.push(e);
-        if (hits.length >= 3) break;
-      }
-    }
-  }
-  return hits;
-}
-
-function passBarHTML(ordered) {
-  if (!passOpenId) {
-    return `<span>${ordered.length} Subscriptions</span><button type="button" class="chip sm" data-sa="pass-cycle">↻ Cycle</button>`;
-  }
-  const openIdx = Math.max(0, ordered.findIndex((x) => x.s.id === passOpenId));
-  return `<button type="button" class="chip on sm" data-sa="pass-close" data-testid="pass-all-btn">← All passes</button><div class="pass-nav"><span>Pass ${openIdx + 1} of ${ordered.length}</span><button type="button" class="pass-step" data-sa="pass-prev" aria-label="Previous pass">‹</button><button type="button" class="pass-step" data-sa="pass-next" aria-label="Next pass">›</button></div>`;
-}
-
-function passDetailsHTML(s, st, fmt) {
-  if (!s) return '';
-  const entries = billingEntries(s);
-  const nextStatus = st.paid ? 'Paid this month' : st.skipped ? 'Skipped this month' : whenTxt(st);
-  return `<div class="pass-act-row">
-      <div class="pass-r7">
-        ${[['🔥', 'Worth it'], ['😐', 'Okay'], ['💤', 'Sleepy']].map(([e, lbl]) =>
-          `<button type="button" class="${s.rating === e ? 'on' : ''}" data-sa="rate" data-id="${esc(s.id)}" data-v="${e}">${e} ${lbl}</button>`
-        ).join('')}
-      </div>
-      <div class="pass-act-btns">
-        ${st.paid ? '<button type="button" class="main" disabled>Paid this month ✓</button>' : `<button type="button" class="main" data-sa="paid" data-id="${esc(s.id)}">Log as paid</button>`}
-        ${st.paid ? '' : `<button type="button" data-sa="${st.skipped ? 'unskip' : 'skip'}" data-id="${esc(s.id)}">${st.skipped ? 'Undo skip' : 'Skip month'}</button>`}
-        <button type="button" data-sa="edit" data-id="${esc(s.id)}">Edit</button>
-      </div>
-    </div>
-    <div class="pass-ledger">
-      <div class="pass-ledger-row"><b>Billing ledger</b></div>
-      <div class="pass-ledger-row">
-        <span class="pass-ledger-next">Next renewal · ${esc(st.next)} · ${esc(nextStatus)}</span>
-        <b>${esc(fmt(s.amount))}</b>
-      </div>
-      ${entries.length ? entries.map((e) => `<div class="pass-ledger-row">
-        <span>${esc(e.date)}${e.account ? ` · ${esc(e.account)}` : ''}</span>
-        <b>${esc(fmt(e.amount))}</b>
-      </div>`).join('') : '<div class="pass-ledger-row"><span>No logged payments yet</span></div>'}
-    </div>`;
-}
-
-function passCardHTML(s, st, idx, fmt) {
-  const acc = s.account || store.view().accounts[0].name;
-  const status = st.paid ? 'Paid' : st.skipped ? 'Skipped' : whenTxt(st);
-  const prog = st.paid || st.skipped ? 100 : Math.max(4, Math.min(100, Math.round((1 - Math.max(0, st.until) / 31) * 100)));
-  const ratingText = RATING_LABELS[s.rating] || 'Unrated';
-  return `<div class="pcard ${st.paid || st.skipped ? 'done' : ''} ${s.rating === '💤' ? 'sleepy' : ''}" data-pass-card="true" data-id="${esc(s.id)}" style="z-index:${10 + idx}">
-      <div class="pcard-face" style="background:${passGradient(s)}">
-        <div class="pass-crown">
-          <span class="mark" style="--c:${esc(s.color || '#5B5BF0')}">${glyph(s)}</span>
-          <div style="flex:1;min-width:0;display:flex;flex-direction:column">
-            <b style="font-size:15.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(s.name)}</b>
-            <small style="font-size:11.5px;opacity:.82;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(acc)} · ${esc(s.category || 'Subscription')}</small>
-          </div>
-          <div style="text-align:right;flex:none"><b style="font-size:16px;font-weight:750;font-variant-numeric:tabular-nums">${esc(fmt(s.amount))}</b><small style="font-size:11px;opacity:.82"> /mo</small></div>
-        </div>
-        <div class="pass-mid">
-          <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:11.5px;font-weight:650">
-            <span>Next: ${esc(status)} · ${ord(s.day)}</span>
-            <span class="pass-pill">${esc(ratingText)}</span>
-          </div>
-          <div class="pass-bar"><i style="width:${prog}%"></i></div>
-        </div>
-        <div class="pass-foot">
-          <div><i style="display:block;font-style:normal;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.72">Account</i><b>${esc(acc)}</b></div>
-          <div><i style="display:block;font-style:normal;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.72">Weekly</i><b>${esc(fmt(Math.round(s.amount * 12 / 52)))}</b></div>
-          <div style="text-align:right"><i style="display:block;font-style:normal;font-size:9.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.72">Annual</i><b>${esc(fmt(Math.round(s.amount * 12)))}</b></div>
-        </div>
-      </div>
-      <button type="button" class="pass-hit" data-id="${esc(s.id)}" aria-label="Open ${esc(s.name)} pass" style="top:0;height:100%"></button>
-    </div>`;
-}
-
-function disconnectPassObserver() {
-  if (passResizeObs) {
-    passResizeObs.disconnect();
-    passResizeObs = null;
-  }
-}
-
-function layoutPassDeck(instant = false) {
-  const stage = document.getElementById('passStage');
-  if (!stage) return;
-  const cards = passOrder.map((id) => stage.querySelector(`.pcard[data-id="${CSS.escape(id)}"]`)).filter(Boolean);
-  if (!cards.length) return;
-  const details = stage.querySelector('.pass-details');
-  const firstCard = cards[0];
-  const cardW = firstCard.clientWidth || stage.clientWidth || 320;
-  const cardH = firstCard.offsetHeight || Math.round(cardW / 1.586);
-  const panelH = details ? details.offsetHeight : 0;
-
-  if (instant || reduceMotion()) {
-    cards.forEach((c) => { c.style.transition = 'none'; });
-    if (details) details.style.transition = 'none';
-  }
-
-  const openIdx = passOpenId ? passOrder.indexOf(passOpenId) : -1;
-  if (passOpenId && openIdx < 0) passOpenId = null;
-  document.body.classList.toggle('pass-open', Boolean(passOpenId));
-
-  if (!passOpenId) {
-    const peek = 48;
-    const N = cards.length;
-    cards.forEach((c, idx) => {
-      c.removeAttribute('data-pocket-card');
-      c.classList.remove('is-open', 'is-pocket');
-      c.style.zIndex = String(10 + idx);
-      c.style.transformOrigin = 'top center';
-      c.style.touchAction = 'pan-x';
-      const hit = c.querySelector('.pass-hit');
-      if (hit) { hit.style.height = '100%'; hit.style.touchAction = 'pan-x'; }
-      const scale = 1 - (N - 1 - idx) * 0.014;
-      const y = idx * peek;
-      c.style.transform = `translate3d(0, ${y}px, 0) scale(${scale.toFixed(4)})`;
-    });
-    if (details) {
-      details.setAttribute('aria-hidden', 'true');
-      details.style.opacity = '0';
-      details.style.pointerEvents = 'none';
-      details.style.transform = `translate3d(0, ${Math.max(0, (N - 1) * peek + 20)}px, 0)`;
-    }
-    stage.style.height = Math.round(cardH + Math.max(0, N - 1) * peek) + 'px';
-  } else {
-    const gap = 12;
-    const panelY = cardH + gap;
-    const pocketStep = 52;
-    const pocketCount = cards.length - 1;
-    const pocketBase = panelY + panelH + (pocketCount > 0 ? 14 : 0);
-    let pIdx = 0;
-
-    cards.forEach((c, idx) => {
-      const isOpen = idx === openIdx;
-      const hit = c.querySelector('.pass-hit');
-      c.style.zIndex = String(10 + idx);
-      c.style.transformOrigin = 'top center';
-      if (isOpen) {
-        c.removeAttribute('data-pocket-card');
-        c.classList.add('is-open');
-        c.classList.remove('is-pocket');
-        c.style.touchAction = 'none';
-        if (hit) { hit.style.height = '100%'; hit.style.touchAction = 'none'; }
-        c.style.transform = 'translate3d(0, 0, 0) scale(1)';
-      } else {
-        c.setAttribute('data-pocket-card', 'true');
-        c.classList.remove('is-open');
-        c.classList.add('is-pocket');
-        c.style.touchAction = 'manipulation';
-        if (hit) { hit.style.height = '52px'; hit.style.touchAction = 'manipulation'; }
-        const scale = 1 - (pocketCount - 1 - pIdx) * 0.014;
-        const y = pocketBase + pIdx * pocketStep;
-        c.style.transform = `translate3d(0, ${y}px, 0) scale(${scale.toFixed(4)})`;
-        pIdx++;
-      }
-    });
-    if (details) {
-      details.setAttribute('aria-hidden', 'false');
-      details.style.opacity = '1';
-      details.style.pointerEvents = 'auto';
-      details.style.transform = `translate3d(0, ${panelY}px, 0)`;
-    }
-    const pocketH = pocketCount > 0 ? (pocketCount - 1) * pocketStep + 56 : 0;
-    stage.style.height = Math.round(pocketCount > 0 ? pocketBase + pocketH : cardH + gap + panelH) + 'px';
-  }
-
-  if (instant || reduceMotion()) {
-    void stage.offsetHeight;
-    cards.forEach((c) => { c.style.transition = ''; });
-    if (details) details.style.transition = '';
-  }
-}
-
-function refreshPassHeaderAndPanel() {
-  const stage = document.getElementById('passStage');
-  const headerEl = document.querySelector('[data-testid="pass-deck-header"]');
-  if (!stage || !ctx) return;
-  const live = liveSubs();
-  syncPassOrder(live);
-  const byId = new Map(live.map((x) => [x.s.id, x]));
-  const ordered = passOrder.map((id) => byId.get(id)).filter(Boolean);
-  if (headerEl) headerEl.innerHTML = passBarHTML(ordered);
-  const details = stage.querySelector('.pass-details');
-  if (details) {
-    const active = passOpenId ? byId.get(passOpenId) : null;
-    details.innerHTML = active ? passDetailsHTML(active.s, active.st, ctx.fmt) : '';
-  }
-}
-
-function openPass(id) {
-  const stage = document.getElementById('passStage');
-  if (!stage || !passOrder.includes(id)) return;
-  const wasClosed = !passOpenId;
-  passOpenId = id;
-  refreshPassHeaderAndPanel();
-  layoutPassDeck(false);
-  if (wasClosed) {
-    const headerEl = document.querySelector('[data-testid="pass-deck-header"]');
-    headerEl?.scrollIntoView({ behavior: reduceMotion() ? 'auto' : 'smooth', block: 'start' });
-  }
-}
-
-function closePass() {
-  if (!passOpenId) return;
-  passOpenId = null;
-  refreshPassHeaderAndPanel();
-  layoutPassDeck(false);
-}
-
-function bindPassObservers(stage) {
-  disconnectPassObserver();
-  if (typeof ResizeObserver !== 'function') return;
-  const firstCard = stage.querySelector('.pcard');
-  const details = stage.querySelector('.pass-details');
-  let lastW = firstCard ? firstCard.clientWidth : 0;
-  let lastH = details ? details.offsetHeight : 0;
-  passResizeObs = new ResizeObserver(() => {
-    const nw = firstCard ? firstCard.clientWidth : 0;
-    const nh = details ? details.offsetHeight : 0;
-    if (Math.abs(nw - lastW) >= 1 || Math.abs(nh - lastH) >= 1) {
-      lastW = nw;
-      lastH = nh;
-      layoutPassDeck(true);
-    }
-  });
-  if (firstCard) passResizeObs.observe(firstCard);
-  if (details) passResizeObs.observe(details);
-}
-
-// ---- form
 function formHTML(f) {
   const v = store.view();
   const cats = v.categories.order.filter((c) => c !== 'Income');
@@ -483,13 +177,9 @@ function blankForm(prefill = {}) {
 
 export function renderSubsPage(view, c) {
   ctx = c;
-  // a sync can redraw the screen at any time: never tear down an open card or pass, and keep what is being typed
-  if (focused && document.contains(focused)) return;
+  // a sync can redraw the screen at any time: never tear down an open card, and keep what is being typed
+  if (focused && document.contains(focused)) return;   // (the open card lives on <body> until it is put back)
   if (focused) { focused = null; busy = false; const d = document.querySelector('.wdim'); if (d) d.classList.remove('on'); view.style.overflow = ''; }
-  const mode = subsStyle();
-  if (mode === 'pass' && passOpenId && !forcePassRerender && document.getElementById('passStage')) return;
-  forcePassRerender = false;
-
   if (ui.edit && view.querySelector('#sfName')) readForm();
   const { fmt } = c;
   const v = store.view();
@@ -507,35 +197,6 @@ export function renderSubsPage(view, c) {
     const on = live.filter((x) => x.st.next === iso && !x.st.paid && !x.st.skipped);
     strip += `<button class="sd ${i === 0 ? 'today' : ''}" data-sa="day" data-v="${iso}">${esc(new Intl.DateTimeFormat(undefined, { weekday: 'narrow' }).format(d))}<b>${d.getDate()}</b>${on.length ? `<span class="dot" style="--c:${esc(on[0].s.color || '#5B5BF0')}">${on.length > 1 ? on.length : glyph(on[0].s)}</span>` : '<span class="dot none"></span>'}</button>`;
   }
-
-  let ordered = live;
-  if (mode === 'pass') {
-    syncPassOrder(live);
-    const byId = new Map(live.map((x) => [x.s.id, x]));
-    ordered = passOrder.map((id) => byId.get(id)).filter(Boolean);
-    document.body.classList.toggle('pass-open', Boolean(passOpenId));
-  } else {
-    document.body.classList.remove('pass-open');
-    disconnectPassObserver();
-  }
-
-  const activePass = mode === 'pass' && passOpenId ? ordered.find((x) => x.s.id === passOpenId) : null;
-  const styleSwitcher = `<div class="seg two subs-style-seg" role="radiogroup" aria-label="Subscriptions style">
-      <button role="radio" aria-checked="${mode === 'flip'}" class="${mode === 'flip' ? 'on' : ''}" data-sa="subs-style" data-v="flip">3D Flip</button>
-      <button role="radio" aria-checked="${mode === 'pass'}" class="${mode === 'pass' ? 'on' : ''}" data-sa="subs-style" data-v="pass">Pass Deck</button>
-    </div>`;
-
-  const deckMarkup = mode === 'pass'
-    ? `<div class="pass-deck-bar" data-testid="pass-deck-header">${passBarHTML(ordered)}</div>
-      <div id="passStage" class="pass-stage">
-        <div class="pass-details" data-testid="pass-activity-panel" style="top:0;z-index:1">${activePass ? passDetailsHTML(activePass.s, activePass.st, fmt) : ''}</div>
-        ${ordered.map((x, idx) => passCardHTML(x.s, x.st, idx, fmt)).join('')}
-      </div>
-      <p class="muted xs center">Tap a pass to inspect · drag down to put back</p>`
-    : `<div class="wallet" id="wallet">${live.map((x) => cardHTML(x.s, x.st, fmt)).join('')}</div>
-      <p class="muted xs center">Tap a card for details · rate each one on its front</p>`;
-
-  const prevScroll = view.scrollTop;
   const sugg = ui.edit ? [] : spotted();
   const warn = v.subsSupported ? '' : '<p class="warn">Your Google Sheet script doesn’t support subscriptions yet. Paste the updated script (Api.gs), deploy a new version, then sync.</p>';
   view.innerHTML = `<div class="page ${c.animate ? 'enter' : ''}">
@@ -544,10 +205,10 @@ export function renderSubsPage(view, c) {
     ${ui.edit ? formHTML(ui.edit) : ''}
     ${live.length ? `<section class="card subs-head">
       <div class="strip7">${strip}</div>
-      <div class="wtotal"><div><small class="muted">Every month</small><div class="big">${nfSpan(total, 'subs-monthly-total', esc(fmt(total)))}</div></div>
+      <div class="wtotal"><div><small class="muted">Every month</small><div class="big">${esc(fmt(total))}</div></div>
         <div class="muted next">${due.length ? `Next: <b>${esc(due[0].s.name)}</b><br>${esc(whenTxt(due[0].st))} · ${esc(fmt(due[0].s.amount))}` : 'All paid this month'}</div></div>
-      ${styleSwitcher}
-      ${deckMarkup}
+      <div class="wallet" id="wallet">${live.map((x) => cardHTML(x.s, x.st, fmt)).join('')}</div>
+      <p class="muted xs center">Tap a card for details · rate each one on its front</p>
     </section>` : ui.edit ? '' : `<section class="card empty-subs"><p class="muted">Keep Netflix, Spotify and the rest in one place: see what renews next, log it in one tap, and spot the ones you no longer use.</p></section>`}
     ${sleepy.length ? `<div class="savebox">💤 ${esc(sleepy.map((x) => x.s.name).join(', '))}: you would save ${esc(fmt(Math.round(sleepy.reduce((n, x) => n + x.s.amount, 0) * 12)))} a year by cancelling.</div>` : ''}
     ${ui.edit ? '' : `<button class="btn" data-sa="new" ${v.subsSupported ? '' : 'disabled'}>Add subscription</button>`}
@@ -558,35 +219,16 @@ export function renderSubsPage(view, c) {
     ${paused.length ? `<section class="card"><div class="card-h"><h3>Paused</h3></div>
       ${paused.map((x) => `<div class="spot"><span class="mark" style="--c:${esc(x.s.color)}">${glyph(x.s)}</span><span class="spot-t"><b>${esc(x.s.name)}</b><small>${esc(fmt(x.s.amount))} a month</small></span><button class="chip" data-sa="edit" data-id="${esc(x.s.id)}">Edit</button></div>`).join('')}</section>` : ''}
   </div>`;
-
   view._spotted = sugg;
-  syncNumFlow(view);
-
-  if (mode === 'pass') {
-    const stage = view.querySelector('#passStage');
-    if (stage) {
-      layoutPassDeck(true);
-      bindPassObservers(stage);
-      if (passOpenId) view.scrollTop = prevScroll;
-    }
-  } else {
-    const w = view.querySelector('#wallet');
-    if (w) stack(w);
-  }
+  const w = view.querySelector('#wallet');
+  if (w) stack(w);
   bindForm(view);
-
   // on the document: an open card is moved out of the page (to <body>) while it is in the centre
-  if (!bound) {
-    bound = true;
-    document.addEventListener('click', onClick);
-    document.addEventListener('pointerdown', onPassPointerDown);
-    document.addEventListener('pointermove', onPassPointerMove);
-    document.addEventListener('pointerup', onPassPointerUp);
-    document.addEventListener('pointercancel', onPassPointerUp);
-  }
+  if (!bound) { bound = true; document.addEventListener('click', onClick); }
 }
 
-// ---- Mode A: stack and sequenced two-phase 3D Flip focus
+// ---- the stack and the Wallet-style focus
+let focused = null, busy = false;
 function stack(w) {
   const cards = [...w.children];
   if (!cards.length) return;
@@ -604,232 +246,53 @@ function dimEl() {
   return d;
 }
 const below = (c) => { const cs = [...c.parentNode.children]; return cs.slice(cs.indexOf(c) + 1); };
-
-function appBox() {
-  const appEl = document.getElementById('app');
-  if (appEl) {
-    const ar = appEl.getBoundingClientRect();
-    return {
-      left: ar.left + appEl.clientLeft,
-      top: ar.top + appEl.clientTop,
-      width: appEl.clientWidth || innerWidth,
-      height: appEl.clientHeight || innerHeight,
-    };
-  }
-  return { left: 0, top: 0, width: innerWidth, height: innerHeight };
-}
-
-function setPeeking(c, peeking) {
-  c.classList.toggle('peek', peeking);
-  c.classList.toggle('flip', !peeking);
-  const fa = c.querySelector('.front-acts');
-  if (fa) {
-    fa.hidden = !peeking;
-    fa.style.display = peeking ? 'flex' : 'none';
-  }
-}
-
 function focus(c) {
   if (busy || focused) return;
-  busy = true;
-  focused = c;
-  dirtyWhileFocused = false;
-  const seq = ++focusSeq;
-  const rm = reduceMotion();
+  busy = true; focused = c;
+  const r = c.getBoundingClientRect();
+  const sc = Math.min(innerWidth - 28, 460) / r.width;
+  c.style.transition = 'none';
+  c.style.left = r.left + 'px'; c.style.top = r.top + 'px'; c.style.width = r.width + 'px'; c.style.right = 'auto';
+  c.classList.add('focus');
   const lower = below(c);
-  const leadMs = lower.length > 0 && !rm ? 380 : 0;
-
-  // Phase 1: clear cards below cleanly with S-curve, keep cards above completely untouched
-  if (lower.length > 0) {
-    lower.forEach((b, k) => {
-      b.style.willChange = 'transform';
-      b.style.transition = rm ? 'none' : 'transform 0.58s cubic-bezier(0.36, 0.06, 0.24, 1)';
-      b.style.transitionDelay = rm ? '' : (lower.length - 1 - k) * 50 + 'ms';
-      b.style.transform = 'translateY(560px)';
-    });
-  }
+  c._home = { parent: c.parentNode, next: c.nextSibling };
+  document.body.appendChild(c);                    // out of any blurred / animated parent, so "fixed" means the screen
+  void c.offsetWidth;
+  c.style.transition = '';
+  c.style.transform = `translate(${innerWidth / 2 - (r.left + r.width / 2)}px, ${innerHeight / 2 - (r.top + r.height / 2) - 20}px) scale(${sc})`;
+  c.classList.add('flip');
+  lower.forEach((b, k) => { b.style.transition = 'transform .72s cubic-bezier(.45,0,.2,1)'; b.style.transitionDelay = k * 40 + 'ms'; b.style.transform = `translateY(${innerHeight}px)`; });
+  dimEl().classList.add('on');
+  const view = document.getElementById('view'); if (view) view.style.overflow = 'hidden';
   haptic(6);
-
-  const launchFocus = () => {
-    if (seq !== focusSeq || !c.isConnected) return;
-    const box = appBox();
-    const r = c.getBoundingClientRect();
-    const sc = Math.min(box.width - 28, 420) / (r.width || 1);
-    const targetH = r.height * sc;
-    const centerX = box.left + box.width / 2;
-    const centerY = box.top + box.height / 2 - 14;
-
-    c._home = { parent: c.parentNode, next: c.nextSibling };
-    c.style.setProperty('transition', 'none', 'important');
-    c.style.willChange = 'transform';
-    c.style.left = r.left + 'px';
-    c.style.top = r.top + 'px';
-    c.style.width = r.width + 'px';
-    c.style.right = 'auto';
-    c.classList.add('focus');
-    c.classList.remove('peek');
-    const fa = c.querySelector('.front-acts');
-    if (fa) { fa.hidden = true; fa.style.display = 'none'; }
-    document.body.appendChild(c);
-
-    const d = dimEl();
-    d.classList.add('on');
-    const hint = document.querySelector('.whint');
-    if (hint) {
-      hint.style.top = Math.min(innerHeight - 54, Math.round(centerY + targetH / 2 + 12)) + 'px';
-      hint.style.bottom = 'auto';
-    }
-    const view = document.getElementById('view');
-    if (view) view.style.overflow = 'hidden';
-
-    void c.offsetWidth;
-    c.style.setProperty('transition', rm ? 'none' : 'transform 0.52s cubic-bezier(0.22, 1, 0.36, 1)', 'important');
-    c.style.transform = `translate(${centerX - (r.left + r.width / 2)}px, ${centerY - (r.top + r.height / 2)}px) scale(${sc})`;
-    c.classList.add('flip');
-
-    setTimeout(() => {
-      if (seq === focusSeq) busy = false;
-    }, rm ? 0 : 530);
-  };
-
-  if (leadMs > 0) setTimeout(launchFocus, leadMs);
-  else launchFocus();
+  setTimeout(() => { busy = false; }, 650);
 }
-
 function unfocus(after) {
-  const c = focused;
-  if (!c || busy) return;
+  const c = focused; if (!c || busy) return;
   busy = true;
-  const seq = ++focusSeq;
-  const rm = reduceMotion();
-
-  // Phase 1 (0ms -> 440ms): return focused card to slot & fade dim backdrop while lower cards stay parked
-  c.classList.remove('flip', 'peek');
-  const fa = c.querySelector('.front-acts');
-  if (fa) { fa.hidden = true; fa.style.display = 'none'; }
-  c.style.setProperty('transition', rm ? 'none' : 'transform 0.44s cubic-bezier(0.32, 0.72, 0, 1)', 'important');
+  c.classList.remove('flip');
   c.style.transform = 'translate(0, 0) scale(1)';
   dimEl().classList.remove('on');
-  const view = document.getElementById('view');
-  if (view) view.style.overflow = '';
-
-  const phase2 = () => {
-    if (seq !== focusSeq) return;
-    c.style.setProperty('transition', 'none', 'important');
-    if (c._home && c._home.parent && document.contains(c._home.parent)) {
-      c._home.parent.insertBefore(c, c._home.next && c._home.next.parentNode === c._home.parent ? c._home.next : null);
-    } else {
-      c.remove();
-    }
-    c.classList.remove('focus');
-    c.style.transform = '';
-    c.style.left = '';
-    c.style.width = '';
-    c.style.right = '';
-    c.style.willChange = '';
-    c.style.removeProperty('transition');
-    if (c.parentNode) stack(c.parentNode);
+  const view = document.getElementById('view'); if (view) view.style.overflow = '';
+  setTimeout(() => {
+    c.style.transition = 'none';
+    if (c._home && c._home.parent && document.contains(c._home.parent)) c._home.parent.insertBefore(c, c._home.next && c._home.next.parentNode === c._home.parent ? c._home.next : null);
+    else c.remove();
+    c.classList.remove('focus'); c.style.transform = ''; c.style.left = ''; c.style.width = ''; c.style.right = '';
     focused = null;
-
-    void c.offsetWidth;
+    if (c.parentNode) stack(c.parentNode);
+    void c.offsetWidth; c.style.transition = '';
     const bl = c.parentNode ? below(c) : [];
-    bl.forEach((b, k) => {
-      b.style.transition = rm ? 'none' : 'transform 0.52s cubic-bezier(0.22, 1, 0.36, 1)';
-      b.style.transitionDelay = rm ? '' : k * 48 + 'ms';
-      b.style.transform = '';
-    });
-
-    const settleMs = rm ? 0 : 540 + bl.length * 48;
-    setTimeout(() => {
-      if (seq !== focusSeq) return;
-      bl.forEach((b) => { b.style.transition = ''; b.style.transitionDelay = ''; b.style.willChange = ''; });
-      busy = false;
-      const shouldRerender = dirtyWhileFocused;
-      dirtyWhileFocused = false;
-      if (after) after();
-      else if (shouldRerender) rerender();
-    }, settleMs);
-  };
-
-  if (rm) phase2();
-  else setTimeout(phase2, 450);
+    bl.forEach((b, k) => { b.style.transition = ''; b.style.transitionDelay = k * 30 + 'ms'; b.style.transform = ''; });
+    setTimeout(() => { bl.forEach((b) => { b.style.transitionDelay = ''; }); busy = false; if (after) after(); }, 560 + bl.length * 30);
+  }, 640);
 }
-
-// leaving the page while a card or pass is open: put everything back at once
+// leaving the page while a card is open: put everything back at once
 export function resetSubsUI() {
-  focusSeq++;
   const d = document.querySelector('.wdim'); if (d) d.classList.remove('on');
-  const h = document.querySelector('.whint'); if (h) { h.style.top = ''; h.style.bottom = ''; }
   document.querySelectorAll('body > .wcard').forEach((c) => c.remove());
   const view = document.getElementById('view'); if (view) view.style.overflow = '';
-  focused = null; busy = false; dirtyWhileFocused = false;
-  passOpenId = null; forcePassRerender = false; passDrag = null; suppressPassClickUntil = 0;
-  disconnectPassObserver();
-  document.body.classList.remove('pass-open');
-  ui.edit = null; ui.armed = false;
-}
-
-// ---- Pass Deck touch / pointer gestures
-function onPassPointerDown(e) {
-  if (!ctx || subsStyle() !== 'pass' || e.button > 0) return;
-  const card = e.target.closest('#passStage .pcard');
-  if (!card) return;
-  const stage = document.getElementById('passStage');
-  if (!stage) return;
-  if (passOpenId) {
-    if (card.dataset.id !== passOpenId) return;
-    passDrag = { mode: 'dismiss', card, stage, startX: e.clientX, startY: e.clientY, dy: 0, moved: false, pointerId: e.pointerId };
-  } else {
-    passDrag = { mode: 'fan', card, stage, startX: e.clientX, startY: e.clientY, dy: 0, moved: false, pointerId: e.pointerId };
-  }
-}
-
-function onPassPointerMove(e) {
-  if (!passDrag || e.pointerId !== passDrag.pointerId) return;
-  const dx = e.clientX - passDrag.startX;
-  const dy = e.clientY - passDrag.startY;
-  if (!passDrag.moved) {
-    if (Math.abs(dy) < 6 && Math.abs(dx) < 6) return;
-    if (passDrag.mode === 'fan' && Math.abs(dx) > Math.abs(dy) * 1.2) { passDrag = null; return; }
-    passDrag.moved = true;
-  }
-  passDrag.dy = dy;
-  suppressPassClickUntil = performance.now() + 350;
-
-  if (passDrag.mode === 'dismiss') {
-    const pullY = dy > 0 ? dy : dy * 0.2;
-    const sc = dy > 0 ? Math.max(0.92, 1 - dy * 0.0005) : 1;
-    passDrag.card.style.transition = 'none';
-    passDrag.card.style.transform = `translate3d(0, ${pullY.toFixed(1)}px, 0) scale(${sc.toFixed(4)})`;
-    const details = passDrag.stage.querySelector('.pass-details');
-    if (details && dy > 0) details.style.opacity = String(Math.max(0.15, 1 - dy / 140));
-  } else {
-    const elastic = dy > 0 ? Math.min(26, dy * 0.24) : -Math.min(10, Math.abs(dy) * 0.12);
-    const cards = passOrder.map((id) => passDrag.stage.querySelector(`.pcard[data-id="${CSS.escape(id)}"]`)).filter(Boolean);
-    const N = cards.length;
-    const peek = 48;
-    cards.forEach((c, idx) => {
-      c.style.transition = 'none';
-      const scale = 1 - (N - 1 - idx) * 0.014;
-      const y = idx * (peek + elastic * 0.55);
-      c.style.transform = `translate3d(0, ${y.toFixed(1)}px, 0) scale(${scale.toFixed(4)})`;
-    });
-  }
-}
-
-function onPassPointerUp(e) {
-  if (!passDrag || e.pointerId !== passDrag.pointerId) return;
-  const d = passDrag;
-  passDrag = null;
-  if (!d.moved) return;
-  suppressPassClickUntil = performance.now() + 350;
-  d.stage.querySelectorAll('.pcard').forEach((c) => { c.style.transition = ''; });
-  if (d.mode === 'dismiss' && e.type === 'pointerup' && d.dy > 55) {
-    haptic(6);
-    closePass();
-  } else {
-    layoutPassDeck(false);
-  }
+  focused = null; busy = false; ui.edit = null; ui.armed = false;
 }
 
 // ---- actions
@@ -853,132 +316,21 @@ function logPaid(s) {
   ctx.toast(`${s.name} logged · ${ctx.fmt(s.amount)}`, 'ok');
 }
 
-const READ_ACTS = new Set(['day', 'subs-style', 'peek', 'close-card', 'pass-cycle', 'pass-close', 'pass-prev', 'pass-next']);
-
 function onClick(e) {
-  if (!ctx) return;
-  if (e.target.closest('.pass-hit') && !e.target.closest('[data-sa]')) {
-    if (performance.now() < suppressPassClickUntil) return;
-    const hit = e.target.closest('.pass-hit');
-    const id = hit.dataset.id;
-    if (id) {
-      haptic(5);
-      if (passOpenId === id) closePass();
-      else openPass(id);
-    }
-    return;
-  }
-  if (!e.target.closest('.wcard, [data-sa]')) return;
+  if (!ctx || !e.target.closest('.wcard, [data-sa]')) return;
   const el = e.target.closest('[data-sa]');
   const card = e.target.closest('.wcard');
   if (!el) { if (card) { if (card === focused) unfocus(); else focus(card); } return; }
   const a = el.dataset.sa, id = el.dataset.id;
-  if (store.isViewer() && !READ_ACTS.has(a)) return;   // view only: look, don't touch
-
-  if (a === 'subs-style') {
-    const nextStyle = el.dataset.v === 'pass' ? 'pass' : 'flip';
-    resetSubsUI();
-    store.saveSettings({ subsStyle: nextStyle });
-    haptic(6);
-    rerender();
-    return;
-  }
-  if (a === 'peek') {
-    if (focused) {
-      const peeking = !focused.classList.contains('peek');
-      setPeeking(focused, peeking);
-      haptic(5);
-    }
-    return;
-  }
-  if (a === 'close-card') {
-    unfocus();
-    return;
-  }
-  if (a === 'pass-cycle') {
-    if (passOrder.length > 1 && !passOpenId) {
-      passOrder.unshift(passOrder.pop());
-      refreshPassHeaderAndPanel();
-      layoutPassDeck(false);
-      haptic(5);
-    }
-    return;
-  }
-  if (a === 'pass-close') {
-    haptic(5);
-    closePass();
-    return;
-  }
-  if ((a === 'pass-prev' || a === 'pass-next') && passOrder.length > 1) {
-    const curIdx = Math.max(0, passOrder.indexOf(passOpenId));
-    const nextIdx = a === 'pass-prev'
-      ? (curIdx - 1 + passOrder.length) % passOrder.length
-      : (curIdx + 1) % passOrder.length;
-    haptic(5);
-    openPass(passOrder[nextIdx]);
-    return;
-  }
-
+  if (store.isViewer() && a !== 'day') return;   // view only: look, don't touch
   const s = id ? findSub(id) : null;
-  if (a === 'rate' && s) {
-    e.stopPropagation();
-    const nextRating = s.rating === el.dataset.v ? '' : el.dataset.v;
-    if (subsStyle() === 'pass' && passOpenId) forcePassRerender = true;
-    store.saveSubscription({ ...s, rating: nextRating });
-    haptic(5);
-    if (focused && focused.dataset.id === s.id) {
-      dirtyWhileFocused = true;
-      focused.classList.toggle('sleepy', nextRating === '💤');
-      focused.querySelectorAll('.r7 button').forEach((b) => b.classList.toggle('on', b.dataset.v === nextRating));
-    }
-    if (!focused && forcePassRerender) rerender();
-    else if (!focused && subsStyle() !== 'pass') rerender();
-    forcePassRerender = false;
-    return;
-  }
-  if (a === 'paid' && s) {
-    if (subsStyle() === 'pass') {
-      forcePassRerender = true;
-      logPaid(s);
-      if (forcePassRerender) { forcePassRerender = false; rerender(); }
-      return;
-    }
-    unfocus(() => { logPaid(s); rerender(); });
-    return;
-  }
-  if (a === 'skip' && s) {
-    if (subsStyle() === 'pass') {
-      forcePassRerender = true;
-      store.saveSubscription({ ...s, skipped: stateOf(s).key });
-      ctx.toast(`${s.name} skipped this month`);
-      if (forcePassRerender) { forcePassRerender = false; rerender(); }
-      return;
-    }
-    unfocus(() => { store.saveSubscription({ ...s, skipped: stateOf(s).key }); ctx.toast(`${s.name} skipped this month`); rerender(); });
-    return;
-  }
-  if (a === 'unskip' && s) {
-    if (subsStyle() === 'pass') {
-      forcePassRerender = true;
-      store.saveSubscription({ ...s, skipped: '' });
-      if (forcePassRerender) { forcePassRerender = false; rerender(); }
-      return;
-    }
-    unfocus(() => { store.saveSubscription({ ...s, skipped: '' }); rerender(); });
-    return;
-  }
+  if (a === 'rate' && s) { e.stopPropagation(); store.saveSubscription({ ...s, rating: s.rating === el.dataset.v ? '' : el.dataset.v }); haptic(5); rerender(); return; }
+  if (a === 'paid' && s) { unfocus(() => { logPaid(s); rerender(); }); return; }
+  if (a === 'skip' && s) { unfocus(() => { store.saveSubscription({ ...s, skipped: stateOf(s).key }); ctx.toast(`${s.name} skipped this month`); rerender(); }); return; }
+  if (a === 'unskip' && s) { unfocus(() => { store.saveSubscription({ ...s, skipped: '' }); rerender(); }); return; }
   if (a === 'edit' && s) {
-    const open = () => {
-      ui.edit = { ...s };
-      ui.armed = false;
-      rerender();
-      document.getElementById('view').scrollTo({ top: 0, behavior: 'smooth' });
-    };
-    if (focused) unfocus(open);
-    else {
-      if (passOpenId) { passOpenId = null; document.body.classList.remove('pass-open'); }
-      open();
-    }
+    const open = () => { ui.edit = { ...s }; ui.armed = false; rerender(); document.getElementById('view').scrollTo({ top: 0, behavior: 'smooth' }); };
+    if (focused) unfocus(open); else open();
     return;
   }
   if (a === 'new') { ui.edit = blankForm(); ui.armed = false; rerender(); return; }
@@ -997,10 +349,8 @@ function onClick(e) {
   }
   if (a === 'day') {
     const x = liveSubs().find((y) => y.st.next === el.dataset.v);
-    if (!x) { ctx.toast('Nothing renews that day'); return; }
-    if (subsStyle() === 'pass') { openPass(x.s.id); return; }
-    const c = document.querySelector(`#wallet .wcard[data-id="${CSS.escape(x.s.id)}"]`);
-    if (c) { c.scrollIntoView({ block: 'center' }); requestAnimationFrame(() => focus(c)); }
+    const c = x && document.querySelector(`#wallet .wcard[data-id="${CSS.escape(x.s.id)}"]`);
+    if (c) { c.scrollIntoView({ block: 'center' }); requestAnimationFrame(() => focus(c)); } else ctx.toast('Nothing renews that day');
   }
 }
 

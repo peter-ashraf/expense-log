@@ -6,7 +6,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <meta name="description" content="Private expense tracker that works offline and syncs to your Google Sheet.">
 <meta name="theme-color" content="#F4F5FA">
-<script>try{var st=localStorage.getItem("el_style")||"obsidian";if(st!=="obsidian"&&st!=="kinetic"&&st!=="editorial")st="obsidian";document.documentElement.setAttribute("data-style",st);var t=localStorage.getItem("el_theme"),d=t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);document.documentElement.style.colorScheme=t}var bg={obsidian:["#F4F5FA","#07080D"],kinetic:["#F6F8FC","#090B10"],editorial:["#FAF8F4","#111215"]}[st];document.querySelector('meta[name="theme-color"]').setAttribute("content",bg[d?1:0]);var lk=localStorage.getItem("el_lock");if(lk==="bio"||lk==="pin"||localStorage.getItem("el_vault"))document.documentElement.classList.add("locked")}catch(e){}</script>
+<script>try{var t=localStorage.getItem("el_theme"),d=t==="dark"||(t!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches);if(t==="light"||t==="dark"){document.documentElement.setAttribute("data-theme",t);document.documentElement.style.colorScheme=t}document.querySelector('meta[name="theme-color"]').setAttribute("content",d?"#0A0B10":"#F4F5FA");var lk=localStorage.getItem("el_lock");if(lk==="bio"||lk==="pin"||localStorage.getItem("el_vault"))document.documentElement.classList.add("locked")}catch(e){}</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
@@ -19,8 +19,6 @@
 </head>
 <body>
 <div id="app">
-  <svg width="0" height="0" style="position:absolute" aria-hidden="true"><filter id="editorialNoise"><feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="3" stitchTiles="stitch"/></filter></svg>
-  <div class="editorial-grain" aria-hidden="true"></div>
   <div id="stage">
     <header id="topbar"></header>
     <main id="view"></main>
