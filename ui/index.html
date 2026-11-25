@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en" data-concept="obsidian" data-theme="dark" data-acc="all" data-glass="on">
+<head>
+<meta charset="utf-8">
+<title>Credit Card Expenses</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="description" content="Private expense tracker that works offline and syncs to your Google Sheet.">
+<meta name="theme-color" content="#06070C">
+<script>try{var st=localStorage.getItem("el_style")||"obsidian";if(st!=="obsidian"&&st!=="kinetic"&&st!=="editorial")st="obsidian";document.documentElement.setAttribute("data-concept",st);document.documentElement.setAttribute("data-style",st);var tSet=localStorage.getItem("el_theme_set")==="1";var t=tSet?localStorage.getItem("el_theme"):"dark";if(t!=="light"&&t!=="dark"&&t!=="system")t="dark";var d=t==="dark"||(t==="system"&&matchMedia("(prefers-color-scheme: dark)").matches);var res=d?"dark":"light";document.documentElement.setAttribute("data-theme",res);document.documentElement.style.colorScheme=res;var gl=localStorage.getItem("el_glass");document.documentElement.setAttribute("data-glass",gl==="0"?"off":"on");var bg={obsidian:["#F3F5FA","#06070C"],kinetic:["#F7F8FC","#090B10"],editorial:["#FAF8F4","#111215"]}[st];document.querySelector('meta[name="theme-color"]').setAttribute("content",bg[d?1:0]);var lk=localStorage.getItem("el_lock");if(lk==="bio"||lk==="pin"||localStorage.getItem("el_vault"))document.documentElement.classList.add("locked")}catch(e){}</script>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Credit Card Expenses">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="apple-touch-icon" sizes="180x180" media="(prefers-color-scheme: dark)" href="icons/apple-touch-icon-dark.png">
+</head>
+<body>
+<div id="app">
+  <div id="root"></div>
+</div>
+<div id="lock" role="dialog" aria-label="App locked">
+  <div class="lock-in">
+    <img class="lock-logo" src="icons/icon.svg" alt="" width="84" height="84">
+    <h2 id="lockTitle">Locked</h2>
+    <p id="lockSub">Tap anywhere to unlock</p>
+    <div id="lockBio" class="lock-bio" aria-hidden="true">
+      <svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8V6a2 2 0 0 1 2-2h2M16 4h2a2 2 0 0 1 2 2v2M20 16v2a2 2 0 0 1-2 2h-2M8 20H6a2 2 0 0 1-2-2v-2M9 10v1.5M15 10v1.5M12 10v3.5h-1M9.5 16a3.5 3.5 0 0 0 5 0"/></svg>
+    </div>
+    <div id="lockPin" hidden></div>
+    <form id="lockPass" hidden autocomplete="off"><input id="vaultInput" type="password" placeholder="Passphrase" autocomplete="current-password" autocapitalize="off" spellcheck="false" enterkeyhint="go" aria-label="Passphrase"><button class="lock-btn" id="vaultBtn" type="submit">Unlock</button></form>
+    <button id="lockReset" class="lock-reset" type="button">Can’t unlock?</button>
+  </div>
+</div>
+<script type="module" src="/src/main.jsx"></script>
+</body>
+</html>
