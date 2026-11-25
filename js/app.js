@@ -27,7 +27,7 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.18.1';
+const APP_VERSION = '3.20.2';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
 const SCRIPT_LATEST = 11;
 
@@ -1045,6 +1045,11 @@ function renderSettings(view) {
     <section class="card">
       <div class="card-h"><h3>Location</h3></div>
       <label class="switch block"><input type="checkbox" id="locSwitch" ${st.settings.locCapture === false ? '' : 'checked'}><span>Save where I add an entry <small class="muted">(asks the phone once when you add one by hand; bank SMS use the Shortcut's location)</small></span></label>
+    </section>
+    <section class="card">
+      <div class="card-h"><h3>App interface</h3></div>
+      <div class="seg two" role="radiogroup" aria-label="App interface"><button role="radio" aria-checked="false" data-act="ui-modern">${icon('spark', 18)}Modern</button><button role="radio" aria-checked="true" class="on" data-act="ui-classic">${icon('device', 18)}Classic</button></div>
+      <p class="muted sm" style="margin-top:10px">Classic preserves the previous app interface. Switch back to Modern anytime — your data and Google Sheet sync stay untouched.</p>
     </section>`;
   } else if (p === 'security') {
     body = `${securityCard(st)}
@@ -2581,6 +2586,13 @@ document.addEventListener('click', async (ev) => {
       store.saveSettings({ theme: mode });
       applyTheme(mode);
       haptic(8);
+      break;
+    }
+    case 'ui-classic': break;
+    case 'ui-modern': {
+      try { localStorage.setItem('el_ui', 'modern'); } catch (e) { /* ignore */ }
+      vault.stashForReload();
+      location.replace('./?ui=modern' + location.hash);
       break;
     }
     case 'new-cat': ui.adding = 'cat'; ui.newName = ''; refreshForm(); break;

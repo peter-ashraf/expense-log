@@ -1,6 +1,7 @@
-const CACHE = 'expense-log-v66';
+const CACHE = 'expense-log-v70';
 const SHELL = [
-  './', 'manifest.webmanifest',
+  './', 'classic.html', 'manifest.webmanifest',
+  'assets/app.js', 'assets/app.css',
   'css/app.css',
   'js/app.js', 'js/store.js', 'js/api.js', 'js/db.js', 'js/util.js', 'js/icons.js', 'js/xlsx.js', 'js/csv.js', 'js/lock.js', 'js/lockui.js',
   'js/insights.js', 'js/quick.js', 'js/vault.js', 'js/vaultui.js', 'js/refresh.js', 'js/slide.js', 'js/subs.js',

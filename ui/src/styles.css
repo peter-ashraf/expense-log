@@ -1,0 +1,612 @@
+@import "tailwindcss";
+
+/* Rotating specular border angle for Obsidian hero card */
+@property --spec-angle {
+  syntax: '<angle>';
+  initial-value: 0deg;
+  inherits: false;
+}
+
+@keyframes spinSpec {
+  to {
+    --spec-angle: 360deg;
+  }
+}
+
+@keyframes pulseRing {
+  0%, 100% {
+    transform: scale(1);
+    opacity: 0.55;
+  }
+  50% {
+    transform: scale(1.22);
+    opacity: 0.15;
+  }
+}
+
+@keyframes elShake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-8px); }
+  40% { transform: translateX(8px); }
+  60% { transform: translateX(-6px); }
+  80% { transform: translateX(6px); }
+}
+
+/* Base Design Tokens */
+:root {
+  --bg-app: #06070C;
+  --bg-desktop: radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.18), transparent 45%),
+    radial-gradient(circle at 80% 85%, rgba(34, 211, 238, 0.12), transparent 45%),
+    #040509;
+  --bg-card: rgba(17, 21, 34, 0.72);
+  --bg-card-solid: #111522;
+  --bg-elevated: rgba(26, 32, 50, 0.85);
+  --bg-pill: rgba(255, 255, 255, 0.08);
+  --bg-nav: rgba(13, 16, 28, 0.82);
+  --bg-sheet: #0E121E;
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text-primary: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --accent: #6366F1;
+  --accent-2: #22D3EE;
+  --accent-soft: rgba(99, 102, 241, 0.18);
+  --accent-fg: #FFFFFF;
+  --positive: #10B981;
+  --negative: #F43F5E;
+  --warning: #F59E0B;
+  --card-blur: blur(20px);
+  --card-shadow: 0 12px 32px -12px rgba(0, 0, 0, 0.65);
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", system-ui, sans-serif;
+  --font-body: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+  --radius-card: 22px;
+  --grain-opacity: 0;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+}
+
+/* 1. OBSIDIAN — Copilot Money x iOS Glass */
+html[data-concept="obsidian"][data-theme="dark"] {
+  --bg-app: #06070C;
+  --bg-desktop: radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.2), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(34, 211, 238, 0.12), transparent 45%),
+    #030408;
+  --bg-card: rgba(17, 21, 35, 0.72);
+  --bg-card-solid: #111523;
+  --bg-elevated: rgba(28, 34, 56, 0.84);
+  --bg-pill: rgba(255, 255, 255, 0.08);
+  --bg-nav: rgba(12, 15, 26, 0.8);
+  --bg-sheet: #0E121F;
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.18);
+  --text-primary: #F8FAFC;
+  --text-secondary: #9CA3AF;
+  --text-muted: #6B7280;
+  --accent: #6366F1;
+  --accent-2: #22D3EE;
+  --accent-soft: rgba(99, 102, 241, 0.2);
+  --accent-fg: #FFFFFF;
+  --card-blur: blur(22px);
+  --card-shadow: 0 14px 36px -14px rgba(0, 0, 0, 0.75);
+}
+
+html[data-concept="obsidian"][data-theme="light"] {
+  --bg-app: #F3F5FA;
+  --bg-desktop: radial-gradient(circle at 20% 15%, rgba(79, 70, 229, 0.12), transparent 48%),
+    radial-gradient(circle at 82% 85%, rgba(6, 182, 212, 0.1), transparent 45%),
+    #E5E9F2;
+  --bg-card: rgba(255, 255, 255, 0.76);
+  --bg-card-solid: #FFFFFF;
+  --bg-elevated: rgba(255, 255, 255, 0.94);
+  --bg-pill: rgba(15, 23, 42, 0.06);
+  --bg-nav: rgba(255, 255, 255, 0.82);
+  --bg-sheet: #F8FAFC;
+  --border-subtle: rgba(15, 23, 42, 0.08);
+  --border-strong: rgba(15, 23, 42, 0.14);
+  --text-primary: #0F172A;
+  --text-secondary: #475569;
+  --text-muted: #94A3B8;
+  --accent: #4F46E5;
+  --accent-2: #06B6D4;
+  --accent-soft: rgba(79, 70, 229, 0.12);
+  --accent-fg: #FFFFFF;
+  --card-blur: blur(22px);
+  --card-shadow: 0 10px 28px -10px rgba(15, 23, 42, 0.1);
+}
+
+/* 2. KINETIC — Cash App x Family x Wise (Account-Adaptive) */
+html[data-concept="kinetic"][data-theme="dark"] {
+  --bg-app: #090B10;
+  --bg-desktop: radial-gradient(circle at 50% 20%, rgba(79, 70, 229, 0.18), transparent 55%), #050609;
+  --bg-card: #131722;
+  --bg-card-solid: #131722;
+  --bg-elevated: #1B2130;
+  --bg-pill: rgba(255, 255, 255, 0.09);
+  --bg-nav: rgba(18, 22, 33, 0.92);
+  --bg-sheet: #121622;
+  --border-subtle: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text-primary: #FFFFFF;
+  --text-secondary: #9BA3B8;
+  --text-muted: #656E84;
+  --card-blur: none;
+  --card-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.65);
+  --radius-card: 24px;
+}
+
+html[data-concept="kinetic"][data-theme="light"] {
+  --bg-app: #F7F8FC;
+  --bg-desktop: radial-gradient(circle at 50% 20%, rgba(79, 70, 229, 0.1), transparent 55%), #E8ECF5;
+  --bg-card: #FFFFFF;
+  --bg-card-solid: #FFFFFF;
+  --bg-elevated: #F1F4FA;
+  --bg-pill: rgba(15, 23, 42, 0.06);
+  --bg-nav: rgba(255, 255, 255, 0.94);
+  --bg-sheet: #FFFFFF;
+  --border-subtle: rgba(15, 23, 42, 0.07);
+  --border-strong: rgba(15, 23, 42, 0.14);
+  --text-primary: #0B1020;
+  --text-secondary: #4B5565;
+  --text-muted: #8B95A7;
+  --card-blur: none;
+  --card-shadow: 0 10px 26px -10px rgba(15, 23, 42, 0.09);
+  --radius-card: 24px;
+}
+
+/* Account-adaptive Kinetic accents */
+html[data-concept="kinetic"][data-acc="all"] {
+  --accent: #4F46E5;
+  --accent-2: #818CF8;
+  --accent-soft: rgba(79, 70, 229, 0.15);
+  --accent-fg: #FFFFFF;
+}
+html[data-concept="kinetic"][data-acc="card"] {
+  --accent: #2563EB;
+  --accent-2: #60A5FA;
+  --accent-soft: rgba(37, 99, 235, 0.16);
+  --accent-fg: #FFFFFF;
+}
+html[data-concept="kinetic"][data-acc="cash"] {
+  --accent: #059669;
+  --accent-2: #34D399;
+  --accent-soft: rgba(5, 150, 105, 0.16);
+  --accent-fg: #FFFFFF;
+}
+
+/* 3. EDITORIAL — Monarch x Linear */
+html[data-concept="editorial"][data-theme="light"] {
+  --bg-app: #FAF8F4;
+  --bg-desktop: #EAE5DC;
+  --bg-card: #FFFFFF;
+  --bg-card-solid: #FFFFFF;
+  --bg-elevated: #F4EFE6;
+  --bg-pill: rgba(28, 25, 23, 0.06);
+  --bg-nav: rgba(250, 248, 244, 0.94);
+  --bg-sheet: #FAF8F4;
+  --border-subtle: rgba(28, 25, 23, 0.11);
+  --border-strong: rgba(28, 25, 23, 0.2);
+  --text-primary: #1C1917;
+  --text-secondary: #57534E;
+  --text-muted: #8C857E;
+  --accent: #B45309;
+  --accent-2: #D97706;
+  --accent-soft: rgba(180, 83, 9, 0.11);
+  --accent-fg: #FFFFFF;
+  --positive: #15803D;
+  --negative: #B91C1C;
+  --card-blur: none;
+  --card-shadow: 0 1px 2px rgba(28, 25, 23, 0.04);
+  --font-display: "New York", Georgia, "Times New Roman", serif;
+  --radius-card: 16px;
+  --grain-opacity: 0.035;
+}
+
+html[data-concept="editorial"][data-theme="dark"] {
+  --bg-app: #111215;
+  --bg-desktop: #0B0C0E;
+  --bg-card: #17191D;
+  --bg-card-solid: #17191D;
+  --bg-elevated: #1E2127;
+  --bg-pill: rgba(255, 255, 255, 0.07);
+  --bg-nav: rgba(20, 22, 26, 0.94);
+  --bg-sheet: #15171B;
+  --border-subtle: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.16);
+  --text-primary: #F5F2EC;
+  --text-secondary: #A6A199;
+  --text-muted: #6E6A64;
+  --accent: #F59E0B;
+  --accent-2: #D97706;
+  --accent-soft: rgba(245, 158, 11, 0.14);
+  --accent-fg: #111215;
+  --positive: #22C55E;
+  --negative: #EF4444;
+  --card-blur: none;
+  --card-shadow: none;
+  --font-display: "New York", Georgia, "Times New Roman", serif;
+  --radius-card: 16px;
+  --grain-opacity: 0.04;
+}
+
+/* Global viewport reset (keep body unclipped for iOS standalone status bar painting) */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  font-family: var(--font-body);
+  color: var(--text-primary);
+  background: var(--bg-app);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app,
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: clip;
+}
+
+/* Responsive App Shell — Full-screen on mobile, clean centered column (max 480px) on desktop (NO bezel) */
+#desktop-backdrop {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  justify-content: center;
+  background: var(--bg-desktop);
+  transition: background 240ms ease;
+}
+
+#phone-shell {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  height: 100%;
+  background: var(--bg-app);
+  border-left: 1px solid var(--border-subtle);
+  border-right: 1px solid var(--border-subtle);
+  box-shadow: 0 0 64px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-top: env(safe-area-inset-top, 0px);
+  transition: background-color 220ms ease, border-color 220ms ease;
+}
+
+@media (max-width: 520px) {
+  #desktop-backdrop {
+    display: block;
+    background: var(--bg-app);
+  }
+  #phone-shell {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    max-width: none;
+    height: 100%;
+    border-left: none;
+    border-right: none;
+    box-shadow: none;
+  }
+}
+
+/* Editorial SVG Grain */
+.editorial-grain {
+  opacity: var(--grain-opacity);
+  transition: opacity 220ms ease;
+}
+
+/* Concept Surfaces */
+.surface-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  backdrop-filter: var(--card-blur);
+  -webkit-backdrop-filter: var(--card-blur);
+  box-shadow: var(--card-shadow);
+  transition: background-color 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
+}
+
+/* Obsidian Hero rotating 1px specular border + spotlight */
+.hero-obsidian {
+  position: relative;
+  background: linear-gradient(155deg, rgba(99, 102, 241, 0.18) 0%, rgba(17, 21, 35, 0.88) 48%, rgba(34, 211, 238, 0.14) 100%);
+  backdrop-filter: blur(26px);
+  -webkit-backdrop-filter: blur(26px);
+  border-radius: 26px;
+}
+html[data-concept="obsidian"][data-theme="light"] .hero-obsidian {
+  background: linear-gradient(155deg, rgba(99, 102, 241, 0.12) 0%, rgba(255, 255, 255, 0.9) 50%, rgba(6, 182, 212, 0.12) 100%);
+}
+
+.hero-obsidian::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  padding: 1px;
+  background: conic-gradient(
+    from var(--spec-angle),
+    rgba(255, 255, 255, 0.06) 0deg,
+    rgba(99, 102, 241, 0.72) 70deg,
+    rgba(34, 211, 238, 0.85) 125deg,
+    rgba(255, 255, 255, 0.08) 200deg,
+    rgba(255, 255, 255, 0.04) 360deg
+  );
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: spinSpec 7s linear infinite;
+  pointer-events: none;
+}
+
+.hero-obsidian-glare {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(
+    260px circle at var(--mx, 50%) var(--my, 30%),
+    rgba(255, 255, 255, 0.13),
+    transparent 65%
+  );
+  pointer-events: none;
+  transition: opacity 200ms ease;
+}
+
+/* Kinetic Hero */
+.hero-kinetic {
+  background: linear-gradient(145deg, var(--accent) 0%, color-mix(in srgb, var(--accent) 72%, #000000) 100%);
+  color: #FFFFFF;
+  border-radius: 28px;
+  box-shadow: 0 18px 40px -14px color-mix(in srgb, var(--accent) 60%, transparent);
+  transition: background 280ms ease, box-shadow 280ms ease;
+}
+
+/* Editorial Hero */
+.hero-editorial {
+  background: var(--bg-card);
+  border: 1px solid var(--border-strong);
+  border-radius: 16px;
+}
+
+/* Typography helpers */
+.font-display {
+  font-family: var(--font-display);
+}
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Scrollbar hiding for clean iOS look */
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* 3D perspective utilities */
+.perspective-1000 {
+  perspective: 1100px;
+}
+.preserve-3d {
+  transform-style: preserve-3d;
+}
+.backface-hidden {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}
+.rotate-y-180 {
+  transform: rotateY(180deg);
+}
+
+/* Obsidian spline glow */
+html[data-concept="obsidian"] .obsidian-spline-glow {
+  filter: drop-shadow(0 0 8px rgba(34, 211, 238, 0.5));
+}
+
+/* NumberFlow clean styling */
+number-flow-react {
+  font-variant-numeric: tabular-nums;
+  --number-flow-char-height: 1em;
+}
+
+/* Glass Bars off-state, horizontal scroll edge mask, metallic card noise */
+html[data-glass="off"] .surface-card {
+  background: var(--bg-card-solid);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+}
+
+html[data-glass="off"] #phone-shell [style*="backdrop-filter"] {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+.mask-fade-right {
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent 100%);
+  mask-image: linear-gradient(to right, #000 calc(100% - 14px), transparent 100%);
+}
+
+.wcard-noise {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  mix-blend-mode: overlay;
+  opacity: 0.14;
+}
+
+/* Hold-drag-release pill scrub foreground feedback */
+[data-hl-scrub="true"] [data-hl][data-scrub-active="true"] {
+  color: var(--hl-active-fg, var(--accent-fg)) !important;
+}
+[data-hl-scrub="true"] [data-hl][data-scrub-inactive="true"] {
+  color: var(--text-secondary) !important;
+}
+
+/* Privacy balance mask */
+.privacy-mask {
+  filter: blur(8px);
+  user-select: none;
+}
+
+/* ---------- Static #lock Overlay (for js/lockui.js & js/vaultui.js) ---------- */
+#lock {
+  display: none;
+}
+html.locked #lock {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px 20px env(safe-area-inset-bottom, 20px);
+  background: var(--bg-app);
+  color: var(--text-primary);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+}
+html.locked #app {
+  visibility: hidden;
+  pointer-events: none;
+}
+html.cover #app {
+  filter: blur(28px);
+}
+.lock-in {
+  width: 100%;
+  max-width: 320px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+}
+.lock-logo {
+  border-radius: 22px;
+  margin-bottom: 18px;
+  box-shadow: 0 18px 40px -12px rgba(0, 0, 0, 0.55);
+}
+#lockTitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary);
+}
+#lockSub {
+  margin: 6px 0 18px;
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+.lock-bio {
+  width: 72px;
+  height: 72px;
+  border-radius: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  margin: 8px 0 22px;
+}
+.pin-dots {
+  display: flex;
+  gap: 14px;
+  margin-bottom: 24px;
+  justify-content: center;
+}
+.pin-dots i {
+  display: block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  transition: transform 150ms ease, background-color 150ms ease, border-color 150ms ease;
+}
+.pin-dots i.on {
+  background: var(--accent);
+  border-color: var(--accent);
+  transform: scale(1.15);
+}
+.pin-dots.shake,
+#lockPass.shake {
+  animation: elShake 0.36s ease;
+}
+.pin-pad {
+  display: grid;
+  grid-template-columns: repeat(3, 68px);
+  gap: 14px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+.pin-pad button {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: 23px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 120ms ease;
+}
+.pin-pad button:active {
+  transform: scale(0.9);
+}
+#lockPass {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+#lockPass[hidden],
+#lockPin[hidden],
+#lockBio[hidden] {
+  display: none !important;
+}
+#vaultInput {
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: 16px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 16px;
+  outline: none;
+}
+.lock-btn {
+  width: 100%;
+  padding: 13px 16px;
+  border-radius: 16px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 14px;
+  font-weight: 700;
+  border: 0;
+  cursor: pointer;
+}
+.lock-reset {
+  margin-top: 8px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
