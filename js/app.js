@@ -9,8 +9,9 @@ import * as lk from './lockui.js';
 import * as vault from './vault.js';
 import { promptUnlock } from './vaultui.js';
 import { hardReload } from './refresh.js';
-import { initSlide } from './slide.js';
+import { initSlide, refreshSlide } from './slide.js';
 import { renderSubsPage, homeStrip, resetSubsUI } from './subs.js';
+import { nfSpan, syncNumFlow } from './numflow.js';
 
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => [...r.querySelectorAll(s)];
@@ -27,11 +28,12 @@ const money = (n, c) => (priv() ? MASK : rawMoney(n, c));
 const dots = (s) => (priv() ? '••' : s);                                   // a percentage or a count
 const maskTxt = (s) => (priv() ? String(s).replace(/\d[\d,.]*/g, '••') : s);   // a sentence with numbers in it
 
-const APP_VERSION = '3.18.1';
+const APP_VERSION = '3.19.0';
 // The Google Sheet script this app expects (same number as SCRIPT_VERSION in apps-script/Api.gs).
 const SCRIPT_LATEST = 11;
 
-const ui = { sel: new Set(), selOn: false, selOnly: false, actList: [], settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '' };
+const ui = { sel: new Set(), selOn: false, selOnly: false, actList: [], settingsPage: null, account: (() => { try { return localStorage.getItem('el_acc') || 'all'; } catch (e) { return 'all'; } })(), insScope: (() => { try { return localStorage.getItem('el_ins') === 'all' ? 'all' : 'month'; } catch (e) { return 'month'; } })(), tab: 'home', month: null, filter: 'all', allMonths: false, q: '', animate: true, form: null, armedDelete: false, adding: null, newName: '', menuOpen: false, noClickUntil: 0, picking: false, calMonth: '', batchCat: null };
+let didInitialCountUp = false;
 
 // ---------------------------------------------------------------- helpers
 const cur = () => store.getState().settings.currency || '';
@@ -164,14 +166,23 @@ function setPrivacy(on) {
 function countUp(el, to) {
   if (!el) return;
   if (priv()) { el.textContent = '••••••'; return; }
-  if (reduceMotion || !ui.animate) { el.innerHTML = heroHTML(to); return; }
+  if (reduceMotion || !ui.animate) {
+    el.innerHTML = nfSpan(to, 'hero', heroHTML(to));
+    syncNumFlow(el.parentElement || document);
+    return;
+  }
   const t0 = performance.now();
   const dur = 700;
   const step = (t) => {
+    if (!el.isConnected) return;
     const p = Math.min(1, (t - t0) / dur);
     const e = 1 - Math.pow(1 - p, 3);
     el.innerHTML = heroHTML(to * e);
-    if (p < 1) requestAnimationFrame(step); else el.innerHTML = heroHTML(to);
+    if (p < 1) requestAnimationFrame(step);
+    else {
+      el.innerHTML = nfSpan(to, 'hero', heroHTML(to));
+      syncNumFlow(el.parentElement || document);
+    }
   };
   requestAnimationFrame(step);
 }
@@ -205,7 +216,7 @@ function locTag(loc) {
   return `<span class="row-l"><span class="row-loc" data-act="map" data-loc="${esc(loc)}" role="link" aria-label="Open the location in Maps">${icon('pin', 12, 2.2)}<span class="row-loc-t">${esc(l.place || 'Location')}</span></span></span>`;
 }
 
-function entryRow(e, pending, sel) {
+function entryRow(e, pending, sel, swipeable = false) {
   const isInc = e.type === 'Income';
   const title = e.description || (isInc ? 'Income' : e.sub);
   // a note of its own: the shop it was bought from sits beside it, small and grey
@@ -213,12 +224,20 @@ function entryRow(e, pending, sel) {
   const subtitle = (isInc ? 'Income' : `${e.category} · ${e.sub}`) + (ui.account === 'all' && multiAcc() && e.account ? ` · ${e.account}` : '');
   const tag = store.isViewer() && !sel ? 'div' : 'button';   // view only: rows don't open the editor
   const act = sel ? 'sel-row' : 'edit';                      // Activity rows: a tap edits, or toggles while selecting
-  return `<${tag} class="row ${isInc ? 'inc' : 'exp'}${sel && sel.on ? ' selecting' : ''}${sel && sel.ids.has(e.id) ? ' picked' : ''}" ${tag === 'button' ? `data-act="${act}" data-id="${esc(e.id)}"` : ''}>
+  const row = `<${tag} class="row ${isInc ? 'inc' : 'exp'}${sel && sel.on ? ' selecting' : ''}${sel && sel.ids.has(e.id) ? ' picked' : ''}" ${tag === 'button' ? `data-act="${act}" data-id="${esc(e.id)}"` : ''}>
     ${sel && sel.on ? `<span class="check" aria-hidden="true">${icon('check', 14, 3)}</span>` : ''}
     <span class="bubble" style="${hueStyle(isInc ? 'Income' : e.category)}">${icon(isInc ? 'income' : e.category, 20)}</span>
     <span class="row-main"><span class="row-t">${seller ? `<span class="row-note">${esc(title)}</span><span class="row-seller">${esc(seller)}</span>` : esc(title)}</span><span class="row-s">${esc(subtitle)}${pending.has(e.id) ? '<i class="pend" title="Waiting to sync"></i>' : ''}</span>${locTag(e.location)}</span>
     <span class="row-amt">${isInc ? '+' : '−'}${esc(num(e.amount))}</span>
   </${tag}>`;
+  if (!swipeable) return row;
+  return `<div class="row-swipe" data-id="${esc(e.id)}">
+    <div class="swipe-acts">
+      <button class="chip" data-act="row-copy" data-id="${esc(e.id)}" aria-label="Copy transaction">${icon('copy', 14)}Copy</button>
+      <button class="chip danger" data-act="row-del" data-id="${esc(e.id)}" aria-label="Delete transaction">${icon('trash', 14)}Delete</button>
+    </div>
+    <div class="row-track">${row}</div>
+  </div>`;
 }
 
 // ---------------------------------------------------------------- top bar
@@ -244,10 +263,37 @@ function renderTop() {
   document.documentElement.style.setProperty('--top-h', $('#topbar').offsetHeight + 'px');
 }
 
+function syncAccKind() {
+  const acc = ui.account !== 'all' ? accOf(ui.account) : null;
+  const kind = acc ? (isCash(acc) ? 'cash' : 'card') : 'all';
+  const app = $('#app');
+  if (app) app.setAttribute('data-acc-kind', kind);
+}
+
 // ---------------------------------------------------------------- tab bar
 function renderTabbar() {
-  const tabs = [['home', 'Home', 'home'], ['activity', 'Activity', 'list'], ['add', '', 'plus'], ['insights', 'Insights', 'chart'], ['settings', 'Settings', 'gear']].filter((t) => t[0] !== 'add' || !store.isViewer());
-  $('#tabbar').innerHTML = tabs.map(([id, label, ic]) =>
+  const bar = $('#tabbar');
+  if (!bar) return;
+  const navOrb = store.getState().settings.navStyle === 'orb';
+  const viewer = store.isViewer();
+  if (navOrb) {
+    const navTabs = [['home', 'Home', 'home'], ['activity', 'Activity', 'list'], ['insights', 'Insights', 'chart'], ['settings', 'Settings', 'gear']];
+    const curCap = $('.tab-capsule', bar);
+    const hasOrb = !!$('.fab-orb', bar);
+    if (curCap && hasOrb === !viewer) {
+      $$('.tab', curCap).forEach((btn, i) => btn.classList.toggle('on', navTabs[i][0] === ui.tab));
+      refreshSlide();
+      return;
+    }
+    const tabsHTML = navTabs.map(([id, label, ic]) =>
+      `<button class="tab ${ui.tab === id ? 'on' : ''}" data-act="tab" data-tab="${id}">${icon(ic, 20)}<span>${label}</span></button>`
+    ).join('');
+    bar.innerHTML = `<div class="tab-capsule">${tabsHTML}</div>${viewer ? '' : `<button class="fab-orb" data-act="new" aria-label="Add transaction">${icon('plus', 24, 2.5)}</button>`}`;
+    refreshSlide();
+    return;
+  }
+  const tabs = [['home', 'Home', 'home'], ['activity', 'Activity', 'list'], ['add', '', 'plus'], ['insights', 'Insights', 'chart'], ['settings', 'Settings', 'gear']].filter((t) => t[0] !== 'add' || !viewer);
+  bar.innerHTML = tabs.map(([id, label, ic]) =>
     id === 'add'
       ? `<button class="fab" data-act="new" aria-label="Add transaction">${icon('plus', 26, 2.4)}</button>`
       : `<button class="tab ${ui.tab === id ? 'on' : ''}" data-act="tab" data-tab="${id}">${icon(ic, 22)}<span>${label}</span></button>`
@@ -345,6 +391,7 @@ function catTotals(m) {
 }
 
 function renderHome(view, m) {
+  syncAccKind();
   const v = store.view();
   const funds = m.start + m.income;
   const pct = funds > 0 ? Math.max(0, Math.min(100, (m.spent / funds) * 100)) : 0;
@@ -363,7 +410,9 @@ function renderHome(view, m) {
       : `Opened the month with ${fmt(m.start)}`;
   const meterShown = acc ? lim > 0 : true;   // (cash never shows a limit meter)
   const meterPct = acc ? Math.max(0, Math.min(100, (m.spent / (lim || 1)) * 100)) : pct;
-  const meterCap = acc ? `${dots(Math.round((m.spent / (lim || 1)) * 100))}% of the limit used` : `${dots(Math.round(pct))}% of available funds spent`;
+  const rawMeterPct = acc ? Math.round((m.spent / (lim || 1)) * 100) : Math.round(pct);
+  const meterPctHtml = priv() ? '••' : nfSpan(rawMeterPct, 'meter-pct', String(rawMeterPct));
+  const meterCap = acc ? `${meterPctHtml}% of the limit used` : `${meterPctHtml}% of available funds spent`;
   const rawM = rawMonth();
   const allDates = new Set();
   v.months.forEach((k) => v.by[k].entries.forEach((e) => allDates.add(e.date)));
@@ -382,25 +431,30 @@ function renderHome(view, m) {
         const left = isCash(a) ? cashLeft(a) : null;
         const lm = isCash(a) ? 0 : a.limit;
         const r = lm > 0 ? sp / lm : 0;
+        const valHtml = left !== null
+          ? `${priv() ? esc(MASK) : nfSpan(left, 'acc-' + a.name, esc(num(left)))}<small> on hand</small>`
+          : `${priv() ? esc(MASK) : nfSpan(sp, 'acc-' + a.name, esc(num(sp)))}${lm > 0 ? `<small> / ${esc(num0(lm))}</small>` : ''}`;
         return `<button class="bar-row acc-row ${r > 1 ? 'over' : r > 0.85 ? 'near' : ''}" data-act="acc" data-v="${esc(a.name)}" style="--h:${accHue(a)}">
           <span class="bubble sm">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}</span>
-          <span class="bar-main"><span class="bar-top"><span>${esc(a.name)}</span><b>${left !== null ? `${esc(num(left))}<small> on hand</small>` : `${esc(num(sp))}${lm > 0 ? `<small> / ${esc(num0(lm))}</small>` : ''}`}</b></span>
+          <span class="bar-main"><span class="bar-top"><span>${esc(a.name)}</span><b>${valHtml}</b></span>
           <span class="bar"><i style="width:${lm > 0 ? Math.min(100, Math.max(3, r * 100)).toFixed(1) : 0}%"></i></span></span></button>`;
       }).join('')}
     </section>` : '';
+  const doCountUp = !didInitialCountUp && ui.animate && !priv() && !reduceMotion;
+  didInitialCountUp = true;
   view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
     ${store.isViewer() ? viewerHi() + installCard() : ''}
     ${accChips()}
-    <section class="hero">
+    <section class="hero" id="hero">
       <div class="hero-label">${esc(heroLabel)}</div>
-      <div class="hero-amt" id="heroAmt" data-act="privacy" role="button" tabindex="0" aria-pressed="${priv()}" aria-label="Balance. Tap to hide or show every other number">${heroHTML(heroAmount)}</div>
+      <div class="hero-amt" id="heroAmt" data-act="privacy" role="button" tabindex="0" aria-pressed="${priv()}" aria-label="Balance. Tap to hide or show every other number">${priv() ? '••••••' : (doCountUp ? heroHTML(heroAmount) : nfSpan(heroAmount, 'hero', heroHTML(heroAmount)))}</div>
       <div class="hero-sub">${esc(heroSub)}</div>
       <div class="hero-row">
-        <button class="mini" data-act="flip" data-kind="income" aria-label="Show income breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic up"')}Income</span><b>${esc(fmt(m.income))}</b></button>
-        <button class="mini" data-act="flip" data-kind="spent" aria-label="Show spending breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic down"')}Spent</span><b>${esc(fmt(m.spent))}</b></button>
+        <button class="mini" data-act="flip" data-kind="income" aria-label="Show income breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic up"')}Income</span><b>${priv() ? esc(MASK) : nfSpan(m.income, 'mini-income', esc(fmt(m.income)))}</b></button>
+        <button class="mini" data-act="flip" data-kind="spent" aria-label="Show spending breakdown"><span>${icon('income', 14, 2.2).replace('class="ic"', 'class="ic down"')}Spent</span><b>${priv() ? esc(MASK) : nfSpan(m.spent, 'mini-spent', esc(fmt(m.spent)))}</b></button>
       </div>
       ${meterShown ? `<div class="meter"><i style="width:${meterPct.toFixed(1)}%"></i></div>
-      <div class="meter-cap">${esc(meterCap)}</div>` : ''}
+      <div class="meter-cap">${meterCap}</div>` : ''}
     </section>
     ${m.scoped ? '' : homeStrip(fmt)}
     ${streakCard}
@@ -417,7 +471,35 @@ function renderHome(view, m) {
       ${m.entries.length ? m.entries.slice(0, 5).map((e) => entryRow(e, v.pending)).join('') : '<p class="muted pad">No transactions this month.</p>'}
     </section>
   </div>`;
-  countUp($('#heroAmt'), heroAmount);
+  if (doCountUp) countUp($('#heroAmt'), heroAmount);
+  syncNumFlow(view);
+  const hero = $('#hero', view);
+  if (hero && document.documentElement.getAttribute('data-style') === 'obsidian') {
+    hero.addEventListener('pointermove', (e) => {
+      const r = hero.getBoundingClientRect();
+      hero.style.setProperty('--mx', (e.clientX - r.left).toFixed(1) + 'px');
+      hero.style.setProperty('--my', (e.clientY - r.top).toFixed(1) + 'px');
+    }, { passive: true });
+  }
+}
+
+function renderActivityFilters() {
+  const box = $('#filters');
+  if (!box) return;
+  const v = store.view();
+  const base = [['all', 'All'], ['Expense', 'Expenses'], ['Income', 'Income']]
+    .map(([k, l]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="filter" data-f="${k}">${l}</button>`).join('');
+  const cats = v.categories.order
+    .map((c) => `<button class="chip cat ${ui.filter === 'cat:' + c ? 'on' : ''}" style="${hueStyle(c)}" data-act="filter" data-f="cat:${esc(c)}">${esc(c)}</button>`).join('');
+  const allMo = ui.q.trim() ? `<button class="chip ${ui.allMonths ? 'active' : ''}" data-act="all-months">All months</button>` : '';
+  box.innerHTML = base + cats + allMo;
+}
+
+function matchesFilter(e) {
+  if (ui.filter === 'all') return true;
+  if (ui.filter === 'Expense' || ui.filter === 'Income') return e.type === ui.filter;
+  if (ui.filter.startsWith('cat:')) return e.type === 'Expense' && e.category === ui.filter.slice(4);
+  return true;
 }
 
 function renderActivity(view, m) {
@@ -425,14 +507,28 @@ function renderActivity(view, m) {
     view.innerHTML = `<div class="page ${ui.animate ? 'enter' : ''}">
       <div id="accChips"></div>
       <div class="search">${icon('search', 18)}<input id="q" type="search" placeholder="Search transactions" value="${esc(ui.q)}" autocomplete="off" enterkeyhint="search"><button class="q-clear" data-act="q-clear" aria-label="Clear search" ${ui.q ? '' : 'hidden'}>${icon('close', 16, 2.4)}</button></div>
-      <div class="chips" id="filters"></div>
+      <div class="filter-bar">
+        <div class="chips" id="filters"></div>
+        <button class="chip sel-chip sel-pin ${ui.selOn ? 'on' : ''}" data-act="${ui.selOn ? 'sel-done' : 'sel-start'}">${icon('check', 15, 2.6)}${ui.selOn ? 'Done' : 'Select'}</button>
+      </div>
       <div id="actList"></div></div>`;
-    $('#q').addEventListener('input', (e) => { ui.q = e.target.value; $('.q-clear').hidden = !ui.q; fillActivity(); });
+    $('#q').addEventListener('input', (e) => {
+      const hadQ = !!ui.q.trim();
+      ui.q = e.target.value;
+      $('.q-clear').hidden = !ui.q;
+      if (hadQ !== !!ui.q.trim()) renderActivityFilters();
+      fillActivity();
+    });
+  } else {
+    const pin = $('.sel-pin');
+    if (pin) {
+      pin.classList.toggle('on', ui.selOn);
+      pin.dataset.act = ui.selOn ? 'sel-done' : 'sel-start';
+      pin.innerHTML = `${icon('check', 15, 2.6)}${ui.selOn ? 'Done' : 'Select'}`;
+    }
   }
   $('#accChips').innerHTML = accChips();
-  $('#filters').innerHTML = [['all', 'All'], ['Expense', 'Expenses'], ['Income', 'Income']]
-    .map(([k, l]) => `<button class="chip ${ui.filter === k ? 'on' : ''}" data-act="filter" data-f="${k}">${l}</button>`).join('')
-    + `<button class="chip sel-chip ${ui.selOn ? 'on' : ''}" data-act="${ui.selOn ? 'sel-done' : 'sel-start'}">${icon('check', 15, 2.6)}${ui.selOn ? 'Done' : 'Select'}</button>`;
+  renderActivityFilters();
   fillActivity();
 }
 
@@ -441,10 +537,16 @@ function fillActivity() {
   if (!m) return;
   const v = store.view();
   const q = ui.q.trim().toLowerCase();
-  const list = m.entries.filter((e) =>
-    (ui.filter === 'all' || e.type === ui.filter) &&
-    (!ui.selOnly || ui.sel.has(e.id)) &&
-    (!q || `${e.description} ${e.seller || ''} ${e.category} ${e.sub} ${e.amount}`.toLowerCase().includes(q)));
+  const pool = q && ui.allMonths
+    ? v.months.slice().reverse().flatMap((k) => scoped(v.by[k]).entries).sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0))
+    : m.entries;
+  const list = pool.filter((e) => {
+    if (!matchesFilter(e)) return false;
+    if (ui.selOnly && !ui.sel.has(e.id)) return false;
+    if (!q) return true;
+    const place = e.location ? (parseLoc(e.location)?.place || '') : '';
+    return `${e.description} ${e.seller || ''} ${e.category} ${e.sub} ${e.amount} ${place}`.toLowerCase().includes(q);
+  });
   if (!list.length) {
     $('#actList').innerHTML = `<div class="empty-big small">${icon('search', 32, 1.5)}<p>${q || ui.filter !== 'all' ? 'No matches.' : 'No transactions this month.'}</p></div>`;
     ui.actList = [];
@@ -453,6 +555,7 @@ function fillActivity() {
   }
   ui.actList = list;
   const sel = { on: ui.selOn, ids: ui.sel };
+  const swipeable = !store.isViewer() && !ui.selOn;
   const groups = [];
   list.forEach((e) => {
     const g = groups[groups.length - 1];
@@ -461,13 +564,29 @@ function fillActivity() {
   $('#actList').innerHTML = groups.map((g) => {
     const net = g.items.reduce((s, e) => s + (e.type === 'Income' ? e.amount : -e.amount), 0);
     return `<div class="day"><span>${esc(dayLabel(g.date))}</span><span class="${net < 0 ? 'neg' : 'pos'}">${net < 0 ? '−' : '+'}${esc(num(Math.abs(net)))}</span></div>
-      <div class="card flush">${g.items.map((e) => entryRow(e, v.pending, sel)).join('')}</div>`;
+      <div class="card flush">${g.items.map((e) => entryRow(e, v.pending, sel, swipeable)).join('')}</div>`;
   }).join('');
   renderTotbar();
 }
 
 // ---- Activity total bar: sits above the tab bar while searching, filtering or selecting --------
 function netOf(list) { return list.reduce((s, e) => s + (e.type === 'Income' ? e.amount : -e.amount), 0); }
+
+function pickedEntries() {
+  if (!ui.sel.size) return [];
+  const v = store.view();
+  const out = [];
+  for (const k of v.months) {
+    const scM = scoped(v.by[k]);
+    for (const e of scM.entries) if (ui.sel.has(e.id)) out.push(e);
+  }
+  return out;
+}
+
+const entryData = (e) => ({
+  date: e.date, description: e.description, amount: e.amount, type: e.type,
+  category: e.category, sub: e.sub, account: e.account, seller: e.seller, location: e.location,
+});
 
 function renderTotbar() {
   const bar = $('#totbar');
@@ -477,32 +596,78 @@ function renderTotbar() {
   document.body.classList.toggle('has-totbar', !!show);
   if (!show) { bar.innerHTML = ''; bar.classList.remove('on'); return; }
   const list = ui.actList;
-  const m = activeMonth();
-  // the selection outlives the search, so it is totalled over the whole month, not just what's on screen
-  const picked = m ? m.entries.filter((e) => ui.sel.has(e.id)) : [];
+  const picked = pickedEntries();
   const n = picked.length;
   const shown = new Set(list.map((e) => e.id));
   const hidden = picked.filter((e) => !shown.has(e.id)).length;
   const net = netOf(n ? picked : list);
+  const netAbs = Math.abs(net);
+  const netHtml = priv() ? esc(MASK) : nfSpan(netAbs, 'totbar-net', esc(num(netAbs)));
   const allVis = list.length > 0 && list.every((e) => ui.sel.has(e.id));
   const someVis = list.some((e) => ui.sel.has(e.id));
   const label = n ? `${n} selected${hidden ? ` · ${hidden} not shown` : ''}` : ui.selOn ? 'Tap rows to select' : `${list.length} ${list.length === 1 ? 'result' : 'results'}`;
+  const canBatch = ui.selOn && n > 0 && !store.isViewer();
   bar.classList.add('on');
   bar.innerHTML = `<div class="tb-top">
     ${ui.selOn && list.length ? `<button class="tb-all ${allVis ? 'picked' : someVis ? 'some' : ''}" data-act="sel-all" aria-label="${allVis ? 'Unselect shown' : 'Select all shown'}"><span class="check">${icon('check', 14, 3)}</span></button>` : ''}
     <div class="tb-main"><span class="tb-l">${n ? 'Selected total' : 'Total'} · ${esc(label)}</span>
-      <span class="tb-amt ${net < 0 ? 'neg' : 'pos'}">${net < 0 ? '−' : '+'}${esc(num(Math.abs(net)))}</span></div>
+      <span class="tb-amt ${net < 0 ? 'neg' : 'pos'}">${net < 0 ? '−' : '+'}${netHtml}</span></div>
     ${ui.selOn ? '<button class="chip on" data-act="sel-done">Done</button>' : '<button class="chip" data-act="sel-start">Select</button>'}</div>
     ${ui.selOn ? `<div class="tb-btns">
       ${list.length ? `<button class="chip" data-act="sel-all">${allVis ? 'Unselect shown' : 'Select all'}</button>` : ''}
       ${n || ui.selOnly ? `<button class="chip ${ui.selOnly ? 'on' : ''}" data-act="sel-only">Show selected</button>` : ''}
-      ${n ? '<button class="chip" data-act="sel-clear">Clear</button>' : ''}</div>` : ''}`;
+      ${n ? '<button class="chip" data-act="sel-clear">Clear</button>' : ''}
+      ${canBatch ? `<button class="chip danger" data-act="sel-del">${icon('trash', 14)}Delete</button>${liveAccts().length > 1 ? `<button class="chip" data-act="sel-move">${icon('card', 14)}Move</button>` : ''}<button class="chip" data-act="sel-cat">${icon('tag', 14)}Category</button>` : ''}</div>` : ''}`;
+  syncNumFlow(bar);
 }
 
 function setSelecting(on) {
   ui.selOn = on;
   if (!on) { ui.sel.clear(); ui.selOnly = false; }
   renderActivity($('#view'), activeMonth());
+}
+
+function openBatchMoveSheet() {
+  const picked = pickedEntries();
+  if (!picked.length) return;
+  const rows = liveAccts().map((a) => `<button class="mrow" data-act="batch-move" data-v="${esc(a.name)}">
+    <span class="bubble sm" style="--h:${accHue(a)}">${icon(a.type === 'cash' ? 'cash' : 'card', 16)}</span>
+    <span>${esc(a.name)}</span><b>${a.type === 'cash' ? 'Cash' : 'Card'}</b></button>`).join('');
+  present(`Move ${picked.length} transaction${picked.length === 1 ? '' : 's'}`, '', `<p class="muted sm" style="margin-top:0">Choose the account for the selected entries.</p><div class="mlist">${rows}</div>`, 'small');
+}
+
+function openBatchCatSheet(rerender = false) {
+  const picked = pickedEntries();
+  const exps = picked.filter((e) => e.type === 'Expense');
+  if (!exps.length) { toast('Income entries don’t use expense categories'); return; }
+  const v = store.view();
+  const cats = v.categories.order;
+  if (!ui.batchCat || !cats.includes(ui.batchCat.cat)) {
+    const firstCat = cats[0] || '';
+    ui.batchCat = { cat: firstCat, sub: (v.categories.map[firstCat] || [])[0] || '' };
+  }
+  const subs = v.categories.map[ui.batchCat.cat] || [];
+  if (subs.length && !subs.includes(ui.batchCat.sub)) ui.batchCat.sub = subs[0];
+  const body = `<div class="lbl">Category</div>
+    <div class="chips wrap" style="margin-bottom:10px">${cats.map((c) => `<button class="chip cat ${ui.batchCat.cat === c ? 'on' : ''}" style="${hueStyle(c)}" data-act="batch-cat" data-v="${esc(c)}">${icon(c, 16)}${esc(c)}</button>`).join('')}</div>
+    <div class="lbl">Sub-category</div>
+    <div class="chips wrap">${subs.length ? subs.map((s) => `<button class="chip ${ui.batchCat.sub === s ? 'on' : ''}" data-act="batch-sub" data-v="${esc(s)}">${esc(s)}</button>`).join('') : '<span class="hint">No sub-categories</span>'}</div>`;
+  const foot = `<button class="btn primary big" data-act="batch-cat-ok" ${ui.batchCat.cat && ui.batchCat.sub ? '' : 'disabled'}>Apply to ${exps.length} expense${exps.length === 1 ? '' : 's'}</button>`;
+  if (rerender && $('.sheet-body')) {
+    $('.sheet-body').innerHTML = body;
+    if ($('.sheet-foot')) $('.sheet-foot').innerHTML = foot;
+    return;
+  }
+  present(`Category (${exps.length})`, '', body, 'small', foot);
+}
+
+function closeOpenSwipe(except = null) {
+  $$('#actList .row-swipe.open').forEach((box) => {
+    if (box === except) return;
+    box.classList.remove('open');
+    const tr = $('.row-track', box);
+    if (tr) tr.style.transform = '';
+  });
 }
 
 // press and hold an Activity row to start selecting, with that row picked
@@ -515,6 +680,7 @@ function setSelecting(on) {
     x0 = e.clientX; y0 = e.clientY;
     t = setTimeout(() => {
       t = null;
+      closeOpenSwipe();
       ui.sel.add(row.dataset.id);
       ui.noClickUntil = performance.now() + 600;
       haptic(12);
@@ -525,6 +691,60 @@ function setSelecting(on) {
   document.addEventListener('pointerup', cancel, true);
   document.addEventListener('pointercancel', cancel, true);
   document.addEventListener('contextmenu', (e) => { if (e.target.closest && e.target.closest('#actList .row')) e.preventDefault(); });
+})();
+
+// swipe left on an Activity row to reveal Copy / Delete
+(() => {
+  const sw = { box: null, track: null, x0: 0, y0: 0, dx: 0, base: 0, maxOpen: 140, lock: '' };
+  document.addEventListener('pointerdown', (e) => {
+    if (store.isViewer() || ui.selOn) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    if (e.target.closest && e.target.closest('.swipe-acts')) return;
+    const box = e.target.closest && e.target.closest('#actList .row-swipe');
+    closeOpenSwipe(box);
+    if (!box) return;
+    const track = $('.row-track', box);
+    if (!track) return;
+    const acts = $('.swipe-acts', box);
+    sw.box = box;
+    sw.track = track;
+    sw.x0 = e.clientX;
+    sw.y0 = e.clientY;
+    sw.dx = 0;
+    sw.lock = '';
+    sw.maxOpen = (acts ? acts.offsetWidth : 132) + 14;
+    sw.base = box.classList.contains('open') ? -sw.maxOpen : 0;
+  }, true);
+  document.addEventListener('pointermove', (e) => {
+    if (!sw.box) return;
+    const dx = e.clientX - sw.x0;
+    const dy = e.clientY - sw.y0;
+    if (!sw.lock) {
+      if (Math.hypot(dx, dy) < 8) return;
+      if (Math.abs(dy) > Math.abs(dx) * 1.1) { sw.box = null; sw.track = null; return; }
+      sw.lock = 'x';
+      sw.box.classList.add('swiping');
+      ui.noClickUntil = performance.now() + 500;
+    }
+    sw.dx = dx;
+    const tx = Math.max(-sw.maxOpen - 18, Math.min(0, sw.base + dx));
+    sw.track.style.transform = `translateX(${tx}px)`;
+  }, true);
+  const finish = () => {
+    if (!sw.box) return;
+    const { box, track, lock, base, dx, maxOpen } = sw;
+    box.classList.remove('swiping');
+    sw.box = null; sw.track = null; sw.lock = '';
+    if (lock !== 'x') return;
+    const tx = base + dx;
+    const open = tx < -maxOpen * 0.4;
+    box.classList.toggle('open', open);
+    track.style.transform = open ? `translateX(${-maxOpen}px)` : '';
+    ui.noClickUntil = performance.now() + 350;
+    if (open) haptic(6);
+  };
+  document.addEventListener('pointerup', finish, true);
+  document.addEventListener('pointercancel', finish, true);
 })();
 
 function donut(parts, total, hueOf) {
@@ -578,7 +798,10 @@ function flipMarkup(kind, m) {
   return `<div class="flip-face flip-front">
       <div class="flip-head">
         <div><h3>${spent ? 'Spent' : 'Income'}</h3><small>${esc(keyLabel(m.key))} · ${spent ? 'by category' : 'by source'}</small></div>
-        <button class="close" data-act="flip-close" aria-label="Close">${icon('close', 20, 2.2)}</button>
+        <div class="flip-head-acts">
+          <button class="flip-switch" data-act="flip-switch" aria-label="Flip to ${spent ? 'Income' : 'Spent'}">${icon('rotate', 14, 2.2)}<span>Flip to ${spent ? 'Income' : 'Spent'}</span></button>
+          <button class="close" data-act="flip-close" aria-label="Close">${icon('close', 20, 2.2)}</button>
+        </div>
       </div>
       ${parts.length ? `<div class="donut-box flip-donut">${donut(parts, total, hueOf)}<div class="donut-c"><small>Total</small><b>${esc(num0(total))}</b></div></div>
         <div class="flip-list">${rows}</div>` : `<div class="empty-big small">${icon('chart', 32, 1.5)}<p>${spent ? 'No expenses' : 'No income'} in ${esc(keyLabel(m.key))}.</p></div>`}
@@ -620,6 +843,42 @@ function openFlip(kind, origin) {
   };
   requestAnimationFrame(go);
   setTimeout(go, 80);
+}
+
+function switchFlip() {
+  const m = activeMonth();
+  if (!m || !flipKind) return;
+  const nextKind = flipKind === 'spent' ? 'income' : 'spent';
+  const seq = ++flipSeq;
+  const root = $('#flip');
+  const card = $('.flip-card', root);
+  if (!card) return;
+  if (flipAnim) { flipAnim.cancel(); flipAnim = null; }
+  flipKind = nextKind;
+  card.className = 'flip-card ' + nextKind;
+  $('#app').setAttribute('data-flip', nextKind);
+  haptic(8);
+  if (reduceMotion || !card.animate) {
+    card.innerHTML = flipMarkup(nextKind, m);
+    return;
+  }
+  const dir = nextKind === 'spent' ? 1 : -1;
+  const half1 = card.animate(
+    [{ transform: 'rotateY(0deg)' }, { transform: `rotateY(${dir * 90}deg)` }],
+    { duration: 170, easing: 'ease-in', fill: 'forwards' }
+  );
+  flipAnim = half1;
+  half1.onfinish = () => {
+    if (seq !== flipSeq || !card.isConnected) return;
+    card.innerHTML = flipMarkup(nextKind, m);
+    half1.cancel();
+    const half2 = card.animate(
+      [{ transform: `rotateY(${-dir * 90}deg)` }, { transform: 'rotateY(0deg)' }],
+      { duration: 260, easing: 'cubic-bezier(.2, .85, .25, 1)', fill: 'none' }
+    );
+    flipAnim = half2;
+    half2.onfinish = () => { if (seq === flipSeq) flipAnim = null; };
+  };
 }
 
 function closeFlip() {
@@ -686,7 +945,142 @@ function insightsCard(v, m) {
     </section>`;
 }
 
+function renderPaceCard(v, m) {
+  const [yy, mm] = m.key.split('-').map(Number);
+  const dim = new Date(yy, mm, 0).getDate();
+  const isCur = todayStr().slice(0, 7) === m.key;
+  const curDay = isCur ? Math.max(1, Number(todayStr().slice(8, 10))) : dim;
+  const daily = (entries, len) => {
+    const arr = new Array(len).fill(0);
+    for (const e of entries) {
+      if (e.type !== 'Expense') continue;
+      const d = Math.min(len, Math.max(1, Number(e.date.slice(8, 10)) || 1));
+      arr[d - 1] += e.amount;
+    }
+    for (let i = 1; i < len; i++) arr[i] += arr[i - 1];
+    return arr;
+  };
+  const curCum = daily(m.entries, curDay);
+  const idx = v.months.indexOf(m.key);
+  const prevM = idx > 0 ? scoped(v.by[v.months[idx - 1]]) : null;
+  let prevCum = [];
+  if (prevM && prevM.spent > 0) {
+    const [py, pm] = prevM.key.split('-').map(Number);
+    const pDim = new Date(py, pm, 0).getDate();
+    const rawPrev = daily(prevM.entries, pDim);
+    prevCum = Array.from({ length: dim }, (_, i) => rawPrev[Math.min(i, pDim - 1)] || 0);
+  }
+  const bud = budgetFor();
+  const curMax = curCum[curDay - 1] || 0;
+  const prevMax = prevCum.length ? prevCum[prevCum.length - 1] : 0;
+  if (curMax <= 0 && prevMax <= 0) return null;
+
+  const yMax = Math.max(1, curMax, prevMax, bud || 0) * 1.1;
+  const W = 320, H = 132, padL = 8, padR = 8, padT = 12, padB = 22;
+  const pw = W - padL - padR, ph = H - padT - padB;
+  const xOf = (d) => padL + ((d - 1) / Math.max(1, dim - 1)) * pw;
+  const yOf = (val) => padT + ph - (val / yMax) * ph;
+  const pts = (arr) => arr.map((val, i) => `${xOf(i + 1).toFixed(1)},${yOf(val).toFixed(1)}`).join(' ');
+  const curPts = pts(curCum);
+  const areaPts = `${xOf(1).toFixed(1)},${(padT + ph).toFixed(1)} ${curPts} ${xOf(curDay).toFixed(1)},${(padT + ph).toFixed(1)}`;
+  const prevPts = prevCum.length ? pts(prevCum) : '';
+  const budY = bud > 0 ? yOf(bud) : null;
+  const lx = xOf(curDay), ly = yOf(curMax);
+  const pLy = prevCum.length ? yOf(prevCum[curDay - 1]) : null;
+  const midDay = Math.round(dim / 2);
+  const fmtReadout = (d) => {
+    const cTxt = d <= curDay ? num0(curCum[d - 1]) : '—';
+    const pTxt = prevCum.length ? ` vs ${num0(prevCum[d - 1])}` : '';
+    return `Day ${d} · ${cTxt}${pTxt}`;
+  };
+  const html = `<section class="card">
+      <div class="card-h"><h3>Spending pace</h3><span class="pace-readout muted sm" id="paceReadout">${esc(fmtReadout(curDay))}</span></div>
+      <svg class="pace-svg" viewBox="0 0 ${W} ${H}" role="img" aria-label="Cumulative spending pace">
+        <defs><linearGradient id="paceGrad" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--accent)" stop-opacity="0.28"/><stop offset="100%" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>
+        ${budY !== null ? `<line x1="${padL}" y1="${budY.toFixed(1)}" x2="${W - padR}" y2="${budY.toFixed(1)}" stroke="var(--warn)" stroke-width="1.2" stroke-dasharray="4 4" opacity="0.8"/>` : ''}
+        ${prevPts ? `<polyline fill="none" stroke="var(--muted)" stroke-width="1.6" stroke-dasharray="4 4" opacity="0.55" points="${prevPts}"/>` : ''}
+        <polygon fill="url(#paceGrad)" points="${areaPts}"/>
+        <polyline fill="none" stroke="var(--accent)" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" points="${curPts}"/>
+        <line id="paceLine" x1="${lx.toFixed(1)}" y1="${padT}" x2="${lx.toFixed(1)}" y2="${padT + ph}" stroke="var(--line)" stroke-width="1.2"/>
+        ${prevCum.length ? `<circle id="pacePrevDot" cx="${lx.toFixed(1)}" cy="${pLy.toFixed(1)}" r="3.2" fill="var(--muted)"/>` : ''}
+        <circle id="paceDot" cx="${lx.toFixed(1)}" cy="${ly.toFixed(1)}" r="4.5" fill="var(--accent)" stroke="var(--surface)" stroke-width="2"/>
+        <text x="${padL}" y="${H - 4}" fill="var(--muted)" font-size="10" font-weight="600">1</text>
+        <text x="${xOf(midDay).toFixed(1)}" y="${H - 4}" fill="var(--muted)" font-size="10" font-weight="600" text-anchor="middle">${midDay}</text>
+        <text x="${W - padR}" y="${H - 4}" fill="var(--muted)" font-size="10" font-weight="600" text-anchor="end">${dim}</text>
+      </svg>
+      <div class="pace-foot">
+        <span class="pace-leg"><span><i style="background:var(--accent)"></i>${esc(keyShort(m.key))}</span>${prevM ? `<span><i style="background:var(--muted);opacity:.65"></i>${esc(keyShort(prevM.key))}</span>` : ''}${bud > 0 ? `<span><i style="background:var(--warn)"></i>Budget ${esc(num0(bud))}</span>` : ''}</span>
+        <span>Drag to inspect</span>
+      </div>
+    </section>`;
+  return { html, dim, curDay, curCum, prevCum, W, padL, pw, xOf, yOf, fmtReadout };
+}
+
+function bindPaceScrub(view, pace) {
+  if (!pace) return;
+  const svg = $('.pace-svg', view);
+  const readout = $('#paceReadout', view);
+  const line = $('#paceLine', view);
+  const dot = $('#paceDot', view);
+  const prevDot = $('#pacePrevDot', view);
+  if (!svg || !readout || !line || !dot) return;
+  let active = false;
+  const updateAt = (clientX) => {
+    const r = svg.getBoundingClientRect();
+    if (!r.width) return;
+    const svgX = Math.max(pace.padL, Math.min(pace.padL + pace.pw, ((clientX - r.left) / r.width) * pace.W));
+    const d = Math.max(1, Math.min(pace.dim, Math.round(((svgX - pace.padL) / pace.pw) * (pace.dim - 1)) + 1));
+    const x = pace.xOf(d).toFixed(1);
+    line.setAttribute('x1', x);
+    line.setAttribute('x2', x);
+    if (d <= pace.curDay) {
+      dot.style.display = '';
+      dot.setAttribute('cx', x);
+      dot.setAttribute('cy', pace.yOf(pace.curCum[d - 1]).toFixed(1));
+    } else {
+      dot.style.display = 'none';
+    }
+    if (prevDot && pace.prevCum.length) {
+      prevDot.setAttribute('cx', x);
+      prevDot.setAttribute('cy', pace.yOf(pace.prevCum[d - 1]).toFixed(1));
+    }
+    readout.textContent = pace.fmtReadout(d);
+  };
+  svg.addEventListener('pointerdown', (e) => { active = true; updateAt(e.clientX); });
+  svg.addEventListener('pointermove', (e) => { if (active) updateAt(e.clientX); });
+  const end = () => { active = false; };
+  svg.addEventListener('pointerup', end);
+  svg.addEventListener('pointercancel', end);
+}
+
+function renderPlacesCard(m) {
+  const byPlace = new Map();
+  for (const e of m.entries) {
+    if (e.type !== 'Expense' || !e.location) continue;
+    const pl = parseLoc(e.location);
+    const place = pl && pl.place ? pl.place.trim() : '';
+    if (!place) continue;
+    const k = place.toLowerCase();
+    const cur = byPlace.get(k) || { place, amt: 0, n: 0, loc: e.location };
+    cur.amt += e.amount;
+    cur.n++;
+    byPlace.set(k, cur);
+  }
+  const list = [...byPlace.values()].sort((a, b) => b.amt - a.amt).slice(0, 5);
+  if (!list.length) return '';
+  const top = list[0].amt || 1;
+  return `<section class="card">
+      <div class="card-h"><h3>Places</h3><span class="muted sm">${esc(keyLabel(m.key))}</span></div>
+      ${list.map((x) => `<button class="bar-row acc-row places-row" data-act="ins-open" data-q="${esc(x.place)}">
+        <span class="bubble sm">${icon('pin', 15)}</span>
+        <span class="bar-main"><span class="bar-top"><span>${esc(x.place)}<small class="muted"> · ${dots(x.n)}×</small></span><b>${esc(num(x.amt))}</b></span>
+        <span class="bar"><i style="width:${Math.max(4, (x.amt / top) * 100).toFixed(1)}%"></i></span></span>
+      </button>`).join('')}
+    </section>`;
+}
+
 function renderInsights(view, m) {
+  syncAccKind();
   const v = store.view();
   const cats = catTotals(m);
   const total = m.spent || 1;
@@ -715,6 +1109,8 @@ function renderInsights(view, m) {
       <div class="trend week7">${wk.days.map((d) => `<div class="tcol ${d.date === endDay ? 'on' : ''}"><b>${d.amt ? esc(num0(d.amt)) : ''}</b><div class="tbar"><i style="height:${d.amt ? Math.max(4, (d.amt / wkMax) * 100).toFixed(1) : 0}%"></i></div><span>${esc(dayLetter(d.date))}</span></div>`).join('')}</div>
       <p class="muted sm" style="margin-top:8px">${esc(num0(wk.total))} spent in these 7 days${wk.prevTotal > 0 ? `, ${esc(num0(wk.prevTotal))} the week before` : ''}.</p>
     </section>` : '';
+  const pace = renderPaceCard(v, m);
+  const placesCard = renderPlacesCard(m);
   const merch = topMerchants(m.entries, 5);
   const merchTop = merch.length ? merch[0].amt : 1;
   const merchCard = merch.length ? `<section class="card">
@@ -737,6 +1133,7 @@ function renderInsights(view, m) {
       <div class="stat"><span>Largest expense</span><b>${biggest[0] ? esc(num0(biggest[0].amount)) : '—'}</b></div>
       <div class="stat"><span>Saved</span><b class="${saved !== null && saved < 0 ? 'neg' : 'pos'}">${saved === null ? '—' : dots(saved) + '%'}</b></div>
     </section>
+    ${pace ? pace.html : ''}
     <section class="card">
       <div class="card-h"><h3>Monthly trend</h3><span class="muted sm">Spent per month</span></div>
       <div class="trend">${last.map((k) => {
@@ -746,10 +1143,12 @@ function renderInsights(view, m) {
       }).join('')}</div>
     </section>
     ${weekCard}
+    ${placesCard}
     ${merchCard}
     ${biggest.length ? `<section class="card"><div class="card-h"><h3>Biggest expenses</h3></div>${biggest.map((e) => entryRow(e, v.pending)).join('')}</section>` : ''}
     ${insightsCard(v, m)}
   </div>`;
+  bindPaceScrub(view, pace);
 }
 
 function securityCard(st) {
@@ -882,6 +1281,8 @@ async function saveEncryption() {
 // ---------------------------------------------------------------- settings: a short top level, then one page per topic
 const SET_TITLES = { subs: 'Subscriptions', accounts: 'Accounts & budget', share: 'Share view-only', appearance: 'Appearance', security: 'Privacy & security', data: 'Data', about: 'About' };
 const VIEWER_PAGES = ['subs', 'appearance', 'security', 'about'];   // the only pages a view-only link opens
+const STYLE_LABELS = { obsidian: 'Obsidian', kinetic: 'Kinetic', editorial: 'Editorial' };
+const SUBS_STYLE_LABELS = { flip: '3D Flip', pass: 'Pass Deck' };
 
 function srow(page, ic, hue, title, sub) {
   return `<button class="srow" data-act="settings-go" data-p="${page}">
@@ -895,6 +1296,8 @@ function srow(page, ic, hue, title, sub) {
 function viewerSettingsHome(st) {
   const last = st.lastSync ? new Date(st.lastSync).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : 'Never';
   const theme = { light: 'Light', dark: 'Dark', system: 'Match my phone' }[st.settings.theme || 'system'];
+  const styleLabel = STYLE_LABELS[st.settings.style || 'obsidian'] || 'Obsidian';
+  const subsLabel = SUBS_STYLE_LABELS[st.settings.subsStyle === 'pass' ? 'pass' : 'flip'];
   const vw = st.snap.viewer || {};
   return `<div class="page ${ui.animate ? 'enter' : ''}">
     ${viewerHi()}
@@ -907,7 +1310,7 @@ function viewerSettingsHome(st) {
     </section>
     <p class="set-h">General</p>
     <div class="slist">
-      ${srow('appearance', 'sun', 40, 'Appearance', theme)}
+      ${srow('appearance', 'palette', 40, 'Appearance', `${styleLabel} · ${theme} · ${subsLabel}`)}
       ${srow('security', 'lock', 150, 'App lock', { bio: 'Face ID', pin: 'PIN', off: 'No lock' }[lockCfg().method || 'off'] || 'No lock')}
       ${srow('about', 'device', 300, 'About', `v${APP_VERSION}`)}
     </div>
@@ -969,6 +1372,8 @@ function settingsHome(st) {
   const liveSubs = v.subs.filter((x) => !x.paused);
   const subsSub = liveSubs.length ? `${liveSubs.length} · ${num0(liveSubs.reduce((n, x) => n + x.amount, 0))} a month` : 'Netflix, Spotify and the rest';
   const theme = { light: 'Light', dark: 'Dark', system: 'Match my phone' }[st.settings.theme || 'system'];
+  const styleLabel = STYLE_LABELS[st.settings.style || 'obsidian'] || 'Obsidian';
+  const subsLabel = SUBS_STYLE_LABELS[st.settings.subsStyle === 'pass' ? 'pass' : 'flip'];
   const lock = lockCfg();
   const lockLabel = { bio: 'Face ID', pin: 'PIN', off: 'No lock' }[lock.method || 'off'] || 'No lock';
   const secSub = `${lockLabel} · ${vault.isEnabled() ? 'Encrypted' : 'Not encrypted'}`;
@@ -987,7 +1392,7 @@ function settingsHome(st) {
       ${srow('accounts', 'card', 255, 'Accounts & budget', accSub)}
       ${srow('subs', 'subscriptions', 20, 'Subscriptions', subsSub)}
       ${demo || st.scriptVersion >= 10 || st.scriptVersion === undefined ? srow('share', 'eye', 330, 'Share view-only', shr.list ? `${shr.list.length} ${shr.list.length === 1 ? 'person' : 'people'}` : 'A read-only link for family') : ''}
-      ${srow('appearance', 'sun', 40, 'Appearance', theme)}
+      ${srow('appearance', 'palette', 40, 'Appearance', `${styleLabel} · ${theme} · ${subsLabel}`)}
     </div>
     <p class="set-h">Protection</p>
     <div class="slist">
@@ -1031,11 +1436,30 @@ function renderSettings(view) {
       <p class="muted sm" style="margin-top:10px">Fuel at this amount or more is noted “Fuel - Haval”, anything less “Fuel - Verna”. Raise it when fuel prices go up. Empty uses ${FUEL_BIG_FILL}.</p>
     </section>`;
   } else if (p === 'appearance') {
+    const curStyle = st.settings.style || 'obsidian';
+    const curNav = st.settings.navStyle === 'orb' ? 'orb' : 'center';
+    const curSubs = st.settings.subsStyle === 'pass' ? 'pass' : 'flip';
     body = `<section class="card">
+      <div class="card-h"><h3>Visual style</h3></div>
+      <div class="seg three" role="radiogroup" aria-label="Visual style">${[['obsidian', 'Obsidian', 'layers'], ['kinetic', 'Kinetic', 'bolt'], ['editorial', 'Editorial', 'file']]
+        .map(([k, l, ic]) => `<button role="radio" aria-checked="${curStyle === k}" class="${curStyle === k ? 'on' : ''}" data-act="style" data-v="${k}">${icon(ic, 17)}${l}</button>`).join('')}</div>
+      <p class="muted sm" style="margin-top:10px">Obsidian adds glass highlights and glare; Kinetic adapts colour per account; Editorial uses warm paper and serif type.</p>
+    </section>
+    <section class="card">
       <div class="card-h"><h3>Theme</h3></div>
       <div class="seg three" role="radiogroup" aria-label="Theme">${[['light', 'Light', 'sun'], ['dark', 'Dark', 'moon'], ['system', 'System', 'device']]
         .map(([k, l, ic]) => `<button role="radio" aria-checked="${(st.settings.theme || 'system') === k}" class="${(st.settings.theme || 'system') === k ? 'on' : ''}" data-act="theme" data-v="${k}">${icon(ic, 18)}${l}</button>`).join('')}</div>
       <p class="muted sm" style="margin-top:10px">System follows your phone’s light/dark setting automatically.</p>
+    </section>
+    <section class="card">
+      <div class="card-h"><h3>Navigation bar</h3></div>
+      <div class="seg two" style="margin-bottom:0" role="radiogroup" aria-label="Navigation bar">${[['center', 'Center +', 'plus'], ['orb', 'Side Orb', 'palette']]
+        .map(([k, l, ic]) => `<button role="radio" aria-checked="${curNav === k}" class="${curNav === k ? 'on' : ''}" data-act="nav-style" data-v="${k}">${icon(ic, 17)}${l}</button>`).join('')}</div>
+    </section>
+    <section class="card">
+      <div class="card-h"><h3>Subscriptions style</h3></div>
+      <div class="seg two" style="margin-bottom:0" role="radiogroup" aria-label="Subscriptions style">${[['flip', '3D Flip', 'rotate'], ['pass', 'Pass Deck', 'layers']]
+        .map(([k, l, ic]) => `<button role="radio" aria-checked="${curSubs === k}" class="${curSubs === k ? 'on' : ''}" data-act="subs-style" data-v="${k}">${icon(ic, 17)}${l}</button>`).join('')}</div>
     </section>
     <section class="card">
       <div class="card-h"><h3>Bars</h3></div>
@@ -1157,7 +1581,8 @@ async function openViewLink(text) {
 }
 
 // ---------------------------------------------------------------- add / edit sheet
-const KEYS = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '.', '0', 'del'];
+const KEYS = ['1', '2', '3', '÷', '4', '5', '6', '×', '7', '8', '9', '−', '.', '0', 'del', '+'];
+const OPS = new Set(['÷', '×', '−', '+']);
 
 // Which account a new entry starts in: the one being viewed, else the one used last, else the main one.
 function defaultFormAccount() {
@@ -1168,33 +1593,36 @@ function defaultFormAccount() {
   return hit ? hit.name : (accList()[0] || {}).name || '';
 }
 
-function openSheet(id) {
+function openSheet(id, opts = {}) {
   const v = store.view();
   let e = null;
   if (id) for (const k of v.months) { const f = v.by[k].entries.find((x) => x.id === id); if (f) { e = f; break; } }
+  const isDup = !!(e && opts.duplicate);
+  const isEdit = !!(e && !isDup);
   const m = activeMonth();
   const defDate = (() => {
     const t = todayStr();
     return m && t.slice(0, 7) !== m.key ? m.key + '-01' : t;
   })();
   ui.form = e
-    ? { id: e.id, type: e.type, amt: String(e.amount), category: e.category, sub: e.sub, date: e.date, desc: e.description, account: e.account, seller: e.seller || '', location: e.location || '', step: 'details' }
-    : { id: null, type: 'Expense', amt: '', category: '', sub: '', date: defDate, desc: '', account: defaultFormAccount(), seller: '', location: '', locAuto: locCaptureOn(), step: 'amt' };
+    ? { id: isDup ? null : e.id, type: e.type, amt: String(e.amount), expr: '', category: e.category, sub: e.sub, date: isDup ? todayStr() : e.date, desc: e.description, account: e.account, seller: e.seller || '', location: e.location || '', ...(isDup ? { locAuto: locCaptureOn() } : {}), step: 'details' }
+    : { id: null, type: 'Expense', amt: '', expr: '', category: '', sub: '', date: defDate, desc: '', account: defaultFormAccount(), seller: '', location: '', locAuto: locCaptureOn(), step: 'amt' };
   ui.armedDelete = false;
   const body = `<div id="formMain"><div class="seg" id="fType"></div>
       <button class="amt" id="fAmt" data-act="amt-edit" aria-label="Amount"></button>
-      <div id="fKeys"><div class="keypad" id="keypad">${KEYS.map((k) => `<button data-act="key" data-k="${k}" aria-label="${k === 'del' ? 'Delete digit' : k}">${k === 'del' ? icon('backspace', 20) : k}</button>`).join('')}</div>
-      <div class="amt-acts"><button class="amt-x" data-act="amt-cancel" aria-label="Cancel">${icon('close', 22, 2.4)}</button><button class="amt-ok" data-act="amt-ok" aria-label="Confirm amount">${icon('check', 24, 2.8)}</button></div></div>
+      <div class="amt-expr" id="fExpr"></div>
+      <div id="fKeys"><div class="keypad k4" id="keypad">${KEYS.map((k) => `<button class="${OPS.has(k) ? 'key-op' : ''}" data-act="key" data-k="${k}" aria-label="${k === 'del' ? 'Delete digit' : k}">${k === 'del' ? icon('backspace', 20) : k}</button>`).join('')}</div>
+      <div class="amt-foot"><button class="btn primary amt-continue" data-act="amt-ok">Continue</button><button class="btn amt-quick" id="amtQuick" data-act="${isEdit ? 'amt-cancel' : 'quick-open'}" aria-label="${isEdit ? 'Cancel amount edit' : 'Quick add'}">${isEdit ? 'Cancel' : `${icon('bolt', 15)}<span>Quick</span>`}</button></div></div>
       <div id="fDetails"><div id="fCatWrap"><div class="lbl">Category</div><div class="chips hs" id="fCats"></div>
       <div class="lbl">Sub-category</div><div class="chips hs" id="fSubs"></div></div>
       <div class="chips hs meta" id="fMeta"></div>
       <div class="notebox"><input id="fDesc" placeholder="Add a note" value="${esc(ui.form.desc)}" autocomplete="off" maxlength="120"><div id="fSellerWrap"></div></div>
       <p class="muted sm note-hint" id="fNoteHint"></p></div></div>
       <div id="calWrap"></div><div id="quickWrap"></div>`;
-  const foot = `<button class="btn primary big" data-act="save" id="saveBtn">${e ? 'Save changes' : 'Add transaction'}</button>` +
-    (e ? '' : '<button class="btn primary big" data-act="quick-add" id="quickBtn">Add selected</button>');
-  present(e ? 'Edit transaction' : 'New transaction',
-    e ? `<button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>`
+  const foot = `<button class="btn primary big" data-act="save" id="saveBtn">${isEdit ? 'Save changes' : 'Add transaction'}</button>` +
+    (isEdit ? '' : '<button class="btn primary big" data-act="quick-add" id="quickBtn">Add selected</button>');
+  present(isEdit ? 'Edit transaction' : 'New transaction',
+    isEdit ? `<button class="icon-btn" id="dupBtn" data-act="dup-entry" aria-label="Duplicate transaction">${icon('copy', 19)}</button><button class="icon-btn danger" id="delBtn" data-act="delete" aria-label="Delete">${icon('trash', 20)}</button>`
       : `<button class="close" id="quickToggle" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 22)}</button>`,
     body, 'compact entry', foot);
   $('#fDesc').addEventListener('input', (ev) => { ui.form.desc = ev.target.value; ui.form.autoNote = null; });
@@ -1603,12 +2031,18 @@ if (!themeMeta) {
   themeMeta.name = 'theme-color';
   document.head.appendChild(themeMeta);
 }
-const THEME_BG = { light: '#F4F5FA', dark: '#0A0B10' };
+const STYLE_BG = {
+  obsidian: { light: '#F4F5FA', dark: '#07080D' },
+  kinetic: { light: '#F6F8FC', dark: '#090B10' },
+  editorial: { light: '#FAF8F4', dark: '#111215' },
+};
+let styleMode = 'obsidian';
 let themeMode = 'system';
 let themeNow = 0;
 let themeRaf = 0;
 const SCRIM_ALPHA = 0.42;
 
+function currentStyle() { return styleMode === 'kinetic' || styleMode === 'editorial' ? styleMode : 'obsidian'; }
 const prefersDark = () => matchMedia('(prefers-color-scheme: dark)').matches;
 const effectiveTheme = () => (themeMode === 'light' || themeMode === 'dark' ? themeMode : (prefersDark() ? 'dark' : 'light'));
 
@@ -1617,7 +2051,7 @@ function setStatusColor(hex) { themeMeta.setAttribute('content', hex); }
 
 function paintTheme(p) {
   themeNow = p;
-  const base = THEME_BG[effectiveTheme()].replace('#', '');
+  const base = STYLE_BG[currentStyle()][effectiveTheme()].replace('#', '');
   if (p <= 0.001) { setStatusColor('#' + base); tintPage(''); return; }
   const k = 1 - SCRIM_ALPHA * p;
   const c = [0, 2, 4].map((i) => Math.round(parseInt(base.slice(i, i + 2), 16) * k).toString(16).padStart(2, '0')).join('');
@@ -1654,7 +2088,21 @@ function refreshView() {
   setTimeout(() => location.reload(), 220);
 }
 
-// ---- appearance: light / dark / follow the phone -----------------------------------------------
+// ---- appearance: style, theme & nav -------------------------------------------------------------
+function applyStyle(s) {
+  styleMode = s === 'kinetic' || s === 'editorial' ? s : 'obsidian';
+  document.documentElement.setAttribute('data-style', styleMode);
+  try { localStorage.setItem('el_style', styleMode); } catch (e) { /* private mode */ }
+  paintTheme(themeNow);
+}
+
+function applyNav(n) {
+  const mode = n === 'orb' ? 'orb' : 'center';
+  if (mode === 'orb') document.documentElement.setAttribute('data-nav', 'orb');
+  else document.documentElement.removeAttribute('data-nav');
+  try { localStorage.setItem('el_nav', mode); } catch (e) { /* private mode */ }
+}
+
 function applyTheme(mode) {
   const root = document.documentElement;
   themeMode = mode === 'light' || mode === 'dark' ? mode : 'system';
@@ -1850,6 +2298,15 @@ function refreshForm() {
   $('#fType').innerHTML = ['Expense', 'Income'].map((t) => `<button class="${f.type === t ? 'on ' + t.toLowerCase() : ''}" data-act="type" data-t="${t}">${t}</button>`).join('');
   $('#fAmt').className = 'amt ' + f.type.toLowerCase() + (f.amt ? '' : ' empty');
   $('#fAmt').innerHTML = `<span class="cur">${esc(cur())}</span><span>${esc(fmtTyped(f.amt))}</span><small class="amt-edit">tap to edit</small>`;
+  const exprEl = $('#fExpr');
+  if (exprEl) exprEl.textContent = f.step === 'amt' && f.expr ? f.expr : '';
+  const qBtn = $('#amtQuick');
+  if (qBtn) {
+    const editingAmt = !!(f.id || f.amtBackup != null);
+    qBtn.dataset.act = editingAmt ? 'amt-cancel' : 'quick-open';
+    qBtn.setAttribute('aria-label', editingAmt ? 'Cancel amount edit' : 'Quick add');
+    qBtn.innerHTML = editingAmt ? 'Cancel' : `${icon('bolt', 15)}<span>Quick</span>`;
+  }
   const sheet = $('.sheet');
   if (sheet) sheet.classList.toggle('step-amt', f.step === 'amt');
   const isExp = f.type === 'Expense';
@@ -1898,8 +2355,102 @@ function refreshForm() {
   meta.scrollLeft = metaLeft;
 }
 
+const OP_CHARS = { '+': '+', '-': '−', '−': '−', '*': '×', '×': '×', '/': '÷', '÷': '÷' };
+
+function evalExpr(expr) {
+  const toks = String(expr || '').trim().split(/\s+/).filter(Boolean);
+  if (!toks.length) return NaN;
+  if (OPS.has(toks[toks.length - 1])) toks.pop();
+  if (!toks.length) return NaN;
+  const vals = [];
+  const ops = [];
+  for (let i = 0; i < toks.length; i++) {
+    if (i % 2 === 0) {
+      const n = Number(toks[i]);
+      if (!Number.isFinite(n)) return NaN;
+      vals.push(n);
+    } else {
+      ops.push(toks[i]);
+    }
+  }
+  const v2 = [vals[0]];
+  const o2 = [];
+  for (let i = 0; i < ops.length; i++) {
+    const op = ops[i], rhs = vals[i + 1];
+    if (op === '×' || op === '÷') {
+      const lhs = v2.pop();
+      if (op === '÷' && rhs === 0) return NaN;
+      v2.push(op === '×' ? lhs * rhs : lhs / rhs);
+    } else {
+      v2.push(rhs);
+      o2.push(op);
+    }
+  }
+  let res = v2[0];
+  for (let i = 0; i < o2.length; i++) res = o2[i] === '+' ? res + v2[i + 1] : res - v2[i + 1];
+  return res;
+}
+
 function pressKey(k) {
   const f = ui.form;
+  if (!f) return;
+  const op = OP_CHARS[k];
+  if (op) {
+    if (!f.expr) {
+      const base = f.amt && f.amt !== '.' ? f.amt.replace(/\.$/, '') : '0';
+      if (!f.amt || base === '0') {
+        if (op === '−') return;
+        f.expr = '0 ' + op + ' ';
+      } else {
+        f.expr = base + ' ' + op + ' ';
+      }
+    } else {
+      const m = /^([\s\S]*?\S)\s+[÷×−+]\s*$/.exec(f.expr);
+      if (m) f.expr = m[1] + ' ' + op + ' ';
+      else f.expr = f.expr.replace(/\.$/, '') + ' ' + op + ' ';
+    }
+    const res = evalExpr(f.expr);
+    f.amt = Number.isFinite(res) && res > 0 ? String(Math.round(res * 100) / 100) : (Number.isFinite(res) ? '0' : '');
+    haptic(6);
+    refreshForm();
+    return;
+  }
+  if (f.expr) {
+    const parts = f.expr.split(' ');
+    const tail = parts[parts.length - 1];
+    if (k === 'del') {
+      if (tail !== '') {
+        parts[parts.length - 1] = tail.slice(0, -1);
+        f.expr = parts.join(' ');
+      } else if (parts.length >= 3) {
+        f.expr = parts.slice(0, -2).join(' ');
+        if (!/[÷×−+]/.test(f.expr)) {
+          f.amt = f.expr === '0' ? '' : f.expr;
+          f.expr = '';
+          haptic(6);
+          refreshForm();
+          return;
+        }
+      }
+    } else if (k === '.') {
+      if (!tail.includes('.')) {
+        parts[parts.length - 1] = (tail || '0') + '.';
+        f.expr = parts.join(' ');
+      }
+    } else {
+      if (tail.includes('.') && tail.split('.')[1].length >= 2) return;
+      if (tail.replace('.', '').length >= 10) return;
+      parts[parts.length - 1] = tail === '0' ? k : tail + k;
+      f.expr = parts.join(' ');
+    }
+    if (f.expr) {
+      const res = evalExpr(f.expr);
+      f.amt = Number.isFinite(res) && res > 0 ? String(Math.round(res * 100) / 100) : (Number.isFinite(res) ? '0' : '');
+    }
+    haptic(6);
+    refreshForm();
+    return;
+  }
   let a = f.amt;
   if (k === 'del') a = a.slice(0, -1);
   else if (k === '.') { if (!a.includes('.')) a = (a || '0') + '.'; }
@@ -1910,6 +2461,31 @@ function pressKey(k) {
   }
   f.amt = a;
   haptic(6);
+  refreshForm();
+}
+
+function duplicateOpenEntry() {
+  const f = ui.form;
+  if (!f || !f.id) return;
+  f.id = null;
+  f.date = todayStr();
+  f.expr = '';
+  f.amtBackup = null;
+  f.locAuto = locCaptureOn();
+  ui.armedDelete = false;
+  const sheet = $('.sheet');
+  if (sheet) {
+    const h2 = $('.sheet-h h2', sheet);
+    if (h2) h2.textContent = 'New transaction';
+    const hbtns = $('.hbtns', sheet);
+    if (hbtns) hbtns.innerHTML = `<button class="close" id="quickToggle" data-act="quick-open" aria-label="Quick add: paste a bank message or type it">${icon('spark', 22)}</button>`;
+    const saveBtn = $('#saveBtn', sheet);
+    if (saveBtn) saveBtn.textContent = 'Add transaction';
+    const foot = $('.sheet-foot', sheet);
+    if (foot && !$('#quickBtn', foot)) foot.insertAdjacentHTML('beforeend', '<button class="btn primary big" data-act="quick-add" id="quickBtn">Add selected</button>');
+  }
+  haptic(8);
+  toast('Duplicated — edit or tap Add transaction');
   refreshForm();
 }
 
@@ -2322,7 +2898,7 @@ function openTrash(rerender = false) {
 
 // ---------------------------------------------------------------- events
 // Everything that changes data. A view-only link never runs these (the store refuses them too).
-const WRITE_ACTS = /^(new|quick-.*|edit|save|delete|key|type|cat|sub|seller-.*|loc-(use|clear)|amt-.*|new-.*|date-.*|cal-.*|facc|acc-(add|delete|archive|type)|da-.*|import-.*|do-import|trash|restore|clear-trash|su-now|share-(new|revoke)|disconnect)$/;
+const WRITE_ACTS = /^(new|quick-.*|edit|dup-entry|save|delete|key|type|cat|sub|seller-.*|loc-(use|clear)|amt-.*|new-.*|date-.*|cal-.*|facc|acc-(add|delete|archive|type)|da-.*|import-.*|do-import|trash|restore|clear-trash|su-now|share-(new|revoke)|disconnect|sel-(del|move|cat)|batch-.*|row-(copy|del))$/;
 
 document.addEventListener('click', async (ev) => {
   const el = ev.target.closest('[data-act]');
@@ -2349,7 +2925,7 @@ document.addEventListener('click', async (ev) => {
       render();
       break;
     case 'ins-open':
-      ui.q = el.dataset.q || ''; ui.filter = 'Expense'; ui.tab = 'activity'; ui.animate = true; haptic(6);
+      ui.q = el.dataset.q || ''; ui.allMonths = false; ui.filter = 'Expense'; ui.tab = 'activity'; ui.animate = true; haptic(6);
       $('#view').innerHTML = ''; render();
       break;
     case 'new': haptic(10); ui.quick = null; openSheet(null); break;
@@ -2377,7 +2953,24 @@ document.addEventListener('click', async (ev) => {
       } else { ta.focus(); quickHint('Press and hold in the box, then tap Paste.'); }
       break;
     }
-    case 'edit': openSheet(el.dataset.id); break;
+    case 'edit':
+      if (performance.now() < ui.noClickUntil) break;
+      if (el.closest('.row-swipe.open')) { closeOpenSwipe(); break; }
+      openSheet(el.dataset.id);
+      break;
+    case 'dup-entry': duplicateOpenEntry(); break;
+    case 'row-copy':
+      closeOpenSwipe();
+      haptic(8);
+      openSheet(el.dataset.id, { duplicate: true });
+      break;
+    case 'row-del': {
+      closeOpenSwipe();
+      const trashId = store.deleteEntry(el.dataset.id);
+      haptic(16);
+      toast('Transaction deleted', '', trashId ? { label: 'Undo', fn: () => { store.restoreTrash(trashId); haptic(10); toast('Restored', 'ok'); } } : null);
+      break;
+    }
     case 'map': {
       const url = mapUrl(el.dataset.loc);
       if (url) window.open(url, '_blank', 'noopener');
@@ -2399,7 +2992,11 @@ document.addEventListener('click', async (ev) => {
     case 'loc-clear': if (ui.form) { ui.form.location = ''; ui.form.locAuto = false; haptic(6); refreshForm(); } break;
     case 'sel-row':
       if (performance.now() < ui.noClickUntil) break;
-      if (!ui.selOn) { if (!store.isViewer()) openSheet(el.dataset.id); break; }
+      if (!ui.selOn) {
+        if (el.closest('.row-swipe.open')) { closeOpenSwipe(); break; }
+        if (!store.isViewer()) openSheet(el.dataset.id);
+        break;
+      }
       if (ui.sel.has(el.dataset.id)) ui.sel.delete(el.dataset.id); else ui.sel.add(el.dataset.id);
       haptic(6); fillActivity();
       break;
@@ -2412,10 +3009,60 @@ document.addEventListener('click', async (ev) => {
       break;
     case 'sel-clear': haptic(6); ui.sel.clear(); ui.selOnly = false; fillActivity(); break;
     case 'sel-only': haptic(6); ui.selOnly = !ui.selOnly; fillActivity(); break;
+    case 'sel-del': {
+      const picked = pickedEntries();
+      if (!picked.length) break;
+      const trashIds = picked.map((e) => store.deleteEntry(e.id)).filter(Boolean);
+      ui.sel.clear(); ui.selOnly = false; ui.selOn = false;
+      haptic(18);
+      renderActivity($('#view'), activeMonth());
+      toast(`${picked.length} transaction${picked.length === 1 ? '' : 's'} deleted`, '', trashIds.length ? {
+        label: 'Undo',
+        fn: () => { trashIds.forEach((tid) => store.restoreTrash(tid)); haptic(10); toast('Restored', 'ok'); },
+      } : null);
+      break;
+    }
+    case 'sel-move': haptic(6); openBatchMoveSheet(); break;
+    case 'batch-move': {
+      const targetAcc = el.dataset.v;
+      const picked = pickedEntries();
+      if (!targetAcc || !picked.length) break;
+      picked.forEach((e) => store.updateEntry(e.id, { ...entryData(e), account: targetAcc }));
+      ui.sel.clear(); ui.selOnly = false; ui.selOn = false;
+      closeSheet();
+      haptic(12);
+      toast(`Moved ${picked.length} to ${targetAcc}`, 'ok');
+      break;
+    }
+    case 'sel-cat': haptic(6); ui.batchCat = null; openBatchCatSheet(); break;
+    case 'batch-cat':
+      ui.batchCat = { cat: el.dataset.v, sub: (store.view().categories.map[el.dataset.v] || [])[0] || '' };
+      haptic(6); openBatchCatSheet(true);
+      break;
+    case 'batch-sub':
+      if (ui.batchCat) ui.batchCat.sub = el.dataset.v;
+      haptic(6); openBatchCatSheet(true);
+      break;
+    case 'batch-cat-ok': {
+      const picked = pickedEntries().filter((e) => e.type === 'Expense');
+      if (!picked.length || !ui.batchCat || !ui.batchCat.cat || !ui.batchCat.sub) break;
+      picked.forEach((e) => store.updateEntry(e.id, { ...entryData(e), category: ui.batchCat.cat, sub: ui.batchCat.sub }));
+      ui.sel.clear(); ui.selOnly = false; ui.selOn = false; ui.batchCat = null;
+      closeSheet();
+      haptic(12);
+      toast(`Updated ${picked.length} expense${picked.length === 1 ? '' : 's'}`, 'ok');
+      break;
+    }
+    case 'all-months':
+      ui.allMonths = !ui.allMonths;
+      haptic(6);
+      renderActivityFilters();
+      fillActivity();
+      break;
     case 'q-clear': {
-      haptic(6); ui.q = '';
+      haptic(6); ui.q = ''; ui.allMonths = false;
       const q = $('#q'); if (q) q.value = '';
-      el.hidden = true; fillActivity();
+      el.hidden = true; renderActivityFilters(); fillActivity();
       break;
     }
     case 'close': closeSheet(); break;
@@ -2502,11 +3149,12 @@ document.addEventListener('click', async (ev) => {
     case 'sub': ui.form.sub = el.dataset.v; haptic(6); refreshForm(); break;
     case 'seller-show': ui.form.showSeller = true; renderSellerField(); refreshForm(); $('#fSeller').focus(); break;
     case 'seller-hide': ui.form.showSeller = false; ui.form.seller = ''; renderSellerField(); refreshForm(); break;
-    case 'amt-edit': if (ui.form && ui.form.step !== 'amt') { ui.form.amtBackup = ui.form.amt; ui.form.step = 'amt'; haptic(6); refreshForm(); } break;
+    case 'amt-edit': if (ui.form && ui.form.step !== 'amt') { ui.form.amtBackup = ui.form.amt; ui.form.expr = ''; ui.form.step = 'amt'; haptic(6); refreshForm(); } break;
     case 'amt-ok':
       if (!(Number(ui.form.amt) > 0)) { toast('Enter an amount greater than zero.', 'err'); shake(); break; }
-      ui.form.step = 'details'; ui.form.amtBackup = null; haptic(10); refreshForm(); break;
+      ui.form.expr = ''; ui.form.step = 'details'; ui.form.amtBackup = null; haptic(10); refreshForm(); break;
     case 'amt-cancel':
+      ui.form.expr = '';
       if (ui.form.amtBackup != null) { ui.form.amt = ui.form.amtBackup; ui.form.amtBackup = null; ui.form.step = 'details'; } else ui.form.amt = '';
       haptic(6); refreshForm(); break;
     case 'lock-method': {
@@ -2574,8 +3222,32 @@ document.addEventListener('click', async (ev) => {
       break;
     }
     case 'flip': openFlip(el.dataset.kind, el); break;
+    case 'flip-switch': switchFlip(); break;
     case 'flip-close': closeFlip(); break;
     case 'refresh-view': refreshView(); break;
+    case 'style': {
+      const s = el.dataset.v;
+      applyStyle(s);
+      store.saveSettings({ style: styleMode });
+      haptic(8);
+      refreshSlide();
+      break;
+    }
+    case 'nav-style': {
+      const n = el.dataset.v === 'orb' ? 'orb' : 'center';
+      applyNav(n);
+      store.saveSettings({ navStyle: n });
+      haptic(8);
+      refreshSlide();
+      break;
+    }
+    case 'subs-style': {
+      const ss = el.dataset.v === 'pass' ? 'pass' : 'flip';
+      store.saveSettings({ subsStyle: ss });
+      haptic(8);
+      refreshSlide();
+      break;
+    }
     case 'theme': {
       const mode = el.dataset.v;
       store.saveSettings({ theme: mode });
@@ -2794,6 +3466,7 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') { if (flipKind) closeFlip(); else if (ui.menuOpen) closeMonthMenu(); else if ($('#layer').classList.contains('open')) closeSheet(); }
   const typing = document.activeElement && ['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName) && document.activeElement.type !== 'date';
   if (ui.form && !typing && /^[0-9.]$/.test(e.key)) pressKey(e.key);
+  if (ui.form && !typing && ui.form.step === 'amt' && /^[+\-*/]$/.test(e.key)) { e.preventDefault(); pressKey(e.key); }
   if (ui.form && !typing && e.key === 'Backspace') pressKey('del');
 });
 
@@ -2824,6 +3497,7 @@ window.addEventListener('orientationchange', () => setTimeout(fitApp, 250));
 let lastStatusKey = '';
 function render() {
   const st = store.getState();
+  syncAccKind();
   if (!st.cfg) { document.body.classList.remove('viewer'); renderOnboarding(); return; }
   document.body.classList.remove('onboard');
   document.body.classList.toggle('viewer', store.isViewer());
@@ -2941,6 +3615,12 @@ async function bootSteps() {
   if (keyLost) setTimeout(() => toast('This phone’s encrypted copy could not be opened, so it was cleared. Reconnect to load everything again from your sheet.', 'err'), 800);
   document.documentElement.classList.toggle('privacy', !!store.getState().settings.hideBalance);
   watchPrivacy(!!store.getState().settings.hideBalance);
+  let savedStyle = store.getState().settings.style;
+  if (!savedStyle) { try { savedStyle = localStorage.getItem('el_style') || 'obsidian'; } catch (e) { savedStyle = 'obsidian'; } }
+  applyStyle(savedStyle);
+  let savedNav = store.getState().settings.navStyle;
+  if (!savedNav) { try { savedNav = localStorage.getItem('el_nav') || 'center'; } catch (e) { savedNav = 'center'; } }
+  applyNav(savedNav);
   applyTheme(store.getState().settings.theme || 'system');
   document.documentElement.classList.toggle('no-glass', store.getState().settings.glass === false);
   lk.initLock({

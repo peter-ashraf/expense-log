@@ -1,8 +1,8 @@
-// One sliding highlight for every pill group (segmented controls, wallet chips, filters, date chips).
+// One sliding highlight for every pill group (segmented controls, wallet chips, filters, date chips, tab capsule).
 // The app rebuilds a screen's HTML on every tap, so the highlight is a separate element that remembers where it
 // was and glides from there to the newly chosen pill instead of vanishing from one and appearing on the other.
-const TARGETS = '.seg, .acc-chips, #filters, .datechips';
-const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const TARGETS = '.seg, .acc-chips, #filters, .datechips, .tab-capsule';
+const reduce = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 const seen = new Map();          // key -> where the highlight last was
 let scopeOf = () => 'app';
 
@@ -18,10 +18,14 @@ function paint(ind, g, look) {
 }
 
 function enhance(box, key, scope) {
-  const on = box.querySelector(':scope > .on');
+  const on = box.querySelector(':scope > .on, :scope > .active');
   let ind = box.querySelector(':scope > .slide-ind');
   if (!on) { if (ind) ind.remove(); box.classList.remove('slide-ready'); seen.delete(key); return; }
-  if (ind && ind._on === on) return;                       // nothing changed
+  const to = geometry(on);
+  const cw = box.clientWidth;
+  if (!to.w || !to.h || !cw) return;
+  const curPrev = seen.get(key);
+  if (ind && ind._on === on && curPrev && Math.abs(curPrev.cw - cw) < 2 && curPrev.x === to.x && curPrev.y === to.y && curPrev.w === to.w) return;
 
   // read how the chosen pill looks BEFORE it is made transparent
   // (a box that stays on screen while its buttons are replaced is already neutralised: undo that for the read)
@@ -45,11 +49,9 @@ function enhance(box, key, scope) {
     void getComputedStyle(on).backgroundColor;
     on.style.transition = '';
   }
-  const to = geometry(on);
-  const n = box.querySelectorAll(':scope > button').length;
-  const cw = box.clientWidth;
+  const n = box.querySelectorAll(':scope > button, :scope > a').length;
   const prev = seen.get(key);
-  const glide = !reduce && prev && prev.n === n && Math.abs(prev.cw - cw) < 3 && (prev.x !== to.x || prev.y !== to.y || prev.w !== to.w);
+  const glide = !reduce() && prev && prev.n === n && Math.abs(prev.cw - cw) < 3 && (prev.x !== to.x || prev.y !== to.y || prev.w !== to.w || prev.h !== to.h);
   const from = fresh ? prev : { ...geometry(ind._on || on), bg: ind.style.backgroundColor, bd: ind.style.borderColor, r: ind.style.borderRadius };
   if (glide && from) {
     ind.style.transition = 'none';
@@ -71,14 +73,23 @@ function scan() {
   const scope = scopeOf();
   const layer = document.getElementById('layer');
   const sheetOpen = !!(layer && layer.classList.contains('open'));
-  for (const [k, v] of seen) if (v.scope === 'sheet' ? !sheetOpen : v.scope !== scope) seen.delete(k);   // never glide across screens
+  const tabbar = document.getElementById('tabbar');
+  const tabbarAlive = !!(tabbar && tabbar.querySelector('.tab-capsule, .tab') && !document.body.classList.contains('onboard'));
+  for (const [k, v] of seen) {
+    if (v.scope === 'sheet' ? !sheetOpen : v.scope === 'tabbar' ? !tabbarAlive : v.scope !== scope) seen.delete(k);   // never glide across screens
+  }
   const count = {};
   document.querySelectorAll(TARGETS).forEach((box) => {
-    const sc = box.closest('#layer') ? 'sheet' : scope;
+    const sc = box.closest('#layer') ? 'sheet' : box.closest('#tabbar') ? 'tabbar' : scope;
     const base = box.id || box.getAttribute('aria-label') || box.className.replace(/\bslide-ready\b/, '').trim();
     count[sc + base] = (count[sc + base] || 0) + 1;
     enhance(box, `${sc}|${base}|${count[sc + base]}`, sc);
   });
+}
+
+/** Scan and update all sliding pill highlights immediately. */
+export function refreshSlide() {
+  scan();
 }
 
 export function initSlide(getScope) {
