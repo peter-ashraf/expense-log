@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { motion } from 'motion/react';
+import { motion, AnimatePresence, useReducedMotion } from 'motion/react';
 import { Toaster, toast } from 'sonner';
 import {
   budgetForAccount,
@@ -25,6 +25,24 @@ import InsightsView from './components/InsightsView';
 import SettingsView from './components/SettingsView';
 import EntrySheet from './components/EntrySheet';
 import HeroFlipModal from './components/HeroFlipModal';
+
+const TAB_ORDER = { home: 0, activity: 1, insights: 2, settings: 3 };
+
+const SCREEN_VARIANTS = {
+  enter: ({ dir, reduced }) => (reduced ? { opacity: 0 } : { opacity: 0, x: dir * 16 }),
+  center: {
+    opacity: 1,
+    x: 0,
+    pointerEvents: 'auto',
+    transition: { duration: 0.22, ease: [0.22, 1, 0.36, 1] },
+  },
+  exit: ({ dir, reduced }) => ({
+    opacity: 0,
+    x: reduced ? 0 : -dir * 14,
+    pointerEvents: 'none',
+    transition: { duration: 0.15, ease: [0.4, 0, 1, 1] },
+  }),
+};
 
 function resolveTheme(mode, sysTheme) {
   if (mode === 'light' || mode === 'dark') return mode;
@@ -69,6 +87,16 @@ export default function App() {
   const [urlPrefill, setUrlPrefill] = useState({ url: '', key: '' });
 
   const scrollRef = useRef(null);
+  const prefersReducedMotion = useReducedMotion();
+  const prevTabRef = useRef(activeTab);
+  const tabDirRef = useRef(1);
+  if (prevTabRef.current !== activeTab) {
+    const fromIdx = TAB_ORDER[prevTabRef.current] ?? 0;
+    const toIdx = TAB_ORDER[activeTab] ?? 0;
+    tabDirRef.current = toIdx >= fromIdx ? 1 : -1;
+    prevTabRef.current = activeTab;
+  }
+  const screenCustom = { dir: tabDirRef.current, reduced: Boolean(prefersReducedMotion) };
 
   const concept = settings.style === 'kinetic' || settings.style === 'editorial' ? settings.style : 'obsidian';
   const themeMode = settings.theme || 'dark';
@@ -218,10 +246,10 @@ export default function App() {
     [view, settings, account]
   );
 
-  // Reset scroll to top on primary tab switch
+  // Reset scroll to top on settings subpage switch (tabs preserve outgoing scroll during exit glide)
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0, behavior: 'auto' });
-  }, [activeTab, settingsPage]);
+  }, [settingsPage]);
 
   useEffect(() => {
     if (activeTab !== 'settings' || settingsPage !== 'subscriptions' || subsStyle !== 'arc') {
@@ -468,41 +496,63 @@ export default function App() {
           }}
         />
 
-        {!isConnected ? (
-          <OnboardingView
-            initialUrl={urlPrefill.url}
-            initialKey={urlPrefill.key}
-          />
-        ) : (
-          <motion.div
-            id="phone-stage"
-            animate={
-              sheetOpen
-                ? { scale: 0.955, borderRadius: '26px', opacity: 0.88 }
-                : { scale: 1, borderRadius: '0px', opacity: 1 }
-            }
-            transition={{ type: 'spring', stiffness: 420, damping: 36 }}
-            className="relative flex-1 min-h-0 flex flex-col overflow-hidden origin-top"
-          >
-            <TopBar
-              activeTab={activeTab}
-              settingsPage={settingsPage}
-              onBackSettings={() => setSettingsPage('home')}
-              month={activeMonthKey}
-              setMonth={setMonth}
-              months={monthsList}
-              syncStatus={state.status}
-              pendingCount={state.queue?.length || 0}
-              onSync={() => store.sync()}
-              isViewer={isViewer}
-              currency={currency}
-              privacyBlur={privacyBlur}
-            />
-
-            <div
-              ref={scrollRef}
-              className="flex-1 min-h-0 overflow-y-auto overscroll-y-contain no-scrollbar"
+        <AnimatePresence mode="wait" initial={false}>
+          {!isConnected ? (
+            <motion.div
+              key="onboarding"
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.985 }}
+              transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              className="flex-1 min-h-0 flex flex-col"
             >
+              <OnboardingView
+                initialUrl={urlPrefill.url}
+                initialKey={urlPrefill.key}
+              />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="stage"
+              id="phone-stage"
+              initial={{ opacity: 0 }}
+              animate={
+                sheetOpen
+                  ? { scale: 0.955, borderRadius: '26px', opacity: 0.88 }
+                  : { scale: 1, borderRadius: '0px', opacity: 1 }
+              }
+              exit={{ opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 420, damping: 36 }}
+              className="relative flex-1 min-h-0 flex flex-col overflow-hidden origin-top"
+            >
+              <TopBar
+                activeTab={activeTab}
+                settingsPage={settingsPage}
+                onBackSettings={() => setSettingsPage('home')}
+                month={activeMonthKey}
+                setMonth={setMonth}
+                months={monthsList}
+                syncStatus={state.status}
+                pendingCount={state.queue?.length || 0}
+                onSync={() => store.sync()}
+                isViewer={isViewer}
+                currency={currency}
+                privacyBlur={privacyBlur}
+              />
+
+              <div className="relative flex-1 min-h-0 overflow-hidden">
+                <AnimatePresence initial={false} custom={screenCustom}>
+                  <motion.div
+                    key={activeTab}
+                    ref={scrollRef}
+                    custom={screenCustom}
+                    variants={SCREEN_VARIANTS}
+                    initial="enter"
+                    animate="center"
+                    exit="exit"
+                    data-screen-tab={activeTab}
+                    className="absolute inset-0 overflow-y-auto overscroll-y-contain no-scrollbar"
+                  >
               {activeTab === 'home' && (
                 <HomeView
                   concept={concept}
@@ -652,23 +702,26 @@ export default function App() {
                   onDisconnect={handleDisconnect}
                 />
               )}
-            </div>
+                  </motion.div>
+                </AnimatePresence>
+              </div>
 
-            <BottomNav
-              activeTab={activeTab}
-              onSelectTab={handleSelectTab}
-              onOpenAdd={() => {
-                setInitialQuickText('');
-                setEditingTx(null);
-                setSheetOpen(true);
-              }}
-              navStyle={navStyle}
-              concept={concept}
-              hidden={passDeckOpen}
-              isViewer={isViewer}
-            />
-          </motion.div>
-        )}
+              <BottomNav
+                activeTab={activeTab}
+                onSelectTab={handleSelectTab}
+                onOpenAdd={() => {
+                  setInitialQuickText('');
+                  setEditingTx(null);
+                  setSheetOpen(true);
+                }}
+                navStyle={navStyle}
+                concept={concept}
+                hidden={passDeckOpen}
+                isViewer={isViewer}
+              />
+            </motion.div>
+          )}
+        </AnimatePresence>
 
         {/* Entry Sheet (Keypad / Details / Calendar / Quick Add) */}
         {!isViewer && (

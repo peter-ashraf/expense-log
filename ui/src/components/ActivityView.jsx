@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
+import { createPortal } from 'react-dom';
+import { motion, AnimatePresence, useIsPresent } from 'motion/react';
 import NumberFlow from '@number-flow/react';
 import { Search, X, MapPin, CheckSquare, Trash2, ArrowRightLeft, Tag, Calendar } from 'lucide-react';
 import { getDayLabel, getMonthKey } from '../lib/helpers';
@@ -30,6 +31,7 @@ export default function ActivityView({
   onFirstSwipe,
   isViewer = false,
 }) {
+  const isPresent = useIsPresent();
   const [typeFilter, setTypeFilter] = useState('all'); // 'all' | 'expense' | 'income'
   const [onlyLocation, setOnlyLocation] = useState(false);
   const [allMonths, setAllMonths] = useState(false);
@@ -396,9 +398,11 @@ export default function ActivityView({
         )}
       </div>
 
-      {/* Multi-Select / Filtered Totals Floating Bar */}
-      <AnimatePresence>
-        {(selectMode || hasActiveFilter) && (
+      {/* Multi-Select / Filtered Totals Floating Bar — portaled to #phone-stage */}
+      {typeof document !== 'undefined' &&
+        createPortal(
+          <AnimatePresence>
+            {isPresent && (selectMode || hasActiveFilter) && (
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -609,7 +613,9 @@ export default function ActivityView({
             )}
           </motion.div>
         )}
-      </AnimatePresence>
+          </AnimatePresence>,
+          document.getElementById('phone-stage') || document.body
+        )}
     </div>
   );
 }

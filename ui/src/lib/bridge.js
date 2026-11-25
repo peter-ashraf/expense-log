@@ -11,7 +11,7 @@ import { buildWorkbook, parseWorkbook } from '../../../js/xlsx.js';
 import { readCsvEntries, decodeText } from '../../../js/csv.js';
 import { brandOf, stateOf as subStateOf } from '../../../js/subs.js';
 
-export const APP_VERSION = '3.20.1';
+export const APP_VERSION = '3.20.2';
 export const SCRIPT_LATEST = 11;
 export const VLINK_KEY = 'el_vlink';
 export { store, util, vault, lk, hardReload, parseMessages, suggestNote, FUEL_BIG_FILL, computeInsights, computeAllTime, computeStreak, weeklySeries, topMerchants, buildWorkbook, parseWorkbook, readCsvEntries, decodeText, brandOf, subStateOf };

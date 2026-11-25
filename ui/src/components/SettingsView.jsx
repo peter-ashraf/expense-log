@@ -649,7 +649,7 @@ export default function SettingsView({
           initial={{ opacity: 0, x: isHome ? -18 : 22 }}
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: isHome ? 22 : -18 }}
-          transition={{ duration: 0.17, ease: 'easeOut' }}
+          transition={{ duration: 0.2, ease: [0.22, 1, 0.36, 1] }}
         >
           {/* SETTINGS HOME */}
           {settingsPage === 'home' && (

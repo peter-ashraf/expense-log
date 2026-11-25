@@ -208,6 +208,14 @@ export default function TopBar({
   return (
     <div className="relative px-4 pt-2.5 pb-1.5 flex items-center justify-between gap-2 shrink-0 z-20">
       {/* Left: Settings Title / Settings Back Pill OR Month Switcher */}
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.div
+          key={isSettingsSubpage ? 'settings-back' : isSettings ? 'settings-title' : 'month-picker'}
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 4 }}
+          transition={{ duration: 0.16, ease: [0.22, 1, 0.36, 1] }}
+        >
       {isSettingsSubpage ? (
         <button
           type="button"
@@ -371,6 +379,8 @@ export default function TopBar({
           </AnimatePresence>
         </div>
       )}
+        </motion.div>
+      </AnimatePresence>
 
       {/* Right: View-only indicator (if applicable) + Synced Pill */}
       <div className="flex items-center gap-1.5">
