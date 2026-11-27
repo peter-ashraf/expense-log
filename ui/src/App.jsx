@@ -51,13 +51,27 @@ function resolveTheme(mode, sysTheme) {
 
 function getSystemTheme() {
   return typeof window !== 'undefined' &&
-    window.matchMedia?.('(prefers-color-scheme: light)').matches
-    ? 'light'
-    : 'dark';
+    window.matchMedia?.('(prefers-color-scheme: dark)').matches
+    ? 'dark'
+    : 'light';
+}
+
+function getCachedPrefs() {
+  try {
+    const st = localStorage.getItem('el_style');
+    const style = st === 'kinetic' || st === 'editorial' ? st : 'obsidian';
+    const tSet = localStorage.getItem('el_theme_set') === '1';
+    const rawT = tSet ? localStorage.getItem('el_theme') : 'dark';
+    const theme = rawT === 'light' || rawT === 'dark' || rawT === 'system' ? rawT : 'dark';
+    const glass = localStorage.getItem('el_glass') !== '0';
+    return { style, theme, glass };
+  } catch {
+    return { style: 'obsidian', theme: 'dark', glass: true };
+  }
 }
 
 export default function App() {
-  const { state, view, settings, isConnected, isDemo, isViewer, currency } = useExpenseStore();
+  const { state, view, settings, isConnected, isDemo, isViewer, isHydrated, currency } = useExpenseStore();
 
   const [systemTheme, setSystemTheme] = useState(getSystemTheme);
   const [activeTab, setActiveTab] = useState('home');
@@ -98,10 +112,13 @@ export default function App() {
   }
   const screenCustom = { dir: tabDirRef.current, reduced: Boolean(prefersReducedMotion) };
 
-  const concept = settings.style === 'kinetic' || settings.style === 'editorial' ? settings.style : 'obsidian';
-  const themeMode = settings.theme || 'dark';
+  const cachedPrefs = useMemo(getCachedPrefs, []);
+  const rawStyle = isHydrated ? settings.style : cachedPrefs.style;
+  const concept = rawStyle === 'kinetic' || rawStyle === 'editorial' ? rawStyle : 'obsidian';
+  const rawTheme = isHydrated ? settings.theme : cachedPrefs.theme;
+  const themeMode = rawTheme === 'light' || rawTheme === 'dark' || rawTheme === 'system' ? rawTheme : 'dark';
   const resolvedTheme = resolveTheme(themeMode, systemTheme);
-  const glassBars = settings.glass !== false;
+  const glassBars = isHydrated ? settings.glass !== false : cachedPrefs.glass;
   const navStyle = settings.navStyle === 'orb' ? 'orb' : 'center';
   // Prototype calls Pass Deck 'arc', js/app.js stored 'pass'
   const subsStyle = settings.subsStyle === 'pass' || settings.subsStyle === 'arc' ? 'arc' : 'flip';
@@ -117,7 +134,13 @@ export default function App() {
     const sync = () => setSystemTheme(mq.matches ? 'dark' : 'light');
     sync();
     mq.addEventListener?.('change', sync);
-    return () => mq.removeEventListener?.('change', sync);
+    document.addEventListener('visibilitychange', sync);
+    window.addEventListener('pageshow', sync);
+    return () => {
+      mq.removeEventListener?.('change', sync);
+      document.removeEventListener('visibilitychange', sync);
+      window.removeEventListener('pageshow', sync);
+    };
   }, []);
 
   useEffect(() => {
@@ -200,20 +223,34 @@ export default function App() {
     html.setAttribute('data-acc', activeAccKind);
     html.setAttribute('data-glass', glassBars ? 'on' : 'off');
 
-    try {
-      localStorage.setItem('el_style', concept);
-      localStorage.setItem('el_theme', themeMode);
-      localStorage.setItem('el_theme_set', '1');
-      localStorage.setItem('el_glass', glassBars ? '1' : '0');
-    } catch { /* ignore */ }
+    if (isHydrated) {
+      try {
+        localStorage.setItem('el_style', concept);
+        localStorage.setItem('el_theme', themeMode);
+        localStorage.setItem('el_theme_set', '1');
+        localStorage.setItem('el_glass', glassBars ? '1' : '0');
+      } catch { /* ignore */ }
+    }
 
-    const dimmed = sheetOpen || breakdownState.open ? 1 : 0;
-    const hex = hexMixColor(concept, resolvedTheme, dimmed);
-    const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', hex);
-    document.documentElement.style.backgroundColor = hex;
-    document.body.style.backgroundColor = hex;
-  }, [concept, themeMode, resolvedTheme, activeAccKind, glassBars, sheetOpen, breakdownState.open]);
+    const syncStatusBar = () => {
+      const dimmed = sheetOpen || breakdownState.open ? 1 : 0;
+      const hex = hexMixColor(concept, resolvedTheme, dimmed);
+      const meta = document.querySelector('meta[name="theme-color"]');
+      if (meta) meta.setAttribute('content', hex);
+      document.documentElement.style.backgroundColor = hex;
+      document.body.style.backgroundColor = hex;
+    };
+    syncStatusBar();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') syncStatusBar();
+    };
+    document.addEventListener('visibilitychange', onVis);
+    window.addEventListener('pageshow', syncStatusBar);
+    return () => {
+      document.removeEventListener('visibilitychange', onVis);
+      window.removeEventListener('pageshow', syncStatusBar);
+    };
+  }, [concept, themeMode, resolvedTheme, activeAccKind, glassBars, sheetOpen, breakdownState.open, isHydrated]);
 
   // All normalized UI entries & active-month scoped data
   const allEntriesUi = useMemo(() => {
@@ -519,7 +556,7 @@ export default function App() {
               animate={
                 sheetOpen
                   ? { scale: 0.955, borderRadius: '26px', opacity: 0.88 }
-                  : { scale: 1, borderRadius: '0px', opacity: 1 }
+                  : { scale: 1, borderRadius: '0px', opacity: 1, transitionEnd: { transform: 'none' } }
               }
               exit={{ opacity: 0 }}
               transition={{ type: 'spring', stiffness: 420, damping: 36 }}
