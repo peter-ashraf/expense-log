@@ -11,7 +11,7 @@ import { buildWorkbook, parseWorkbook } from '../../../js/xlsx.js';
 import { readCsvEntries, decodeText } from '../../../js/csv.js';
 import { brandOf, stateOf as subStateOf } from '../../../js/subs.js';
 
-export const APP_VERSION = '3.20.2';
+export const APP_VERSION = '3.20.3';
 export const SCRIPT_LATEST = 11;
 export const VLINK_KEY = 'el_vlink';
 export { store, util, vault, lk, hardReload, parseMessages, suggestNote, FUEL_BIG_FILL, computeInsights, computeAllTime, computeStreak, weeklySeries, topMerchants, buildWorkbook, parseWorkbook, readCsvEntries, decodeText, brandOf, subStateOf };
@@ -276,6 +276,8 @@ export function mapSubToUi(s, v) {
 
 // Runtime bootstrap (call once on app mount)
 let runtimeStarted = false;
+let storeHydrated = false;
+const hydrationSubs = new Set();
 export function initAppRuntime({ onSmsReview, onToast, onOpenUrlConnect } = {}) {
   if (runtimeStarted) return () => {};
   runtimeStarted = true;
@@ -438,6 +440,8 @@ export function initAppRuntime({ onSmsReview, onToast, onOpenUrlConnect } = {}) 
       if (Object.keys(patch).length) {
         await store.saveSettings(patch);
       }
+      storeHydrated = true;
+      hydrationSubs.forEach((fn) => fn());
 
       if (keyLost) {
         setTimeout(() => onToast?.('Encrypted copy could not be opened, so it was cleared. Reconnect to reload from your sheet.', 'error'), 800);
@@ -541,8 +545,13 @@ export function initAppRuntime({ onSmsReview, onToast, onOpenUrlConnect } = {}) 
 export function useExpenseStore() {
   const [tick, setTick] = useState(0);
   useEffect(() => {
-    const unsub = store.onChange(() => setTick((t) => t + 1));
-    return unsub;
+    const bump = () => setTick((t) => t + 1);
+    const unsub = store.onChange(bump);
+    hydrationSubs.add(bump);
+    return () => {
+      unsub();
+      hydrationSubs.delete(bump);
+    };
   }, []);
 
   return useMemo(() => {
@@ -556,6 +565,7 @@ export function useExpenseStore() {
       isConnected: Boolean(st.cfg),
       isDemo: Boolean(st.cfg && st.cfg.demo),
       isViewer: store.isViewer(),
+      isHydrated: storeHydrated,
       currency: (st.settings && st.settings.currency) || 'EGP',
     };
   }, [tick]);

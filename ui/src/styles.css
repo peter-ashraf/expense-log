@@ -249,11 +249,19 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-#app,
+body {
+  position: relative;
+}
+
+#app {
+  position: absolute;
+  inset: 0;
+  overflow: clip;
+}
+
 #root {
   width: 100%;
   height: 100%;
-  overflow: clip;
 }
 
 /* Responsive App Shell — Full-screen on mobile, clean centered column (max 480px) on desktop (NO bezel) */
@@ -263,7 +271,6 @@ body {
   display: flex;
   justify-content: center;
   background: var(--bg-desktop);
-  transition: background 240ms ease;
 }
 
 #phone-shell {
@@ -279,7 +286,6 @@ body {
   display: flex;
   flex-direction: column;
   padding-top: env(safe-area-inset-top, 0px);
-  transition: background-color 220ms ease, border-color 220ms ease;
 }
 
 @media (max-width: 520px) {
@@ -288,7 +294,7 @@ body {
     background: var(--bg-app);
   }
   #phone-shell {
-    position: fixed;
+    position: absolute;
     inset: 0;
     width: 100%;
     max-width: none;
